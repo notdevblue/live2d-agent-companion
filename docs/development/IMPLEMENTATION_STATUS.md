@@ -65,6 +65,8 @@ npm audit
 
 ## 확인 결과 (2026-10-31)
 
+- `FR-UI-002`: textarea의 바깥 focus outline이 간격 없는 전송 버튼과 5px 겹치는 원인을 재현했다. composer의 focus-within 경계와 10px gap·축소 가능한 textarea/고정 40px 버튼으로 변경하고, conversation의 flex 최소 높이·독립 스크롤과 답변 오른쪽/마지막 메시지 아래 이중 여백을 조정했다. 실제 Electron의 로컬 긴 대화 fixture를 470×810·400×600·640×900 및 125% 확대에 렌더해 포커스/버튼 분리·body/대화 가로 overflow 없음·footer 표시·스크롤 하단 도달을 확인했다. 실제 Sway 앱 새 프로세스·창 재생성에서도 10px 간격·40px 버튼·mint composer 포커스·가로 잘림 없음과 기존 history/session·배율/표현 설정 보존을 확인했다. 확인 중 위치 저장값이 바뀌어 이전 값으로 되돌리지 않고 최신 저장 위치로 일반 앱을 다시 실행했다. 이미지를 육안 확인했고 수치/이미지 근거는 ignored `.tmp/chat-layout/`에 둔다. 기존 TypeScript/Prettier·build·Mock desktop 검사도 통과했다. OS 재부팅/재로그인은 수행하지 않았다.
+
 - `FR-CHAT-001`: 동일 default SSH 세션에서 실제 기록 8개(user 4/assistant 4)를 read-only로 읽고 native 채팅 DOM과 순서/본문이 일치함을 확인했다. renderer reload·창 닫기/재열기에서도 8개가 중복 없이 복원됐다. 원문은 출력/증거 파일/로컬 대화 파일에 저장하지 않고 역할 수·일치 여부만 ignored `.tmp/history-check/`에 기록했다. Mock desktop의 창 reload/재열기·세션 전환 후 복귀와 history/adapter/host 필터 회귀 검사를 추가했다. 별도 앱 프로세스를 다시 실행해 같은 기록의 본문/순서·default session과 기존 위치/배율/표현 설정도 복원됨을 확인했다. 새 prompt·도구·Jev 호출과 OS 재부팅/재로그인은 수행하지 않았다.
 
 - TypeScript strict, Prettier 및 production build 통과. Unit/Contract 137개: 기존 전송/SSE·SSH receipt/replay·복구/lease·승인·저장·지연 판단·모델 경로·인증 입력·렌더 용량·입력 영역·모니터 배치에 더해 actor의 30/60/120fps 일관성, 감정/태도·반복/만료/blocked, idle 호흡 주기·위상/강도·몸 반응, expression crossfade, upstream/range 선택, 전체 손 pose endpoint와 진입/유지/복귀, 표현 설정 마이그레이션/저장 검사를 포함한다.
