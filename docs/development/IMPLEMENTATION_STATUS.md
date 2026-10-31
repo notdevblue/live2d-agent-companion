@@ -15,7 +15,7 @@
 | Hermes HTTP | Runs/SSE/상태/중단/승인/복구와 테스트 서버 왕복 | 원격 실증 전. API 소유 세션 전용 |
 | Grok Bot | Webhook 인증 제출, 200→accepted/awaiting_result | 실계정 미실증, callback 미구현, 양방향 채팅 미지원 |
 | Jev | Choice emotion/gesture, 최대 800자 구간, 비동기 판단·deadline·confidence·stale gating | 한국어 인사 실증은 전체 품질 평가가 아님 |
-| 인증키 | async safeStorage, 서버별 credential scope | 현재 headless 환경은 보호 저장소 불가. 키는 메모리 전용 |
+| 인증키 | async safeStorage, 서버별 credential scope, 사용자 `.env` 시작 시 입력 | 현재 headless 환경은 보호 저장소 불가. 앱 보관은 메모리 전용이며 사용자 `.env`는 별도 유지 |
 
 ## 실행·복원 구조
 
@@ -23,7 +23,7 @@
 
 사용자 ZIP에서 runtime만 추출하고, 누락된 `Exp3/`·`Animation/` 참조는 검증된 manifest에 보충한다. 원본 파일을 수정하지 않는다. 자산 URL은 선택 디렉터리의 의존 파일만 토큰으로 제공하며 symlink/traversal/외부 URL을 거절한다. 재선택 시 토큰은 폐기된다.
 
-설정은 OS 사용자 앱 데이터의 `settings.json`, 미종결 요청은 `pending-requests.json`이다. 앱 설정이 없는 첫 실행에는 ignored `local-assets/connection.json`을 읽는다. 개인 주소/실제 세션/키는 공개 저장소에 넣지 않는다. 인증키는 별도 암호화 저장이며 Linux `basic_text` 우회는 없다. 보호 저장소가 없으면 메모리만 사용하고 재실행 시 입력이 필요하다.
+설정은 OS 사용자 앱 데이터의 `settings.json`, 미종결 요청은 `pending-requests.json`이다. 앱 설정이 없는 첫 실행에는 ignored `local-assets/connection.json`을 읽는다. 개인 주소/실제 세션/키는 공개 저장소에 넣지 않는다. 인증키는 별도 암호화 저장이며 Linux `basic_text` 우회는 없다. 보호 저장소가 없으면 앱은 메모리에만 보관하며, 사용자가 직접 준비한 `.env`가 있으면 재실행 시 main에서 다시 읽는다. `.env`의 복원은 비밀정보 관리 범위로 별도 수행한다.
 
 요청 메타데이터는 **네트워크 제출 전에 await하여 저장**한다. 저장 실패/손상된 미종결 상태를 빈 상태로 바꿔 새 요청을 보내지 않는다. 재시작 시 원래 요청을 조회하며 자동 재전송하지 않는다. endpoint 정규화와 selectionId/revision 검사가 전환 중 중복 제출·잘못된 이벤트/표현 적용을 막는다.
 
@@ -42,14 +42,17 @@ npm audit
 
 실제 공급자 검사는 준비한 로컬 연결 설정으로 `node scripts/smoke-desktop.mjs --smoke-hermes --jev-stdin`을 실행한다. 터미널 echo를 끈 stdin에서 키를 받아 자식 fd로만 전달하며 명령 인자·환경변수·파일에 평문 저장하지 않는다. 도구가 꺼진 전용 세션에서 인사만 요청한다. 실제 검사 결과는 로컬 `artifacts/desktop-live.json`에 원문/키/주소/세션 없이 기록한다.
 
+사용자 `.env` 경로의 실제 시작 검사는 `node scripts/smoke-desktop.mjs --smoke-hermes --smoke-env`다. 기본 `test:desktop`은 `.env`를 읽거나 유료 Jev 호출을 하지 않는다.
+
 ## 확인 결과 (2026-10-31)
 
-- TypeScript strict 및 production build 통과. Unit/Contract 73개: 전송/SSE·SSH receipt/replay·코어 복구/lease·승인·저장 barrier·지연 판단·모델 경로·credential/endpoint 정규화 검사. Electron smoke는 실제 form 제출, 새 세션 생성/공급자 변경 뒤 이전 대화·승인 UI 제거도 검사한다.
+- TypeScript strict 및 production build 통과. Unit/Contract 76개: 전송/SSE·SSH receipt/replay·코어 복구/lease·승인·저장 barrier·지연 판단·모델 경로·credential/endpoint 정규화 및 `.env` 입력 검사. Electron smoke는 실제 form 제출, 새 세션 생성/공급자 변경 뒤 이전 대화·승인 UI 제거도 검사한다.
 - npm audit 취약점 0건. CI 자동 실행과 Windows 빌드는 아직 없다.
 - 실제 Electron headless에서 모델 파라미터 509개와 440×680 WebGL 출력, 알파 0인 빈 모서리, renderer Node `require` 접근 불가 및 좁은 preload 브리지 확인.
 - 사용자가 승인한 Hermes `default` 전용 새 테스트 세션에서 delta→최종 본문→원격 receipt 완료를 확인했다. 기존 대화에 테스트 메시지를 넣거나 원격 서비스를 재시작/변경하지 않았다. 새 SSH 클라이언트의 동일 요청 receipt 복구도 통과했다.
 - 실제 Hermes 답변을 실제 Jev가 `happy/wave`로 판단하고 모델의 실제 표정/모션 파라미터 적용까지 확인했다. 관찰된 Jev 왕복은 188ms와 208ms였으며 평균/최악 지연 보장은 아니다.
 - 별도 앱 프로세스 재실행과 같은 로컬 연결 설정 사용을 확인했다. 실제 OS 재부팅·재로그인·장치 재연결·Windows 클릭 통과·DPAPI/Secret Service 지속성은 검증하지 않았다.
+- 사용자 `.env`(소유자 전용 권한 600)의 bare Jev 키로 별도 앱 프로세스를 두 차례 실행했다. 두 번 모두 stdin 입력 없이 `credentialSource=env-file`, 실제 Hermes 완료·실제 Jev 판단·모델 표정/모션 적용을 확인했다. 파일을 다시 읽는 앱 재시작 검증이며 OS 재부팅/재로그인 검증은 아니다.
 
 근거는 같은 변경의 `tests/`, `scripts/smoke-desktop.mjs`, main의 smoke 결과 생성 코드와 실행 결과다. 모델/SDK·키·개인 대화는 증거 fixture로 커밋하지 않는다.
 

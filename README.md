@@ -52,7 +52,9 @@ npm start
 
 설정에서 `ssh://user@host`와 Hermes 프로필을 저장한 뒤 기존 세션을 조회/선택하거나 **도구가 꺼진 테스트용 새 세션**을 만들 수 있습니다. 일반 HTTP는 API 소유 세션 전용입니다. 개인 주소·세션은 앱 설정 또는 ignored `local-assets/connection.json`에만 보관합니다. 해당 파일 생성은 `npm run configure:local -- --endpoint ssh://user@example.test --profile default --session SESSION_ID`입니다.
 
-Jev는 설정에서 켜고 키를 입력합니다. 표시용 답변 구간만 TypeSafe로 보내며 텍스트 표시를 지연시키지 않습니다. 인증키는 OS 보호 저장소로 암호화하고, 보호 저장소가 없으면 메모리에서만 유지합니다. 평문 저장으로 우회하지 않으므로 이 경우 재실행 시 키 입력이 필요합니다. 키를 소스·명령 인자·환경변수에 넣지 마세요.
+Jev는 설정에서 켜고 키를 입력합니다. 표시용 답변 구간만 TypeSafe로 보내며 텍스트 표시를 지연시키지 않습니다. 인증키는 OS 보호 저장소로 암호화하고, 보호 저장소가 없으면 메모리에서만 유지합니다.
+
+사용자가 직접 준비한 프로젝트 루트 `.env`도 시작 시 읽습니다. `.env.example`의 `JEV_API_KEY=` 또는 `TYPESAFE_API_KEY=` 형식과 `apikey_…` 키 한 줄 형식을 지원합니다. Unix에서는 현재 사용자 소유·권한 `600`이 필요합니다. 값은 main에서만 읽고 `process.env`나 renderer에 전달하지 않습니다. `.env`가 있으면 앱 재실행 때 그 값이 저장된 키보다 우선하며, 파일이 없고 보호 저장소도 없으면 키를 다시 입력해야 합니다. Jev 활성화 설정은 키 존재 여부와 별개입니다. 실제 `.env`는 Git에서 제외하며 비밀 파일은 별도로 복원하세요.
 
 검증 범위·남은 기능·재현 명령은 [구현 및 검증 상태](docs/development/IMPLEMENTATION_STATUS.md)를 참고하세요. 문서의 MUST는 여전히 요구사항이며 구현 완료는 항목별 증거로 구분합니다.
 

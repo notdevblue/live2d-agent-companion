@@ -197,7 +197,7 @@ function populate(): void {
     : 'Jev 인증키 입력';
   element('vault-status').textContent = boot.storageSecure
     ? '인증키는 OS 보호 저장소로 암호화됩니다.'
-    : 'OS 보호 저장소를 사용할 수 없어 키는 메모리에만 유지됩니다. 재실행 시 다시 입력하세요.';
+    : 'OS 보호 저장소를 사용할 수 없어 앱은 키를 메모리에만 유지합니다. 재실행 시 .env에서 다시 읽거나 직접 입력하세요.';
   element('model-name').textContent = boot.model
     ? `${boot.model.name} · 표정 ${boot.model.expressions.length} / 모션 ${boot.model.motions.length}`
     : '모델이 선택되지 않았습니다.';

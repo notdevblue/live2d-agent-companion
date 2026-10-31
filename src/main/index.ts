@@ -37,11 +37,14 @@ import { GrokBotAdapter } from '../adapters/grok.js';
 import { JevJudge } from '../adapters/jev.js';
 import { ModelLibrary } from './model-library.js';
 import { CredentialVault, JsonFile, credentialScope } from './storage.js';
+import { EnvKeyError, readJevEnv } from './env-key.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const smoke = process.argv.includes('--smoke');
 const smokeHermes = process.argv.includes('--smoke-hermes');
-const smokeJev = process.argv.includes('--jev-key-fd=3');
+const smokeStdinJev = process.argv.includes('--jev-key-fd=3');
+const smokeEnv = process.argv.includes('--smoke-env');
+const smokeJev = smokeStdinJev || smokeEnv;
 app.setName('Live2D Agent Companion');
 if (smoke) {
   app.setPath('userData', resolve(root, '.tmp/smoke-profile'));
@@ -577,6 +580,7 @@ async function runSmoke(): Promise<void> {
       lastRoundtripMs: lastJudgeMs,
     },
     secureStorage: vault.secure,
+    credentialSource: smokeEnv ? 'env-file' : smokeStdinJev ? 'stdin' : 'vault',
   };
   let uiRouting = true;
   if (!smokeHermes) {
@@ -688,7 +692,13 @@ app
       },
     );
     await vault.initialize();
-    if (smoke && smokeJev) {
+    if (!smoke || smokeEnv) {
+      const key = await readJevEnv(join(root, '.env'));
+      if (key) await vault.set(credentialScope('jev'), key);
+      else if (smokeEnv) throw new EnvKeyError('실제 .env 검사에 사용할 Jev 키가 없습니다.');
+      if (smoke && smokeEnv) settings.jevEnabled = true;
+    }
+    if (smoke && smokeStdinJev) {
       const key = readFileSync(3, 'utf8').trim();
       await vault.set(credentialScope('jev'), key);
       settings.jevEnabled = true;
@@ -769,8 +779,12 @@ app
     screen.on('display-metrics-changed', positionOverlay);
     if (smoke) await runSmoke();
   })
-  .catch(async () => {
-    console.error('앱 초기화 실패. 모델·SDK·보호 저장소 구성을 확인하세요.');
+  .catch(async (error) => {
+    console.error(
+      error instanceof EnvKeyError
+        ? error.message
+        : '앱 초기화 실패. 모델·SDK·보호 저장소 구성을 확인하세요.',
+    );
     app.exit(1);
   });
 app.on('window-all-closed', () => {
