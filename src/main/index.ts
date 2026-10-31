@@ -27,6 +27,7 @@ import type {
   AgentBinding,
   Capabilities,
   OverlayInputRegion,
+  ExpressionContext,
 } from '../shared/contracts.js';
 import {
   CHARACTER_PREVIEWS,
@@ -210,10 +211,10 @@ async function configure(alreadyLocked = false): Promise<void> {
     const judge =
       jev && smoke
         ? {
-            judge: async (text: string, signal: AbortSignal) => {
+            judge: async (text: string, signal: AbortSignal, context?: ExpressionContext) => {
               const start = Date.now();
               try {
-                return await jev.judge(text, signal);
+                return await jev.judge(text, signal, context);
               } finally {
                 lastJudgeMs = Date.now() - start;
               }

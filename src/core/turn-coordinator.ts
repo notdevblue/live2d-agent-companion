@@ -146,7 +146,7 @@ export class TurnCoordinator {
     clearTimeout(this.recoveryTimer);
     this.recoveryTimer = undefined;
     this.recoveryFailures = 0;
-    this.director.begin(request.requestId);
+    this.director.begin(request.requestId, text);
     this.publish();
     try {
       await this.options.beforeSubmit?.(this.snapshot(), text);

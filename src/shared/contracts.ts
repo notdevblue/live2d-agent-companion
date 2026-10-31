@@ -115,7 +115,14 @@ export interface ExpressionDecision {
   confidence: number;
 }
 export interface ExpressionJudge {
-  judge(text: string, signal: AbortSignal): Promise<ExpressionDecision>;
+  judge(
+    text: string,
+    signal: AbortSignal,
+    context?: ExpressionContext,
+  ): Promise<ExpressionDecision>;
+}
+export interface ExpressionContext {
+  userRequest: string;
 }
 export interface CharacterCue extends ExpressionDecision {
   requestId: string;
@@ -126,6 +133,7 @@ export interface CharacterCue extends ExpressionDecision {
 export const EXPRESSION_PACING = {
   maxJudgements: 8,
   maxText: 800,
+  maxRequestText: 1600,
   collectMs: 350,
   maxAgeMs: 2000,
 } as const;

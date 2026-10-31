@@ -10,6 +10,7 @@ import type {
   EventSink,
   ExpressionDecision,
   ExpressionJudge,
+  ExpressionContext,
   RequestRef,
   UserTurn,
 } from '../src/shared/contracts.js';
@@ -109,6 +110,27 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe('TurnCoordinator request boundary (FR-AG-003/004/010/012)', () => {
+  it('binds Jev context to the submitted user turn without persisting either message body in pending metadata', async () => {
+    const judge = {
+      judge: vi.fn(
+        async (_text: string, _signal: AbortSignal, _context?: ExpressionContext) => happy,
+      ),
+    };
+    const { core, adapter } = fixture({ judge });
+    await core.send('CURRENT USER REQUEST');
+    adapter.emit('tool.started', { toolId: 'read', name: 'tool-name-not-context' });
+    adapter.emit('message.complete', { text: 'VISIBLE ASSISTANT REPLY.', messageId: 'm' });
+    await flush();
+    expect(judge.judge).toHaveBeenCalledWith('VISIBLE ASSISTANT REPLY.', expect.any(AbortSignal), {
+      userRequest: 'CURRENT USER REQUEST',
+    });
+    const metadata = JSON.stringify(core.snapshot());
+    expect(metadata).not.toContain('CURRENT USER REQUEST');
+    expect(metadata).not.toContain('VISIBLE ASSISTANT REPLY');
+    expect(metadata).not.toContain('tool-name-not-context');
+    adapter.emit('turn.completed', {});
+    await core.dispose();
+  });
   it('validates event payload and full binding, deduplicates, and accepts a terminal once', async () => {
     const { core, adapter, events } = fixture();
     await core.send('fixture');

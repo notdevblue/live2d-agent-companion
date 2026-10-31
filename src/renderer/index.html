@@ -99,8 +99,9 @@
         ><input id="jev-enabled" type="checkbox" /> Jev로 답변의 표정·제스처 판단</label
       >
       <p class="hint">
-        켜면 채팅 메시지마다 대표 표정을 한 번 판단합니다. 요청당 최대 8회, 각 800자 이하를 TypeSafe
-        API에 전달합니다. 도구 로그·세션 기억·모델 파일은 전송하지 않습니다.
+        켜면 현재 사용자 요청(최대 1600자)과 각 답변(최대 800자)을 TypeSafe API에 전달해 메시지마다
+        대표 표정을 한 번 판단합니다. 요청당 최대 8회이며 이전 대화·도구 로그·세션 기억·모델 파일은
+        전송하지 않습니다.
       </p>
       <div class="two-columns">
         <label>Jev 모델<input id="jev-model" value="jev-1.14.0" /></label

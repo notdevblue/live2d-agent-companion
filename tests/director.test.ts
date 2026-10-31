@@ -4,12 +4,41 @@ import {
   EXPRESSION_PACING,
   type CompanionEvent,
   type ExpressionDecision,
+  type ExpressionContext,
 } from '../src/shared/contracts.js';
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 const happy: ExpressionDecision = { emotion: 'happy', gesture: 'none', confidence: 0.9 };
 const flush = () => vi.advanceTimersByTimeAsync(0);
 describe('one decision per actual assistant message (FR-DIR-005)', () => {
+  it('keeps bounded current request context across progress messages and clears it at request boundaries', async () => {
+    const judge = {
+      judge: vi.fn(
+        async (_text: string, _signal: AbortSignal, _context?: ExpressionContext) => happy,
+      ),
+    };
+    const d = new CharacterDirector({ judge, onEvent: () => {} });
+    const request = 'FIRST-REQUEST-' + 'x'.repeat(4000) + '-FINAL-CONSTRAINT';
+    d.begin('first', request);
+    d.append('중간 응답.', true, 'progress');
+    await flush();
+    d.append('최종 응답.', true, 'final');
+    await flush();
+    const first = judge.judge.mock.calls[0]![2]!.userRequest;
+    expect(first).toHaveLength(EXPRESSION_PACING.maxRequestText);
+    expect(first).toMatch(/^FIRST-REQUEST-/);
+    expect(first).toMatch(/-FINAL-CONSTRAINT$/);
+    expect(judge.judge.mock.calls[1]![2]).toEqual({ userRequest: first });
+    d.begin('second', 'SECOND REQUEST');
+    d.append('새 요청의 답변.', true, 'other');
+    await flush();
+    expect(judge.judge.mock.calls[2]![2]).toEqual({ userRequest: 'SECOND REQUEST' });
+    d.begin('restored-without-original');
+    d.append('원문 없는 복구 이후 메시지.', true, 'resumed');
+    await flush();
+    expect(judge.judge.mock.calls[3]![2]).toBeUndefined();
+    d.invalidate();
+  });
   it('ends the waiting pose when visible text streams and retains actual tool work as the fallback', () => {
     const events: CompanionEvent[] = [];
     const d = new CharacterDirector({ onEvent: (e) => events.push(e) });

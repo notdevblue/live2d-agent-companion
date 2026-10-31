@@ -22,6 +22,7 @@ export class CharacterDirector {
   private generation = 0;
   private segmentId = 0;
   private requestId = '';
+  private userRequest?: string;
   private pending = '';
   private enabled = false;
   private controller?: AbortController;
@@ -43,9 +44,18 @@ export class CharacterDirector {
       throw new Error('표현 확신 기준은 0~1이어야 합니다.');
   }
 
-  begin(requestId: string): void {
+  begin(requestId: string, userRequest?: string): void {
     this.invalidate();
     this.requestId = requestId;
+    if (userRequest?.trim()) {
+      const text = userRequest.trim();
+      const limit = EXPRESSION_PACING.maxRequestText;
+      const half = Math.floor((limit - 3) / 2);
+      this.userRequest =
+        text.length <= limit
+          ? text
+          : `${text.slice(0, half)}\n…\n${text.slice(-(limit - half - 3))}`;
+    }
     this.segmentId = 0;
     this.judgements = 0;
     this.judged.clear();
@@ -94,6 +104,7 @@ export class CharacterDirector {
   /** Snapshot/recovery text is displayed without replaying expression inference. */
   invalidate(): void {
     this.enabled = false;
+    this.userRequest = undefined;
     this.cancelPending();
   }
 
@@ -126,6 +137,7 @@ export class CharacterDirector {
     const generation = this.generation;
     const segmentId = this.segmentId;
     const requestId = this.requestId;
+    const context = this.userRequest ? { userRequest: this.userRequest } : undefined;
     const createdAt = Date.now();
     const controller = new AbortController();
     this.controller = controller;
@@ -148,7 +160,7 @@ export class CharacterDirector {
       .then(() => {
         if (controller.signal.aborted) return undefined;
         this.judgements++;
-        return judge.judge(text, controller.signal);
+        return judge.judge(text, controller.signal, context);
       })
       .catch(() => undefined);
     void Promise.race([inference, deadline]).then((result) => {

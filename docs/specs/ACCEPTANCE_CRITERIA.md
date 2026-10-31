@@ -57,7 +57,7 @@
 - 재생 구간에만 립싱크 활성화; 말이 끝나면 자연스러운 idle로 복귀한다.
 - 중단 누르면 TTS 큐, 음성 재생, talking 모션을 모두 멈춘다.
 - TTS 실패나 특정 모션 누락에도 텍스트 답변은 손상되지 않는다.
-- Jev 활성 상태에서 표시용 답변 구간만 판단하며 텍스트 표시가 지연되지 않는다. 판단 timeout/저확신은 neutral, 취소/전환/효력을 잃은 구간의 지연 결과는 적용하지 않는다(`FR-DIR-003`).
+- Jev 활성 상태에서 현재 요청을 문맥으로 함께 보내되 표시용 assistant 답변을 판단하며 텍스트 표시가 지연되지 않는다. 판단 timeout/저확신은 neutral, 취소/전환/효력을 잃은 구간의 지연 결과는 적용하지 않는다(`FR-DIR-003`).
 - `FR-DIR-004`: emotion .56/gesture wave .92/attitude .59는 감정·말투만 중립화하고 wave는 Director를 거쳐 실제 손 인사 포즈로 전달한다. 반대로 확실한 감정과 불확실한 설명 제스처는 감정만 보존하고 손 포즈는 none이다. 전 채널 저확신은 기존 neutral/none fallback을 유지하며 새 판단 호출이나 인사 keyword 규칙은 추가하지 않는다.
 - `FR-DIR-004`: `attitude=explain, gesture=none`은 설명 말투의 로컬 고개/시선만 사용하며 손 포즈를 시작하지 않는다. 명시적 `gesture=explain`은 기존 paired 포즈를 유지한다. 인사 확인·진행 보고·결과 보고·단순 사실을 설명 손 포즈의 필수 조건으로 취급하지 않는다. 한국어 실제 Jev 예문 평가는 단위 검사와 구분하고 호출별 결과를 정확도 보장으로 일반화하지 않는다.
 - `FR-DIR-005`: 실제 메시지 ID가 있는 neutral/none cue는 약 1.8초의 작은 끄덕임·교대 기울임으로 반응한다. 손 포즈·웃음·새 감정은 추가하지 않고 기존 호흡/상하 offset 한도를 유지한다. 중복 메시지는 반복하지 않으며 자연 종료·승인/취소/복구 차단·다음 메시지 전환과 움직임 줄이기·30/60/120fps 일관성을 검사한다. 과거 history/snapshot에는 이 반응을 다시 넣지 않는다.
@@ -71,7 +71,7 @@
 - `FR-L2D-005~006`: 실제 DeepSeek에서 thinking의 upstream `AngleZ`와 physics 뒤 `ParamAngleZ` 모두 변하고, 시선·고개·몸 반응이 이어진다. paired 손 포즈는 진입 자산의 손목/손가락 등 전체 endpoint를 유지하고 대응 복귀 자산으로 중립에 돌아온다. 느린 프레임에서도 pose 단계와 clip 시계가 어긋나지 않는다.
 - idle 호흡은 약 4.8초의 짧은 들숨/긴 날숨에 맞춰 `ParamBreath`, 몸의 상하 반응, 전체 모델의 작은 수직 offset을 함께 구동한다. cue/초기화로 호흡 위상을 다시 시작하지 않고 강도·움직임 줄이기에 따라 줄어든다. 승인 차단에서는 offset도 0이며, 사용자 motion이 `ParamBreath`를 구동하는 동안 기본 호흡이 덮어쓰지 않는다. 전체 offset은 canvas 내부 연출이고 저장한 창 배치나 배율은 호흡으로 바뀌지 않는다.
 - happy→embarrassed→concerned 전환은 이전 표정과 새 표정의 가중치가 이어지고, 반복 cue는 높은 강도 반응을 계속 처음부터 재시작하지 않는다. cancel/전환/reconciling/승인 뒤 낡은 cue가 살아나지 않는다. 승인 turn 뒤 늦게 오는 character 이벤트도 중립 차단을 해제하지 않으며 승인 종료 뒤 현재 상태로 재개한다.
-- `FR-DIR-004`: Jev 한 요청의 3개 Choice는 visible assistant 구간만 사용한다. attitude 미포함 응답은 기존 판단으로 동작하고, 잘못된 attitude는 거절한다. 낮은 attitude confidence는 attitude만 neutral로 낮추고 다른 고확신 판단을 강제로 폐기하지 않는다. 실제 새 attitude 한국어 품질 검증과 transport/계약 검증은 구분한다.
+- `FR-DIR-004`: Jev 한 요청의 3개 Choice는 `user_request`(최대 1600자)와 `assistant_message`(최대 800자)를 분리한다. 긴 요청은 앞뒤를 남기며, 중간 응답/최종 답변은 같은 요청 문맥을 사용하고 다음 요청/선택에는 섞이지 않는다. 사용자 요청은 메모리에서만 유지하고 pending metadata에 넣지 않으며 복원 원문이 없으면 임의의 과거 요청으로 채우지 않는다. 텍스트의 명령은 판단 지시가 아닌 데이터로 취급한다. attitude 미포함 응답은 기존 판단으로 동작하고, 잘못된 attitude는 거절한다. 낮은 attitude confidence는 attitude만 neutral로 낮추고 다른 고확신 판단을 강제로 폐기하지 않는다. 실제 새 attitude 한국어 품질 검증과 transport/계약 검증은 구분한다.
 - `FR-SET-003`: 표현 설정은 현재 selection/request/창 위치를 유지한 채 저장·적용되고 Overlay 재로딩 없이 반영된다. 구도/강도/잠금/움직임 줄이기는 저장 후 renderer 재로딩과 앱 재실행에서 복원한다. 잠긴 채 드래그하거나 휠을 써도 이동·배율 변경·의도치 않은 채팅 열기가 없으며 단순 클릭은 채팅을 연다. 모니터 선택/위치 복구는 명시적 조작으로 계속 제공한다.
 - 미리보기의 잘못된 enum·Overlay 호출·실제 요청/승인 중 호출은 main에서 거절한다. 미리보기/초기화 직후 첫 실제 cue가 cooldown 때문에 빠지지 않는다. 이전 공급자의 느린 connect가 새 selection의 전송·미리보기를 막거나 새 pending guard를 해제하지 않는다.
 
