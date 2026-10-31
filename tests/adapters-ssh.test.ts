@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { HermesSshAdapter, sshTarget, type NativeBridge } from '../src/adapters/hermes-ssh.js';
+import {
+  HERMES_PROGRESS_GUIDANCE,
+  HermesSshAdapter,
+  sshTarget,
+  type NativeBridge,
+} from '../src/adapters/hermes-ssh.js';
 import { TransportError } from '../src/adapters/transport.js';
 import type { AgentEvent, UserTurn } from '../src/shared/contracts.js';
 const turn: UserTurn = {
@@ -139,6 +144,7 @@ describe('Hermes SSH native adapter', () => {
           session_id: 'existing-session',
           submission_id: 'request-1',
           text: '\";$(touch /tmp/injected);\n',
+          api_text: `\";$(touch /tmp/injected);\n\n\n${HERMES_PROGRESS_GUIDANCE}`,
         },
       ],
     ]);
@@ -167,6 +173,42 @@ describe('Hermes SSH native adapter', () => {
     bridge.event('message.delta', 12, { text: 'duplicate' });
     expect(events.filter((e) => e.type === 'message.delta').map((e) => e.payload.text)).toEqual([
       'ok',
+    ]);
+  });
+  it('closes streamed progress at null boundaries and keeps final text in its own message', async () => {
+    const { bridge, adapter } = create();
+    const events: AgentEvent[] = [];
+    await adapter.send(turn, (e) => events.push(e));
+    bridge.event('message.start', 11, {});
+    bridge.event('message.delta', 12, { text: '확인하고 있어요.' });
+    bridge.event('message.delta', 13, { text: null });
+    bridge.event('message.delta', 14, { text: null });
+    expect(events.filter((e) => e.type === 'message.complete')).toMatchObject([
+      { payload: { text: '확인하고 있어요.', messageId: 'admission-1' } },
+    ]);
+    expect(events.some((e) => e.type === 'turn.completed')).toBe(false);
+    expect(bridge.request.mock.calls.some(([method]) => method === 'prompt.receipt')).toBe(false);
+    bridge.event('message.delta', 15, { text: 'answer' });
+    bridge.event('message.complete', 16, { text: 'answer' });
+    await until(() => events.some((e) => e.type === 'turn.completed'));
+    expect(events.filter((e) => e.type === 'message.complete')).toMatchObject([
+      { payload: { messageId: 'admission-1' } },
+      { payload: { messageId: 'admission-1:message:1', text: 'answer' } },
+    ]);
+  });
+  it('exposes only genuine non-streamed interim messages, not duplicate or empty commentary', async () => {
+    const { bridge, adapter } = create();
+    const events: AgentEvent[] = [];
+    await adapter.send(turn, (e) => events.push(e));
+    bridge.event('message.interim', 11, { text: '진행 중입니다.', already_streamed: false });
+    bridge.event('message.interim', 12, { text: '진행 중입니다.', already_streamed: true });
+    bridge.event('message.interim', 13, { text: '   ', already_streamed: false });
+    bridge.event('message.delta', 14, { text: null });
+    bridge.event('message.complete', 15, { text: 'answer' });
+    await until(() => events.some((e) => e.type === 'turn.completed'));
+    expect(events.filter((e) => e.type === 'message.complete')).toMatchObject([
+      { payload: { text: '진행 중입니다.', messageId: 'admission-1' } },
+      { payload: { text: 'answer', messageId: 'admission-1:message:1' } },
     ]);
   });
   it('buffers events arriving before submission acknowledgment', async () => {
@@ -304,14 +346,15 @@ describe('profile-backed Hermes conversation', () => {
   it('creates a normal conversation inheriting the selected profile tools', async () => {
     const { bridge, adapter } = create();
     bridge.request.mockResolvedValue({ session_id: 'new-session' });
-    expect(await adapter.createSession('default')).toEqual({
+    const created = await adapter.createSession('default');
+    expect(created).toEqual({
       id: 'new-session',
-      label: 'Live2D Companion',
+      label: expect.stringMatching(/^Live2D Companion \([a-f0-9]{8}\)$/),
     });
     expect(bridge.request).toHaveBeenCalledWith('session.create', {
       request_id: expect.any(String),
       source: 'gui',
-      title: 'Live2D Companion',
+      title: created.label,
       follow_profile_config: true,
     });
     await expect(adapter.createSession('other-profile')).rejects.toThrow('프로필');
@@ -367,6 +410,45 @@ describe('profile-backed Hermes conversation', () => {
 });
 
 describe('native in-flight replay recovery', () => {
+  it('restores progress boundaries as separate snapshots without replaying live completions', async () => {
+    const { bridge, adapter } = create();
+    const events: AgentEvent[] = [];
+    await adapter.send(turn, (e) => events.push(e));
+    bridge.event('message.delta', 11, { text: '진행 중.' });
+    const original = bridge.request.getMockImplementation()!;
+    bridge.request.mockImplementation(async (method, params) => {
+      if (method === 'session.resume') return { ...snapshot, last_sequence: 13 };
+      if (method === 'prompt.receipt') return receipt('started');
+      if (method === 'session.events.since')
+        return {
+          replay_epoch: 'epoch-1',
+          last_sequence: 13,
+          events: [
+            {
+              type: 'message.delta',
+              seq: 12,
+              replay_epoch: 'epoch-1',
+              admission_id: 'admission-1',
+              payload: { text: null },
+            },
+            {
+              type: 'message.delta',
+              seq: 13,
+              replay_epoch: 'epoch-1',
+              admission_id: 'admission-1',
+              payload: { text: '최종 답변 중' },
+            },
+          ],
+        };
+      return original(method, params);
+    });
+    expect(await adapter.reconcile(turn, (e) => events.push(e))).toBe('resumed');
+    expect(events.filter((e) => e.type === 'message.snapshot')).toMatchObject([
+      { payload: { messageId: 'admission-1', text: '진행 중.' } },
+      { payload: { messageId: 'admission-1:message:1', text: '최종 답변 중' } },
+    ]);
+    expect(events.filter((e) => e.type === 'message.complete')).toHaveLength(0);
+  });
   it('restores missed deltas as one snapshot instead of replaying delta speech', async () => {
     const { bridge, adapter } = create();
     const events: AgentEvent[] = [];

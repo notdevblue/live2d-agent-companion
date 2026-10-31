@@ -15,6 +15,7 @@ import { modelAssetLabel } from './model-labels.js';
 import { localMapping } from '../shared/model-mappings.js';
 import { renderMessageText } from './chat-markdown.js';
 import { isConversationAtBottom, scrollConversationToBottom } from './chat-scroll.js';
+import { AssistantMessageBubbles } from './assistant-messages.js';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const bridge = window.companion;
@@ -28,7 +29,7 @@ let currentRevision = 0;
 const buffered: CompanionEvent[] = [];
 let cancelOverlayGesture: (() => void) | undefined;
 let presentationSaves: Promise<void> = Promise.resolve();
-const assistantMessages = new Map<string, HTMLElement>();
+const assistantMessages = new AssistantMessageBubbles();
 const input = (id: string) => element<HTMLInputElement>(id);
 const notice = (text: string) => {
   element('notice').textContent = text;
@@ -87,7 +88,7 @@ function restoreHistory(): void {
   for (const message of boot.history) {
     const content = addMessage(message.role, message.text);
     if (message.role === 'assistant' && message.requestId)
-      assistantMessages.set(message.requestId, content);
+      assistantMessages.remember(message.requestId, message.messageId, content);
   }
   scrollConversationToBottom(element('conversation'));
   // Only apply each snapshot once. Later settings responses may omit history.
@@ -194,19 +195,12 @@ function renderEvent(event: CompanionEvent): void {
     return;
   }
   const followReply = isConversationAtBottom(element('conversation'));
+  const readingPosition = element('conversation').scrollTop;
   if (event.turn.requestId !== view?.requestId) lastCharacterState = 'thinking';
   view = event.turn;
   applyCharacterState();
-  if (
-    view.requestId !== boot.historyRestoredRequestId &&
-    (view.text || assistantMessages.has(view.requestId))
-  ) {
-    let content = assistantMessages.get(view.requestId);
-    if (!content) {
-      content = addMessage('assistant', view.text);
-      assistantMessages.set(view.requestId, content);
-    } else renderMessageText(content, 'assistant', view.text);
-  }
+  if (view.requestId !== boot.historyRestoredRequestId)
+    assistantMessages.update(view, (text) => addMessage('assistant', text));
   updatePreviewAvailability();
   element('turn-status').textContent = labels[view.state] ?? view.state;
   const terminal = ['completed', 'failed', 'cancelled', 'interrupted'].includes(view.state);
@@ -218,6 +212,7 @@ function renderEvent(event: CompanionEvent): void {
   if (view.error) notice(view.error);
   else notice(boot.historyError ?? '');
   if (followReply) scrollConversationToBottom(element('conversation'));
+  else element('conversation').scrollTop = readingPosition;
 }
 function receive(event: CompanionEvent): void {
   if (!ready) {

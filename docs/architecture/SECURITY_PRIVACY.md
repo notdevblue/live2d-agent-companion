@@ -19,7 +19,7 @@ Linux X11 Overlay의 입력 영역 helper는 main이 가진 자기 창의 native
 
 ## 권한 등급
 
-표시용 채팅 복원은 선택한 Hermes SSH session의 `session.history` projection에서 `user/assistant`의 일반 `text`와 행 ID만 원격 host에서 추출한다. system/tool·reasoning/detail sidecar·도구 인수/결과·첨부 데이터·display metadata는 SSH 경계를 넘기지 않는다. 본문은 main과 채팅 renderer의 메모리에서만 보관하며 Overlay의 history bootstrap에는 포함하지 않는다. 파일 로그/진단/저장소나 Jev에 이력을 복제하지 않고, 과거 메시지를 실행 권한으로 해석하지 않는다.
+표시용 채팅 복원은 선택한 Hermes SSH session의 `session.history` projection에서 `user/assistant`의 일반 `text` 또는 공개 display projection의 본문과 행 ID만 원격 host에서 추출한다. `display_commentary`의 공개 문자열과 `display_content`만 일반 본문으로 정제하며 raw codex items/내부 추론을 허용하지 않는다. system/tool·reasoning/detail sidecar·도구 인수/결과·첨부 데이터·display metadata는 SSH 경계를 넘기지 않는다. 본문은 main과 채팅 renderer의 메모리에서만 보관하며 Overlay의 history bootstrap에는 포함하지 않는다. 파일 로그/진단/저장소나 Jev에 이력을 복제하지 않고, 과거 메시지를 실행 권한으로 해석하지 않는다.
 
 | 위험 | 예시 | 기본 정책 |
 |---|---|---|
@@ -41,6 +41,10 @@ Linux X11 Overlay의 입력 영역 helper는 main이 가진 자기 창의 native
 - **Clickjacking/approval confusion**: 승인 창은 클릭 통과 불가, 최소한의 target+행동/시각/공급자 표시, 앱 포커스 확보.
 - **Cross-agent leak**: 공급자·봇·세션 경계와 별도 저장/토큰/이벤트 라우팅.
 - **Replay/duplicate run**: webhook 반복 실행·재요청 위험을 사용자에게 고지, 자동 재시도 제한.
+
+## Hermes 진행 보고 안내
+
+Hermes의 진행 보고 안내는 이 앱이 제출하는 admission의 `api_text`에만 원래 user text와 함께 들어간다. 별도 system 권한이나 profile/persona 변경이 아니며, 원격 admission metadata에 남을 수 있다. 중간 응답도 공급자가 실제로 표시한 assistant text만 허용하고 reasoning/도구 인수·결과를 진행 문구로 복제하지 않는다. 타이머가 확인하지 않은 작업 결과를 만들지 않는다. Jev는 메시지당 대표 본문을 최대 한 번 판단하고 새 메시지/복구/중단/승인으로 무효가 된 과거 결과를 재생하지 않는다.
 
 ## 표시용 Markdown
 

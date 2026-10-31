@@ -56,6 +56,8 @@ interface AgentAdapter {
 
 ## 표시용 기록 (현재 구현)
 
+현재 `TurnView.messages`는 같은 request 안의 assistant 메시지들을 messageId별로 구분한다. `message.complete`는 해당 메시지 확정이며 요청 종결인 `turn.completed`와 별개다. renderer와 메모리 history는 requestId+messageId를 사용해 중간 응답/최종 답변을 별도 표시한다. 기존 `TurnView.text` 집계와 messages 미포함 fixture의 단일 bubble fallback은 유지한다.
+
 실제 `AgentAdapter`는 선택적 `history(binding): Promise<ConversationMessage[]>`를 제공한다. 각 메시지는 `id`, `role: user | assistant`, `text`이며 로컬 실행 중인 메시지에는 `requestId`가 추가될 수 있다. SSH만 `session.history` capability를 제공한다. native 표시 projection의 역할/본문만 원격 bridge에서 allowlist로 추출하고 main에서 재검증한다. 기록은 selected binding 단위 메모리 cache로만 유지하며 다른 공급자·프로필·세션으로 보내거나 새 prompt의 본문에 덧붙이지 않는다.
 
 기록 행과 admission의 안정적인 join이 없는 Hermes에서는 재시작 때 복원된 미종결 요청의 본문을 별도 bubble로 중복 추가하지 않는다. 기존 기록과 실행 상태를 표시하고 원격 종결 확인 뒤 기록을 다시 읽는다. 같은 문자열을 가진 별개 답변은 합치지 않는다. 이 경로는 Jev와 캐릭터 cue를 재실행하지 않는다.

@@ -77,7 +77,7 @@ submitting, accepted, streaming, awaiting_result, cancel_requested, reconciling 
 
 ## 캐릭터 이벤트
 
-현재 `cue.requestId/segmentId`는 응답 내 연기 구간의 순서와 중복 제거에 사용한다. 최신 segment가 들어왔다는 이유만으로 유효한 이전 판단을 전부 취소하지 않고, 제한된 큐에서 최소 유지 시간을 두고 전달한다. 이전 generation/복구 전/취소·승인·만료 구간은 폐기한다. renderer는 새 segment의 같은 감정에도 제한된 변주를 허용하지만 같은 segment를 다시 적용하지 않는다. 큐와 보존/호출 한도는 shared `EXPRESSION_PACING`을 따른다.
+현재 `TurnView.messages`는 `messageId/text/completed`의 순서 있는 배열이며 `text` 집계는 기존 호출과 호환하기 위해 유지한다. 말풍선/로컬 표시 cache는 requestId+messageId로 구분한다. `cue.messageId`는 실제 assistant 메시지 하나에, segmentId는 현재 요청의 메시지 순서에 대응한다. 같은 메시지를 문장별로 다시 판단하거나 큐에 쌓지 않는다. 새 메시지는 이전 미적용 판단을 취소하고 애니메이션 종료를 기다리지 않으며, 같은 메시지/복구 텍스트는 재적용하지 않는다. 본문/호출/수집·판단 기한은 shared `EXPRESSION_PACING`을 따른다.
 
 `character.state` = `idle | thinking | talking | listening | working | success | error`; `expression` / `motion`은 모델 호환성 검사 후 유효한 매핑으로 축소된다. Audio playback 상태가 실제 입 움직임 시간의 기준이며 text delta 도착 자체가 lip-sync를 켜지 않는다.
 

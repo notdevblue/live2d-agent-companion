@@ -1,5 +1,4 @@
 import {
-  EXPRESSION_PACING,
   type Attitude,
   type CharacterCue,
   type CharacterPreview,
@@ -140,7 +139,7 @@ export class ActingController {
   private reaction?: Reaction;
   private lastKey = '';
   private lastCue = -Infinity;
-  private lastBeat?: { requestId: string; segmentId: number };
+  private lastBeat?: { requestId: string; segmentId: number; messageId?: string };
   private epoch?: number;
   private gazeAt = 0;
   private gazeIndex = 0;
@@ -178,7 +177,7 @@ export class ActingController {
 
   cue(
     cue: Pick<CharacterCue, 'emotion' | 'gesture' | 'attitude'> &
-      Partial<Pick<CharacterCue, 'requestId' | 'segmentId'>>,
+      Partial<Pick<CharacterCue, 'requestId' | 'segmentId' | 'messageId'>>,
     nowMs: number,
   ): boolean {
     this.initialize(nowMs);
@@ -189,13 +188,14 @@ export class ActingController {
     if (
       this.state === 'blocked' ||
       (scoped && !newBeat) ||
+      (scoped && !newRequest && !!cue.messageId && cue.messageId === this.lastBeat?.messageId) ||
       (!scoped && cue.emotion === 'neutral' && cue.gesture === 'none' && !hasAttitude)
     )
       return false;
     const key = `${cue.emotion}/${cue.gesture}/${cue.attitude ?? 'neutral'}`;
-    // Main's paced events cross process/frame clocks; allow a small delivery jitter margin.
-    const interval = newBeat ? EXPRESSION_PACING.holdMs - 100 : key === this.lastKey ? 6200 : 900;
-    if (!newRequest && nowMs - this.lastCue < interval) return false;
+    const newMessage = scoped && !!cue.messageId && cue.messageId !== this.lastBeat?.messageId;
+    const interval = key === this.lastKey ? 6200 : 900;
+    if (!newRequest && !newMessage && nowMs - this.lastCue < interval) return false;
     const preset: ActingPreset = hasAttitude
       ? (cue.attitude as Exclude<Attitude, 'neutral'>)
       : cue.emotion === 'embarrassed'
@@ -214,7 +214,12 @@ export class ActingController {
     this.reaction = { preset, ...cue, started: nowMs, variant };
     this.lastKey = key;
     this.lastCue = nowMs;
-    if (scoped) this.lastBeat = { requestId: cue.requestId!, segmentId: cue.segmentId! };
+    if (scoped)
+      this.lastBeat = {
+        requestId: cue.requestId!,
+        segmentId: cue.segmentId!,
+        messageId: cue.messageId,
+      };
     return true;
   }
 

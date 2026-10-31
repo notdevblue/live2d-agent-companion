@@ -22,6 +22,78 @@ const turn = (text: string, requestId = 'request-1'): TurnView => ({
 });
 
 describe('conversation display history (FR-CHAT-001)', () => {
+  it('keeps progress and final messages ordered, updates by message identity and retires aggregates', async () => {
+    const history = new ConversationHistory();
+    await history.load();
+    history.submitted('request-1', 'question');
+    history.update(turn('legacy placeholder'));
+    const snapshot = {
+      ...turn('progress\n\nfinal'),
+      messages: [
+        { messageId: 'progress', text: 'progress', completed: true },
+        { messageId: 'final', text: 'fi', completed: false },
+      ],
+    };
+    history.update(snapshot);
+    history.update({
+      ...snapshot,
+      messages: [snapshot.messages[0]!, { messageId: 'final', text: 'final', completed: true }],
+    });
+    expect(history.snapshot().map((row) => [row.messageId, row.text])).toEqual([
+      [undefined, 'question'],
+      ['progress', 'progress'],
+      ['final', 'final'],
+    ]);
+    history.submitted('request-2', 'next');
+    history.update({
+      ...turn('next', 'request-2'),
+      messages: [{ messageId: 'final', text: 'next', completed: true }],
+    });
+    history.update({
+      ...snapshot,
+      messages: [
+        { messageId: 'intro', text: 'intro', completed: true },
+        { messageId: 'final', text: 'final', completed: true },
+        { messageId: 'final', text: 'corrected final', completed: true },
+      ],
+    });
+    expect(history.snapshot().map((row) => row.text)).toEqual([
+      'question',
+      'intro',
+      'corrected final',
+      'next',
+      'next',
+    ]);
+  });
+  it('restores separate message identities without replay duplicates or cross-session changes', async () => {
+    const original = new ConversationHistory();
+    await original.load();
+    const messageTurn = {
+      ...turn('progress\n\nfinal'),
+      messages: [
+        { messageId: 'one', text: 'progress', completed: true },
+        { messageId: 'two', text: 'final', completed: true },
+      ],
+    };
+    original.update(messageTurn);
+    const reloaded = new ConversationHistory();
+    await reloaded.load(async () => original.snapshot());
+    reloaded.update(messageTurn);
+    reloaded.update(messageTurn);
+    expect(reloaded.snapshot()).toEqual(original.snapshot());
+    reloaded.restoredRequestId = messageTurn.requestId;
+    reloaded.update({ ...messageTurn, messages: [] });
+    expect(reloaded.snapshot()).toEqual(original.snapshot());
+    const otherSession = new ConversationHistory();
+    await otherSession.load();
+    otherSession.update({
+      ...messageTurn,
+      binding: { ...messageTurn.binding, sessionId: 'two' },
+      messages: [{ messageId: 'one', text: 'other session', completed: true }],
+    });
+    expect(otherSession.snapshot().map((row) => row.text)).toEqual(['other session']);
+    expect(reloaded.snapshot()).toEqual(original.snapshot());
+  });
   it('loads once across concurrent opens, then updates only the matching reply', async () => {
     const history = new ConversationHistory();
     const loader = vi.fn(async () => previous);
@@ -111,5 +183,79 @@ describe('conversation display history (FR-CHAT-001)', () => {
       ],
     });
     expect(result).not.toContain('private');
+  });
+  it('forwards public interim text and null boundaries without tool or reasoning sidecars', () => {
+    const frame = {
+      method: 'event',
+      params: {
+        type: 'message.interim',
+        session_id: 'test',
+        seq: 1,
+        payload: {
+          text: '진행 중입니다.',
+          already_streamed: false,
+          reasoning: 'private',
+          args: 'private',
+        },
+      },
+    };
+    const script =
+      "import json,runpy,sys; b=runpy.run_path('scripts/hermes-bridge.py'); print(json.dumps(b['safe_event'](json.load(sys.stdin))))";
+    const result = execFileSync('python3', ['-c', script], {
+      input: JSON.stringify(frame),
+      encoding: 'utf8',
+    });
+    expect(JSON.parse(result).params.payload).toEqual({
+      text: '진행 중입니다.',
+      already_streamed: false,
+    });
+    expect(result).not.toContain('private');
+    const boundary = {
+      ...frame,
+      params: { ...frame.params, type: 'message.delta', payload: { text: null } },
+    };
+    expect(
+      JSON.parse(
+        execFileSync('python3', ['-c', script], {
+          input: JSON.stringify(boundary),
+          encoding: 'utf8',
+        }),
+      ).params.payload,
+    ).toEqual({ text: null });
+  });
+  it('restores public projected commentary in order without exposing raw assistant details', () => {
+    const raw = {
+      messages: [
+        {
+          role: 'assistant',
+          row_id: 1,
+          text: '',
+          display_commentary: ['진행 1'],
+          reasoning: 'private',
+          codex_message_items: [{ text: 'private' }],
+        },
+        {
+          role: 'assistant',
+          row_id: 2,
+          text: 'unprojected',
+          display_content: '최종 답변',
+          display_commentary: ['진행 2'],
+        },
+        { role: 'tool', row_id: 3, text: 'private', display_commentary: ['private'] },
+      ],
+    };
+    const script =
+      "import json,runpy,sys; b=runpy.run_path('scripts/hermes-bridge.py'); print(json.dumps(b['safe_result']('session.history',json.load(sys.stdin))))";
+    const result = execFileSync('python3', ['-c', script], {
+      input: JSON.stringify(raw),
+      encoding: 'utf8',
+    });
+    expect(JSON.parse(result).messages).toEqual([
+      { id: 'row:1:commentary:0', role: 'assistant', text: '진행 1' },
+      { id: 'row:2:commentary:0', role: 'assistant', text: '진행 2' },
+      { id: 'row:2', role: 'assistant', text: '최종 답변' },
+    ]);
+    expect(result).not.toContain('private');
+    expect(result).not.toContain('unprojected');
   });
 });

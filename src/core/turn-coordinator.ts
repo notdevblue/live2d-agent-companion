@@ -86,6 +86,7 @@ export class TurnCoordinator {
   private readonly director: CharacterDirector;
   private view?: TurnView;
   private readonly messages = new Map<string, string>();
+  private readonly completedMessages = new Set<string>();
   private readonly seen = new Set<string>();
   private readonly tools = new Set<string>();
   private readonly closedApprovals = new Set<string>();
@@ -131,6 +132,7 @@ export class TurnCoordinator {
     leases.set(bindingKey(this.binding), { requestId: request.requestId, owner: this.owner });
     this.view = { ...request, state: 'submitting', text: '' };
     this.messages.clear();
+    this.completedMessages.clear();
     this.seen.clear();
     this.tools.clear();
     this.closedApprovals.clear();
@@ -383,27 +385,28 @@ export class TurnCoordinator {
         break;
       case 'message.delta': {
         const old = this.messages.get(event.payload.messageId) ?? '';
-        if (old.length + event.payload.text.length > 1_000_000) {
-          this.markReconciling('응답 크기 제한에 도달했습니다. 원격 상태를 확인하세요.');
-          return;
-        }
-        this.messages.set(event.payload.messageId, old + event.payload.text);
+        if (!this.putMessage(event.payload.messageId, old + event.payload.text)) return;
+        this.completedMessages.delete(event.payload.messageId);
         if (view.state !== 'cancel_requested') view.state = 'streaming';
         this.syncText();
         this.publish();
-        if (!view.approval) this.director.append(event.payload.text);
+        if (!view.approval)
+          this.director.append(event.payload.text, false, event.payload.messageId);
         this.armTimeout();
         return;
       }
       case 'message.snapshot':
-        this.messages.set(event.payload.messageId, event.payload.text);
+        if (!this.putMessage(event.payload.messageId, event.payload.text)) return;
         this.syncText();
         this.director.replaceSnapshot();
         break;
       case 'message.complete': {
         const old = this.messages.get(event.payload.messageId) ?? '';
         if (old && !event.payload.text.startsWith(old)) this.director.replaceSnapshot();
-        this.messages.set(event.payload.messageId, event.payload.text);
+        if (!this.putMessage(event.payload.messageId, event.payload.text)) return;
+        this.completedMessages.add(event.payload.messageId);
+        if (['submitting', 'accepted', 'awaiting_result'].includes(view.state))
+          view.state = 'streaming';
         this.syncText();
         this.publish();
         if (!view.approval)
@@ -412,6 +415,7 @@ export class TurnCoordinator {
               ? event.payload.text.slice(old.length)
               : event.payload.text,
             true,
+            event.payload.messageId,
           );
         this.armTimeout();
         return;
@@ -487,6 +491,23 @@ export class TurnCoordinator {
   }
   private syncText(): void {
     this.view!.text = [...this.messages.values()].join('\n\n');
+    this.view!.messages = [...this.messages].map(([messageId, text]) => ({
+      messageId,
+      text,
+      completed: this.completedMessages.has(messageId),
+    }));
+  }
+  private putMessage(messageId: string, text: string): boolean {
+    const length = [...this.messages].reduce(
+      (size, [id, value]) => size + (id === messageId ? 0 : value.length),
+      text.length,
+    );
+    if (length > 1_000_000 || (!this.messages.has(messageId) && this.messages.size >= 128)) {
+      this.markReconciling('응답 크기 제한에 도달했습니다. 원격 상태를 확인하세요.');
+      return false;
+    }
+    this.messages.set(messageId, text);
+    return true;
   }
   private isTerminal(): boolean {
     return !!this.view && terminalStates.has(this.view.state);

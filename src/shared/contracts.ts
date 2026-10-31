@@ -33,6 +33,12 @@ export interface ConversationMessage {
   role: 'user' | 'assistant';
   text: string;
   requestId?: string;
+  messageId?: string;
+}
+export interface AssistantMessage {
+  messageId: string;
+  text: string;
+  completed: boolean;
 }
 export interface ApprovalResponse extends RequestRef {
   approvalId: string;
@@ -114,17 +120,19 @@ export interface ExpressionJudge {
 export interface CharacterCue extends ExpressionDecision {
   requestId: string;
   segmentId: number;
+  messageId?: string;
   source: 'jev' | 'fallback';
 }
 export const EXPRESSION_PACING = {
-  holdMs: 1800,
-  maxQueued: 4,
   maxJudgements: 8,
-  maxAgeMs: 10_000,
+  maxText: 800,
+  collectMs: 350,
+  maxAgeMs: 2000,
 } as const;
 export interface TurnView extends RequestRef {
   state: TurnState;
   text: string;
+  messages?: AssistantMessage[];
   error?: string;
   approval?: { approvalId: string; summary: string; expiresAt: number };
   expressionStatus?: string;

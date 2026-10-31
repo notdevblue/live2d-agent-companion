@@ -53,7 +53,7 @@ Hermes Bot Mode의 Bot은 프로필이며, 별도 기억/스킬/설정을 가지
 
 `ssh://user@host` + 프로필 + 사용자가 선택한 session ID로 접속한다. 고정된 SSH 명령으로 Python stdlib 브리지를 실행하고 원격 프로필의 `gateway.sock`에서 native identify와 일회성 interactive ticket을 얻어 기존 owner의 WebSocket에 접속한다. ticket은 원격 메모리에서만 사용한다. gateway/서비스 시작·정지·설정 변경이나 외부 포트 개방은 하지 않는다.
 
-실행 attach의 `session.resume`은 원문 이력을 생략한다. 채팅 복원은 같은 session을 지정한 별도 `session.history`로 읽고, 원격 bridge가 표시 projection의 user/assistant `text`와 행 ID만 추출한다. reasoning/도구 입출력/내부 transcript·sidecar는 로컬로 넘기지 않는다. 실시간 응답은 사용자에게 보이는 assistant 메시지와 도구 lifecycle/승인 요약만 정규화한다. 제출은 session authority admission/receipt와 연결하고 terminal receipt를 확인해야 완료한다. 재접속 replay가 누락됐으면 snapshot을 사용하거나 미확정으로 유지하며 새 prompt를 보내지 않는다.
+실행 attach의 `session.resume`은 원문 이력을 생략한다. 채팅 복원은 같은 session을 지정한 별도 `session.history`로 읽고, 원격 bridge가 표시 projection의 user/assistant 본문(`text`/공개 `display_commentary`/`display_content`)과 행 ID만 추출한다. reasoning/도구 입출력/내부 transcript·sidecar는 로컬로 넘기지 않는다. 실시간 응답은 사용자에게 보이는 assistant 메시지와 도구 lifecycle/승인 요약만 정규화한다. 제출은 session authority admission/receipt와 연결하고 terminal receipt를 확인해야 완료한다. 재접속 replay가 누락됐으면 snapshot을 사용하거나 미확정으로 유지하며 새 prompt를 보내지 않는다.
 
 ### 채팅 기록 이어보기
 
@@ -62,6 +62,14 @@ Hermes Bot Mode의 Bot은 프로필이며, 별도 기억/스킬/설정을 가지
 확인한 Hermes `6b5df79671`의 `tui_gateway/methods_session.py` `session.history`는 continuation tip과 ancestors를 읽고, `session_history.py` `_history_to_messages`가 표시용 text/row_id를 만든다. 별도 pagination 인자는 없으며 frame 한도 초과는 조용한 절단 대신 오류로 표시한다([저장 설계](../architecture/STATE_AND_STORAGE.md)). 원격 보존 정책이나 canonical Bot Chat 동일성을 변경/검증한 기능은 아니다.
 
 세션 목록은 메타데이터만 조회하고 기존 ID를 사용자가 명시적으로 고른다. ‘새 대화’는 프로필의 설정을 따르는 일반 세션을 만들며 `toolsets`를 강제로 비우지 않는다. 기존 테스트 세션을 계속 사용하던 상태는 사용자 지시로 일반 대화로 전환했다. 이는 기존 Bot Chat 생성/연결 성공으로 간주하지 않는다. 실제 확인한 Hermes 소스 버전은 `6b5df79671`이며 다른 버전은 계약 검증이 필요하다.
+
+### 작업 중간 응답과 표정
+
+이 앱의 `prompt.submit`은 원래 `text`를 보존하고 `api_text`에 원문과 짧은 진행 보고 안내를 함께 넣는다. 확인한 내용/다음 단계를 도구 실행 전·의미 있는 단계 사이에 별도 assistant 메시지로 전달하고 최종 답변을 따로 보내도록 요청한다. 프로필 persona/다른 client의 대화/서비스 설정은 변경하지 않는다. 이는 사용자 메시지 수준의 출력 안내이며 빈도나 준수 보장이 아니다. `api_text`는 사용자 transcript에는 붙지 않지만 원격 durable admission metadata에는 보존된다.
+
+확인한 Hermes `6b5df79671`에서 `message.start`는 admission 시작이다. tool 라운드의 `message.delta {text:null}`이 직전 assistant 메시지 경계이고, 비스트리밍 중간 응답은 `message.interim {text, already_streamed:false}`다. adapter는 admission+메시지 순번을 독립 messageId로 쓰며 빈 경계/이미 stream된 interim은 중복 표시하지 않는다. native `message.complete`는 기존대로 receipt를 확인해야 turn을 종결한다. snapshot 복구는 여러 messageId의 본문을 교체하고 Jev/연출을 재생하지 않는다. history의 공개 `display_commentary: string[]`도 순서대로 펼쳐 독립 ID를 부여하고 `display_content`가 있으면 원본 text 대신 표시한다. raw reasoning/codex items는 허용하지 않는다. 근거는 원격 `agent/turn_tool_round.py`, `gateway/run_turn_runner.py`, `gateway/session_cli_turn.py`다.
+
+같은 title의 `session.create`는 생성 옵션을 적용하기 전에 기존 세션을 재사용한다. 명시적인 ‘새 대화’는 새 request UUID를 제목에 포함해 기존 테스트/일반 대화를 잘못 재사용하지 않게 한다. 재실행은 설정에 저장한 같은 session ID를 그대로 사용한다. 진행 응답 검증도 독립적인 고유 제목의 테스트 세션에서 수행하고 앱의 일반 연결을 바꾸지 않는다.
 
 ### 일반 대화와 통합 검사 구분
 

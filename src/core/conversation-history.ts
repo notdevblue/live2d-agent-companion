@@ -28,13 +28,43 @@ export class ConversationHistory {
   }
 
   update(turn: TurnView): void {
-    if (!turn.text || turn.requestId === this.restoredRequestId) return;
-    this.upsert({
-      id: `assistant:${turn.requestId}`,
-      role: 'assistant',
-      text: turn.text,
-      requestId: turn.requestId,
-    });
+    if (turn.requestId === this.restoredRequestId) return;
+    if (turn.messages === undefined) {
+      if (turn.text)
+        this.upsert({
+          id: `assistant:${turn.requestId}`,
+          role: 'assistant',
+          text: turn.text,
+          requestId: turn.requestId,
+        });
+      return;
+    }
+    // Message snapshots are authoritative for this request. Retire the legacy
+    // aggregate row and preserve the provider's message order, including inserts.
+    const first = this.messages.findIndex(
+      (row) => row.role === 'assistant' && row.requestId === turn.requestId,
+    );
+    const replies = new Map<string, ConversationMessage>();
+    for (const message of turn.messages) {
+      if (!message.text) continue;
+      const existing = this.messages.find(
+        (row) =>
+          row.role === 'assistant' &&
+          row.requestId === turn.requestId &&
+          row.messageId === message.messageId,
+      );
+      replies.set(message.messageId, {
+        id: existing?.id ?? `assistant:${JSON.stringify([turn.requestId, message.messageId])}`,
+        role: 'assistant',
+        text: message.text,
+        requestId: turn.requestId,
+        messageId: message.messageId,
+      });
+    }
+    this.messages = this.messages.filter(
+      (row) => row.role !== 'assistant' || row.requestId !== turn.requestId,
+    );
+    this.messages.splice(first < 0 ? this.messages.length : first, 0, ...replies.values());
   }
 
   async refresh(loader: () => Promise<ConversationMessage[]>): Promise<void> {
@@ -49,7 +79,10 @@ export class ConversationHistory {
 
   private upsert(message: ConversationMessage): void {
     const existing = this.messages.find(
-      (row) => row.role === message.role && row.requestId === message.requestId,
+      (row) =>
+        row.role === message.role &&
+        row.requestId === message.requestId &&
+        row.messageId === message.messageId,
     );
     if (existing) existing.text = message.text;
     else this.messages.push(message);

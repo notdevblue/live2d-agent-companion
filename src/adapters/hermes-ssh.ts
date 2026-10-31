@@ -17,6 +17,12 @@ import {
 import { boundedString, object, TransportError } from './transport.js';
 import { parseSshTarget } from '../shared/validation.js';
 
+export const HERMES_PROGRESS_GUIDANCE =
+  '[Live2D Companion 응답 방식]\n' +
+  '도구를 사용하거나 여러 단계의 작업을 수행할 때는 최종 답변 전에 실제로 확인한 내용과 다음 단계를 짧은 한국어 진행 메시지로 수시로 알려 주세요. ' +
+  '도구 실행 전과 의미 있는 단계가 바뀔 때 별도의 assistant 메시지로 전달하고, 완료 후 최종 답변을 작성하세요. ' +
+  '확인하지 않은 결과를 만들어 내거나 내부 추론·비밀정보·도구 입출력 원문을 공개하지 마세요. 간단한 질문에는 불필요한 진행 메시지를 만들지 마세요.';
+
 export interface NativeBridge {
   profileId?: string;
   start(): Promise<void>;
@@ -222,6 +228,8 @@ interface NativeRun {
   sequence: number;
   epoch?: string;
   text: string;
+  messageIndex: number;
+  messages: Map<string, string>;
   recovering?: boolean;
   verifying?: boolean;
   beforeAck: Record<string, unknown>[];
@@ -298,9 +306,11 @@ export class HermesSshAdapter implements AgentAdapter {
   async createSession(agentId: string): Promise<{ id: string; label: string }> {
     if (agentId !== this.profile)
       throw new Error('연결된 Hermes 프로필과 요청한 프로필이 다릅니다.');
-    const label = 'Live2D Companion';
+    const requestId = randomUUID();
+    // Hermes resumes an existing title before applying create options.
+    const label = `Live2D Companion (${requestId.slice(0, 8)})`;
     const snapshot = await this.bridge.request('session.create', {
-      request_id: randomUUID(),
+      request_id: requestId,
       source: 'gui',
       title: label,
       // Omit toolsets so the normal conversation inherits the selected profile's tools.
@@ -359,6 +369,8 @@ export class HermesSshAdapter implements AgentAdapter {
       terminal: false,
       sequence: -1,
       text: '',
+      messageIndex: 0,
+      messages: new Map(),
       beforeAck: [],
       approvals: new Map(),
     };
@@ -378,6 +390,8 @@ export class HermesSshAdapter implements AgentAdapter {
         session_id: turn.binding.sessionId,
         submission_id: turn.requestId,
         text: turn.text,
+        // Per-admission model-facing guidance; keep the actual user transcript unchanged.
+        api_text: `${turn.text}\n\n${HERMES_PROGRESS_GUIDANCE}`,
       });
       this.receiptBinding(run, receipt);
       run.admissionId = boundedString(receipt.admission_id, 256);
@@ -413,6 +427,8 @@ export class HermesSshAdapter implements AgentAdapter {
       terminal: false,
       sequence: -1,
       text: '',
+      messageIndex: 0,
+      messages: new Map(),
       beforeAck: [],
       approvals: new Map(),
     });
@@ -454,8 +470,9 @@ export class HermesSshAdapter implements AgentAdapter {
         const frame = object(raw);
         this.applyEvent(run, object(frame.params ?? frame), true);
       }
-      if (!run.terminal && run.text)
-        this.emit(run, 'message.snapshot', { text: run.text, messageId: run.admissionId });
+      if (!run.terminal)
+        for (const [messageId, text] of run.messages)
+          this.emit(run, 'message.snapshot', { text, messageId });
       if (typeof replay.last_sequence === 'number')
         run.sequence = Math.max(run.sequence, replay.last_sequence);
       return run.terminal ? 'settled' : 'resumed';
@@ -611,7 +628,7 @@ export class HermesSshAdapter implements AgentAdapter {
       ) {
         this.emit(run, 'message.complete', {
           text: boundedString(result.final_response),
-          messageId: run.admissionId!,
+          messageId: this.messageId(run),
         });
         this.emit(run, 'turn.completed', {});
       } else if (['interrupted', 'cancelled'].includes(String(receipt.outcome)))
@@ -665,9 +682,16 @@ export class HermesSshAdapter implements AgentAdapter {
     this.generation(run, params.execution_generation ?? payload.execution_generation);
     if (params.type === 'message.delta' && typeof payload.text === 'string') {
       const text = boundedString(payload.text, 64_000);
-      run.text += text;
-      if (run.text.length > 1_000_000) throw new Error('응답 크기 제한');
-      if (!snapshotOnly) this.emit(run, 'message.delta', { text, messageId: run.admissionId! });
+      this.recordText(run, run.text + text);
+      if (!snapshotOnly) this.emit(run, 'message.delta', { text, messageId: this.messageId(run) });
+    } else if (params.type === 'message.delta' && payload.text === null) {
+      this.interim(run, run.text, snapshotOnly);
+    } else if (
+      params.type === 'message.interim' &&
+      typeof payload.text === 'string' &&
+      payload.already_streamed === false
+    ) {
+      this.interim(run, boundedString(payload.text), snapshotOnly);
     } else if (params.type === 'message.complete') {
       if (!run.verifying) {
         run.verifying = true;
@@ -719,6 +743,27 @@ export class HermesSshAdapter implements AgentAdapter {
           256,
         ),
       });
+  }
+  private messageId(run: NativeRun): string {
+    return run.messageIndex ? `${run.admissionId}:message:${run.messageIndex}` : run.admissionId!;
+  }
+  private recordText(run: NativeRun, text: string): void {
+    const id = this.messageId(run);
+    const total = [...run.messages].reduce(
+      (size, [key, value]) => size + (key === id ? 0 : value.length),
+      text.length,
+    );
+    if (total > 1_000_000 || (!run.messages.has(id) && run.messages.size >= 128))
+      throw new Error('응답 크기 제한');
+    run.text = text;
+    run.messages.set(id, text);
+  }
+  private interim(run: NativeRun, text: string, snapshotOnly: boolean): void {
+    if (!text.trim()) return;
+    this.recordText(run, text);
+    if (!snapshotOnly) this.emit(run, 'message.complete', { text, messageId: this.messageId(run) });
+    run.messageIndex++;
+    run.text = '';
   }
   private prompts(run: NativeRun, raw: unknown): void {
     if (!Array.isArray(raw)) return;

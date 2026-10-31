@@ -18,7 +18,7 @@ MAX_FRAME = 1_000_000
 MAX_NATIVE_FRAME = 16_000_000  # History sidecars are discarded on-host before the smaller SSH boundary.
 METHODS = {'gateway.capabilities', 'session.create', 'session.list', 'session.resume', 'session.events.since',
            'session.history', 'prompt.submit', 'prompt.receipt', 'prompt.cancel', 'session.interrupt', 'approval.respond'}
-EVENT_TYPES = {'message.start', 'message.delta', 'message.complete', 'tool.start', 'tool.complete',
+EVENT_TYPES = {'message.start', 'message.delta', 'message.interim', 'message.complete', 'tool.start', 'tool.complete',
                'tool.started', 'tool.completed', 'approval.request', 'approval.settled', 'session.replay_gap'}
 
 
@@ -76,6 +76,14 @@ def safe_receipt(receipt):
             'authority_epoch', 'execution_generation', 'input_id') if key in receipt}
 
 
+def history_text(messages, ident, role, text):
+    if not isinstance(text, str) or not text.strip():
+        return
+    if len(text) > 256_000:
+        raise ValueError('history_message_size')
+    messages.append({'id': ident, 'role': role, 'text': text})
+
+
 def safe_result(method, result):
     if not isinstance(result, dict):
         raise ValueError('invalid_response')
@@ -89,14 +97,17 @@ def safe_result(method, result):
         for index, row in enumerate(result.get('messages', [])):
             if not isinstance(row, dict) or row.get('role') not in ('user', 'assistant'):
                 continue
-            text = row.get('text')
-            if row.get('display_kind') == 'hidden' or not isinstance(text, str) or not text.strip():
+            if row.get('display_kind') == 'hidden':
                 continue
-            if len(text) > 256_000:
-                raise ValueError('history_message_size')
             row_id = row.get('row_id')
             ident = 'row:' + str(row_id) if isinstance(row_id, int) else 'position:' + str(index)
-            messages.append({'id': ident, 'role': row['role'], 'text': text})
+            # These are Hermes' public, redacted display projections, not raw reasoning/items.
+            commentary = row.get('display_commentary')
+            if row['role'] == 'assistant' and isinstance(commentary, list):
+                for part, text in enumerate(commentary):
+                    history_text(messages, ident + ':commentary:' + str(part), 'assistant', text)
+            text = row.get('display_content')
+            history_text(messages, ident, row['role'], text if isinstance(text, str) else row.get('text'))
         return {'messages': messages}
     if method in ('session.resume', 'session.create'):
         # History is required internally by Hermes attach. Discard it here, on the host, before SSH.
@@ -136,6 +147,8 @@ def safe_event(frame):
     event_type = params['type']
     if event_type == 'message.delta':
         allowed = ('text',)
+    elif event_type == 'message.interim':
+        allowed = ('text', 'already_streamed')
     elif event_type == 'message.complete':
         allowed = ('text', 'content', 'status', 'outcome', 'admission_id')
     elif event_type.startswith('tool.'):
