@@ -279,6 +279,7 @@ footer {
   border-top: 1px solid var(--border);
 }
 #composer {
+  position: relative;
   display: flex;
   align-items: flex-end;
   border: 1px solid var(--border);
@@ -286,6 +287,43 @@ footer {
   background: var(--bg);
   padding: 8px;
   gap: 10px;
+}
+#slash-menu {
+  position: absolute;
+  z-index: 2;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  max-height: min(300px, 50vh);
+  overflow-y: auto;
+  display: grid;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+#slash-menu[hidden] {
+  display: none;
+}
+#slash-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+  padding: 10px;
+}
+#slash-menu [aria-selected='true'] {
+  border-color: var(--accent);
+  background: var(--bg);
+}
+#slash-menu code {
+  min-width: 80px;
+  color: var(--accent);
+}
+#slash-menu span {
+  color: var(--muted);
+  font-size: 12px;
 }
 #composer:focus-within {
   border-color: var(--accent);

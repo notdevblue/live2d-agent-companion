@@ -941,6 +941,21 @@ async function runSmoke(): Promise<void> {
     if (await chat?.webContents.executeJavaScript('window.__uiReady === true')) break;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  const slashMenuVisible = await chat?.webContents.executeJavaScript(`(()=>{
+    const input=document.getElementById('message');input.value='/';input.dispatchEvent(new Event('input',{bubbles:true}));
+    const menu=document.getElementById('slash-menu'),r=menu.getBoundingClientRect();
+    return !menu.hidden&&menu.querySelectorAll('button').length===5&&r.top>=0&&r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight;
+  })()`);
+  if (!smokeHermes) {
+    await chat?.webContents.executeJavaScript(
+      'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))',
+    );
+    const shot = await chat?.webContents.capturePage();
+    if (shot) await writeFile(join(root, 'artifacts/slash-menu-smoke.png'), shot.toPNG());
+  }
+  await chat?.webContents.executeJavaScript(
+    "document.getElementById('message').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}))",
+  );
   await chat?.webContents.executeJavaScript(`
     window.__chatViewSentinel = document.getElementById('conversation');
     document.getElementById('message').value = '설정 창 보존 검사';
@@ -1169,6 +1184,7 @@ async function runSmoke(): Promise<void> {
     '({node:typeof require, bridge:typeof window.companion.send})',
   );
   const result = {
+    slashMenuVisible,
     independentSettings,
     localizedMaps,
     mappingCoverage,
@@ -1434,8 +1450,8 @@ async function runSmoke(): Promise<void> {
     }
     Object.assign(result, { presentationControls, previewSafety });
     const previousSession = settings.provider.sessionId;
-    await settingsWindow?.webContents.executeJavaScript(
-      "document.getElementById('create-session').click()",
+    await chat?.webContents.executeJavaScript(
+      "document.getElementById('message').value='/new';document.getElementById('message').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('composer').requestSubmit()",
     );
     for (let i = 0; i < 100; i++) {
       if (settings.provider.sessionId !== previousSession) break;
@@ -1445,6 +1461,13 @@ async function runSmoke(): Promise<void> {
     const newSessionCleared = await chat?.webContents.executeJavaScript(
       "document.querySelectorAll('#conversation .message').length===0 && document.getElementById('provider-badge').textContent==='MOCK DEMO'",
     );
+    const slashNewSession = Boolean(
+      newSessionCleared &&
+      (await settingsWindow?.webContents.executeJavaScript(
+        `document.getElementById('session-id').value===${JSON.stringify(settings.provider.sessionId)}`,
+      )),
+    );
+    Object.assign(result, { slashNewSession });
     // Delayed connects are selection-scoped: switching targets may submit immediately,
     // and the old handler's finally must not erase the new target's pending guard.
     const oldAdapter = adapter!;
@@ -1528,7 +1551,7 @@ async function runSmoke(): Promise<void> {
     const providerSwitchCleared = await chat?.webContents.executeJavaScript(
       "document.querySelectorAll('#conversation .message').length===0 && document.getElementById('provider-badge').textContent.includes('HERMES') && document.getElementById('approval').hidden",
     );
-    uiRouting = Boolean(newSessionCleared && providerSwitchCleared);
+    uiRouting = Boolean(slashNewSession && newSessionCleared && providerSwitchCleared);
     Object.assign(result, { uiRouting: { newSessionCleared, providerSwitchCleared } });
     await chat?.webContents.executeJavaScript(`(async()=>{
       const boot = await window.companion.bootstrap();
@@ -1567,6 +1590,7 @@ async function runSmoke(): Promise<void> {
       uiRouting &&
       monitorSelection &&
       localizedMaps &&
+      slashMenuVisible &&
       independentSettings &&
       mappingCoverage &&
       presentationControls &&

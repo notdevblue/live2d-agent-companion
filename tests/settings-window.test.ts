@@ -5,6 +5,7 @@ import {
   DEFAULT_PRESENTATION,
   unsupportedCapabilities,
   type Bootstrap,
+  type AppSettings,
   type CompanionBridge,
   type CompanionEvent,
   type TurnView,
@@ -48,10 +49,13 @@ async function start(mode = 'chat', initial = snapshot()) {
     }),
     openSettings: vi.fn(async () => {}),
     displays: vi.fn(async () => []),
-    saveSettings: vi.fn(async () => structuredClone(initial)),
+    saveSettings: vi.fn(async (_settings: AppSettings) => structuredClone(initial)),
     testConnection: vi.fn(async () => structuredClone(initial)),
     sessions: vi.fn(async () => []),
     createSession: vi.fn(async () => structuredClone(initial)),
+    send: vi.fn(async () => {}),
+    cancel: vi.fn(async () => {}),
+    reconcile: vi.fn(async () => {}),
     storeCredential: vi.fn(async () => {}),
   };
   window.companion = bridge as unknown as CompanionBridge;
@@ -91,11 +95,28 @@ describe('FR-UI-002 independent settings view', () => {
     const endpoint = document.getElementById('endpoint') as HTMLInputElement;
     endpoint.value = 'unsaved';
     emit({ type: 'configuration', selectionId: 'another', revision: 10 });
-    expect(bridge.bootstrap).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(bridge.bootstrap).toHaveBeenCalledTimes(2));
     expect(endpoint.value).toBe('unsaved');
     document.getElementById('settings-close')!.click();
     expect(close).toHaveBeenCalledOnce();
     expect(bridge.createSession).not.toHaveBeenCalled();
+  });
+  it('updates an open settings window after a chat session change without saving stale session or draft fields', async () => {
+    const bridge = await start('settings');
+    const endpoint = document.getElementById('endpoint') as HTMLInputElement;
+    endpoint.value = 'unsaved';
+    const next = snapshot('two', 5);
+    bridge.bootstrap.mockResolvedValueOnce(next);
+    emit({ type: 'configuration', selectionId: 'two', revision: 5 });
+    await vi.waitFor(() =>
+      expect((document.getElementById('session-id') as HTMLInputElement).value).toBe('two'),
+    );
+    expect(endpoint.value).toBe('unsaved');
+    document.getElementById('framing')!.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(bridge.saveSettings).toHaveBeenCalledOnce());
+    expect(bridge.saveSettings.mock.calls[0]?.[0]).toMatchObject({
+      provider: { sessionId: 'two', endpoint: '' },
+    });
   });
 
   it('adopts new selection broadcasts before filtering by selection and rejects stale refreshes', async () => {
@@ -155,6 +176,32 @@ describe('FR-UI-002 independent settings view', () => {
     expect((document.querySelector('[data-preview]') as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('does not let a delayed settings refresh undo newer pending request state', async () => {
+    const bridge = await start('settings');
+    const refreshing = deferred<Bootstrap>();
+    bridge.bootstrap.mockImplementationOnce(() => refreshing.promise);
+    emit({ type: 'configuration', selectionId: 'one', revision: 2 });
+    const turn: TurnView = {
+      binding: {
+        provider: 'mock',
+        connectionId: 'local',
+        agentId: 'default',
+        sessionId: 'one',
+        continuity: 'unverified',
+      },
+      requestId: 'r',
+      turnId: 't',
+      state: 'streaming',
+      text: 'live',
+    };
+    emit({ type: 'turn', selectionId: 'one', revision: 5, turn });
+    refreshing.resolve(snapshot('one', 2));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect((document.querySelector('[data-preview]') as HTMLButtonElement).disabled).toBe(true);
+    emit({ type: 'turn', selectionId: 'one', revision: 6, turn: { ...turn, state: 'completed' } });
+    expect((document.querySelector('[data-preview]') as HTMLButtonElement).disabled).toBe(false);
+  });
   it('reports settings failures within settings and keeps successful saves out of chat notice', async () => {
     const bridge = await start('settings');
     bridge.testConnection.mockRejectedValueOnce(new Error('failure'));
@@ -169,6 +216,108 @@ describe('FR-UI-002 independent settings view', () => {
     await vi.waitFor(() =>
       expect(document.getElementById('settings-notice')!.textContent).toBe('설정을 저장했습니다.'),
     );
+    expect(document.getElementById('notice')!.textContent).toBe('');
+  });
+});
+
+function typeMessage(value: string) {
+  const message = document.getElementById('message') as HTMLTextAreaElement;
+  message.value = value;
+  message.dispatchEvent(new Event('input', { bubbles: true }));
+  return message;
+}
+function submitMessage(value: string) {
+  typeMessage(value);
+  document
+    .getElementById('composer')!
+    .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+}
+describe('FR-UI-002 chat slash actions', () => {
+  it('creates one new session locally, clears old conversation and preserves a new draft typed while waiting', async () => {
+    const bridge = await start();
+    const creating = deferred<Bootstrap>();
+    bridge.createSession.mockImplementationOnce(() => creating.promise);
+    submitMessage('/new');
+    submitMessage('/new');
+    expect(bridge.createSession).toHaveBeenCalledOnce();
+    expect(bridge.send).not.toHaveBeenCalled();
+    typeMessage('새 대화에 쓸 초안');
+    creating.resolve({ ...snapshot('two', 2), history: [] });
+    await vi.waitFor(() =>
+      expect(document.getElementById('conversation')!.children).toHaveLength(0),
+    );
+    expect((document.getElementById('message') as HTMLTextAreaElement).value).toBe(
+      '새 대화에 쓸 초안',
+    );
+    expect((document.getElementById('send') as HTMLButtonElement).disabled).toBe(false);
+  });
+  it('opens settings and help locally while leaving unknown commands editable and out of the conversation', async () => {
+    const bridge = await start();
+    submitMessage('/settings');
+    await vi.waitFor(() =>
+      expect((document.getElementById('message') as HTMLTextAreaElement).value).toBe(''),
+    );
+    expect(bridge.openSettings).toHaveBeenCalledOnce();
+    submitMessage('/help');
+    await vi.waitFor(() => expect(document.getElementById('slash-menu')!.hidden).toBe(false));
+    expect((document.getElementById('message') as HTMLTextAreaElement).value).toBe('/');
+    // A bare slash submitted from the form only opens the menu.
+    submitMessage('/');
+    await vi.waitFor(() => expect(document.getElementById('slash-menu')!.hidden).toBe(false));
+    submitMessage('/unknown');
+    expect(document.getElementById('notice')!.textContent).toContain('지원하지 않는 명령');
+    expect((document.getElementById('message') as HTMLTextAreaElement).value).toBe('/unknown');
+    submitMessage('/new argument');
+    expect(document.getElementById('notice')!.textContent).toContain('추가 인자');
+    expect(bridge.send).not.toHaveBeenCalled();
+    expect(bridge.createSession).not.toHaveBeenCalled();
+    expect(document.querySelectorAll('#conversation .message')).toHaveLength(1);
+  });
+  it('allows stop and status during a pending response while blocking ordinary duplicate prompts', async () => {
+    const bridge = await start();
+    const turn: TurnView = {
+      binding: {
+        provider: 'mock',
+        connectionId: 'local',
+        agentId: 'default',
+        sessionId: 'one',
+        continuity: 'unverified',
+      },
+      requestId: 'pending',
+      turnId: 'turn',
+      state: 'streaming',
+      text: 'reply',
+    };
+    emit({ type: 'turn', selectionId: 'one', revision: 2, turn });
+    typeMessage('ordinary');
+    expect((document.getElementById('send') as HTMLButtonElement).disabled).toBe(true);
+    submitMessage('/stop');
+    await vi.waitFor(() =>
+      expect((document.getElementById('message') as HTMLTextAreaElement).value).toBe(''),
+    );
+    expect(bridge.cancel).toHaveBeenCalledExactlyOnceWith('pending');
+    submitMessage('/status');
+    await vi.waitFor(() => expect(bridge.reconcile).toHaveBeenCalledExactlyOnceWith('pending'));
+    expect(bridge.send).not.toHaveBeenCalled();
+  });
+  it('preserves path text and permits a new selection to send while an old connection remains pending', async () => {
+    const bridge = await start();
+    const oldSend = deferred<void>();
+    bridge.send.mockImplementationOnce(() => oldSend.promise);
+    submitMessage('/etc/os-release 확인해');
+    expect(bridge.send).toHaveBeenCalledExactlyOnceWith('/etc/os-release 확인해', 'one');
+    typeMessage('아직 보내면 안 됨');
+    expect((document.getElementById('send') as HTMLButtonElement).disabled).toBe(true);
+    bridge.createSession.mockResolvedValueOnce({ ...snapshot('two', 2), history: [] });
+    submitMessage('/new');
+    await vi.waitFor(() =>
+      expect((document.getElementById('message') as HTMLTextAreaElement).value).toBe(''),
+    );
+    submitMessage('new target');
+    await vi.waitFor(() => expect(bridge.send).toHaveBeenCalledTimes(2));
+    expect(bridge.send.mock.calls[1]).toEqual(['new target', 'two']);
+    oldSend.resolve();
+    await Promise.resolve();
     expect(document.getElementById('notice')!.textContent).toBe('');
   });
 });

@@ -16,6 +16,7 @@ import { localMapping } from '../shared/model-mappings.js';
 import { renderMessageText } from './chat-markdown.js';
 import { isConversationAtBottom, scrollConversationToBottom } from './chat-scroll.js';
 import { AssistantMessageBubbles } from './assistant-messages.js';
+import { parseChatCommand, SlashCommandMenu, type ChatCommandId } from './slash-commands.js';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const bridge = window.companion;
@@ -33,6 +34,9 @@ let currentRevision = 0;
 const buffered: CompanionEvent[] = [];
 let cancelOverlayGesture: (() => void) | undefined;
 let presentationSaves: Promise<void> = Promise.resolve();
+let slashMenu: SlashCommandMenu | undefined;
+let commandPending = false;
+let submission: { selectionId: string } | undefined;
 const assistantMessages = new AssistantMessageBubbles();
 const input = (id: string) => element<HTMLInputElement>(id);
 const notice = (text: string) => {
@@ -73,6 +77,55 @@ const gestureLabels: Record<string, string> = {
   explain: '설명',
   thinking: '생각',
 };
+function requestActive(): boolean {
+  return !!view && !['completed', 'failed', 'cancelled', 'interrupted'].includes(view.state);
+}
+function updateComposer(): void {
+  const local = parseChatCommand(element<HTMLTextAreaElement>('message').value).type !== 'text';
+  element<HTMLButtonElement>('send').disabled =
+    commandPending || (!local && (requestActive() || submission?.selectionId === boot.selectionId));
+  slashMenu?.setBusy(commandPending);
+}
+async function executeCommand(command: ChatCommandId): Promise<void> {
+  if (commandPending) return;
+  const message = element<HTMLTextAreaElement>('message');
+  const original = message.value;
+  commandPending = true;
+  slashMenu?.close();
+  updateComposer();
+  notice('');
+  try {
+    switch (command) {
+      case 'new':
+        adoptBootstrap(await bridge.createSession());
+        break;
+      case 'settings':
+        await bridge.openSettings();
+        break;
+      case 'stop':
+        if (requestActive()) await bridge.cancel(view!.requestId);
+        else notice('진행 중인 요청이 없습니다.');
+        break;
+      case 'status':
+        if (requestActive()) await bridge.reconcile(view!.requestId);
+        else notice(view ? labels[view.state]! : '진행 중인 요청이 없습니다.');
+        break;
+      case 'help':
+        message.value = '';
+        slashMenu?.update();
+        message.value = '/';
+        break;
+    }
+    if (command !== 'help' && message.value === original) message.value = '';
+  } catch {
+    notice('명령을 실행하지 못했습니다. 연결과 현재 요청 상태를 확인하세요.');
+  } finally {
+    commandPending = false;
+    slashMenu?.update();
+    updateComposer();
+    if (command !== 'settings') message.focus();
+  }
+}
 
 function addMessage(role: 'user' | 'assistant', text: string): HTMLElement {
   const item = document.createElement('article');
@@ -222,6 +275,7 @@ function renderEvent(event: CompanionEvent): void {
   element('turn-status').textContent = labels[view.state] ?? view.state;
   const terminal = ['completed', 'failed', 'cancelled', 'interrupted'].includes(view.state);
   element<HTMLButtonElement>('send').disabled = !terminal;
+  updateComposer();
   element('stop').hidden = terminal;
   element('reconcile').hidden = terminal || view.state !== 'reconciling';
   element('approval').hidden = !view.approval;
@@ -238,14 +292,35 @@ function receive(event: CompanionEvent): void {
     return;
   }
   if (event.type === 'configuration') {
-    // Settings mutations already return their snapshot to the settings window.
-    // Re-fetching there would replace controls the user is still editing.
-    if (isSettings) return;
+    // A chat command can also change selection while settings has unsaved edits.
     const refresh = ++configurationRefresh;
     safe(async () => {
       const next = await bridge.bootstrap();
       if (refresh !== configurationRefresh) return;
-      adoptBootstrap(next, true);
+      if (isSettings) {
+        // /new can change the selected session while this window has unsaved
+        // edits. Update metadata and only replace untouched provider fields.
+        const previous = boot.settings.provider;
+        const sameSelection = next.selectionId === boot.selectionId;
+        if (sameSelection && next.revision < currentRevision) next.currentTurn = view;
+        for (const [id, key] of [
+          ['provider', 'provider'],
+          ['endpoint', 'endpoint'],
+          ['agent-id', 'agentId'],
+          ['session-id', 'sessionId'],
+        ] as const) {
+          const control = element<HTMLInputElement | HTMLSelectElement>(id);
+          if (control.value === previous[key]) control.value = next.settings.provider[key];
+        }
+        if (previous.sessionId !== next.settings.provider.sessionId)
+          element('session-list').hidden = true;
+        if (boot.connectionError !== next.connectionError)
+          settingsNotice(next.connectionError ?? '');
+        currentRevision = sameSelection ? Math.max(currentRevision, next.revision) : next.revision;
+        boot = next;
+        view = next.currentTurn;
+        updatePreviewAvailability();
+      } else adoptBootstrap(next, true);
     });
     return;
   }
@@ -378,6 +453,7 @@ function populate(): void {
     element('reconcile').hidden = true;
     element('approval').hidden = true;
     element('turn-status').textContent = '전송 준비';
+    updateComposer();
     updatePreviewAvailability();
   }
 }
@@ -566,6 +642,14 @@ async function main(): Promise<void> {
   populate();
   if (!boot.currentTurn && !isSettings) notice(boot.historyError ?? boot.connectionError ?? '');
   finish();
+  if (!isSettings) {
+    slashMenu = new SlashCommandMenu(
+      element<HTMLTextAreaElement>('message'),
+      element('slash-menu'),
+      (command) => void executeCommand(command),
+    );
+    element('message').addEventListener('input', updateComposer);
+  }
   element('settings-toggle').onclick = () => safe(() => bridge.openSettings());
   element('settings-close').onclick = () => window.close();
   if (isSettings) settingsWork(refreshDisplays);
@@ -658,21 +742,52 @@ async function main(): Promise<void> {
   element('composer').addEventListener('submit', (event) => {
     event.preventDefault();
     const text = element<HTMLTextAreaElement>('message').value.trim();
+    if (!text) return;
+    slashMenu?.update();
+    const parsed = parseChatCommand(text);
+    if (parsed.type === 'command') {
+      void executeCommand(parsed.command);
+      return;
+    }
+    if (slashMenu?.selectedCommand) {
+      void executeCommand(slashMenu.selectedCommand);
+      return;
+    }
+    if (parsed.type !== 'text') {
+      notice(
+        parsed.type === 'unknown'
+          ? '지원하지 않는 명령입니다. /로 목록을 열어 주세요.'
+          : '명령은 추가 인자 없이 입력해 주세요.',
+      );
+      return;
+    }
     if (!text || element<HTMLButtonElement>('send').disabled) return;
     addMessage('user', text);
     scrollConversationToBottom(element('conversation'));
     element<HTMLTextAreaElement>('message').value = '';
     element<HTMLButtonElement>('send').disabled = true;
+    slashMenu?.update();
+    const ownSubmission = { selectionId: boot.selectionId };
+    submission = ownSubmission;
     safe(async () => {
       try {
-        await bridge.send(text, boot.selectionId);
+        await bridge.send(text, ownSubmission.selectionId);
       } catch {
-        element<HTMLButtonElement>('send').disabled = false;
-        notice('전송하지 못했습니다. 공급자 주소·인증 정보와 연결 상태를 확인하세요.');
+        if (boot.selectionId === ownSubmission.selectionId)
+          notice('전송하지 못했습니다. 공급자 주소·인증 정보와 연결 상태를 확인하세요.');
+      } finally {
+        if (submission === ownSubmission) submission = undefined;
+        updateComposer();
       }
     });
   });
   element<HTMLTextAreaElement>('message').addEventListener('keydown', (event) => {
+    if (event.isComposing || event.keyCode === 229) return;
+    if (event.repeat && event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      return;
+    }
+    if (slashMenu?.handleKeydown(event)) return;
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       element<HTMLFormElement>('composer').requestSubmit();

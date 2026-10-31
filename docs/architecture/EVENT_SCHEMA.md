@@ -77,7 +77,7 @@ submitting, accepted, streaming, awaiting_result, cancel_requested, reconciling 
 
 ## 로컬 설정 동기화
 
-`CompanionEvent {type: configuration, selectionId, revision}`은 설정 창에서 프로필/세션·runtime·모델 매핑 또는 연결 검사 결과가 바뀌었음을 main이 알리는 로컬 알림이다. chat은 기존 selection 필터보다 먼저 이를 처리해 bootstrap/history를 새로 읽고, fetch token으로 더 늦게 도착한 이전 응답을 버린다. 같은 selection이면 transcript DOM·입력 초안·스크롤을 유지한다. 설정 창은 자신의 변경 응답으로 상태를 갱신하므로 이 방송으로 작성 중인 필드를 덮지 않는다. presentation·배율·입력 영역은 기존 전용 이벤트를 재사용한다. 외부 어댑터 이벤트나 새 원격 제출이 아니다.
+`CompanionEvent {type: configuration, selectionId, revision}`은 설정 창에서 프로필/세션·runtime·모델 매핑 또는 연결 검사 결과가 바뀌었음을 main이 알리는 로컬 알림이다. chat은 기존 selection 필터보다 먼저 이를 처리해 bootstrap/history를 새로 읽고, fetch token으로 더 늦게 도착한 이전 응답을 버린다. 같은 selection이면 transcript DOM·입력 초안·스크롤을 유지한다. 설정 창도 선택 메타데이터를 조회하되 컨트롤 전체를 재생성하지 않는다. `/new` 등 다른 창의 변경은 수정하지 않은 provider/session 필드에만 반영하고 작성 중인 값은 보존한다. 저장 기준도 새 선택으로 갱신해 이후 표현 저장이 예전 세션을 복원하지 않게 한다. 오래된 같은 선택의 조회는 더 최신 pending/승인 상태를 되돌리지 않는다. presentation·배율·입력 영역은 기존 전용 이벤트를 재사용한다. 외부 어댑터 이벤트나 새 원격 제출이 아니다.
 
 ## 캐릭터 이벤트
 
