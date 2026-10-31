@@ -20,5 +20,7 @@ interface Window {
     actingPreset?: string;
     posePhase?: string;
     lastPreview?: import('../shared/contracts.js').CharacterPreview;
+    reactionPhase?: import('./acting.js').ActingFrame['phase'];
+    variant?: number;
   };
 }

@@ -4,12 +4,121 @@ import {
   expressionValues,
   ExpressionMixer,
   parameterValue,
+  facialValues,
+  type FaceFrame,
   surprisedExpression,
   motionEndpoints,
   PoseSequence,
 } from '../src/renderer/performance.js';
 
 describe('model performance composition', () => {
+  const face: FaceFrame = {
+    eyeL: 1,
+    eyeR: 1,
+    eyeSmile: 0,
+    browY: 0,
+    browInner: 0,
+    pout: 0,
+    cheek: 0,
+  };
+  it('keeps left and right eyelids independent and facial inputs within asymmetric rig ranges', () => {
+    const parameters = new Map([
+      ['ParamEyeLOpen', { index: 1, min: 0, max: 1.5, neutral: 1 }],
+      ['ParamEyeROpen', { index: 2, min: 0, max: 1.2, neutral: 0.8 }],
+      ['EyeSmile', { index: 3, min: -1, max: 1, neutral: 0 }],
+      ['ParamBrowLY', { index: 4, min: -2, max: 4, neutral: 1 }],
+      ['ParamBrowRY', { index: 5, min: -1, max: 3, neutral: 0 }],
+      ['BrowInnerUp', { index: 6, min: 0, max: 2, neutral: 0 }],
+      ['Mouthpucker', { index: 7, min: -2, max: 6, neutral: 2 }],
+      ['CheeckPuff', { index: 8, min: 0, max: 1, neutral: 0 }],
+    ]);
+    const values = facialValues(
+      {
+        ...face,
+        eyeL: 0,
+        eyeR: 1.5,
+        eyeSmile: 0.4,
+        browY: -0.5,
+        browInner: 0.3,
+        pout: 2,
+        cheek: -1,
+      },
+      parameters,
+      new Set(),
+    );
+    expect(Object.fromEntries(values)).toEqual({
+      1: 0,
+      2: 1.2,
+      3: 0.4,
+      4: -0.5,
+      5: -0.5,
+      6: 0.6,
+      7: 6,
+      8: 0,
+    });
+  });
+  it('does not overwrite authored facial animation or physics outputs and tolerates missing controls', () => {
+    const parameters = new Map([
+      ['ParamEyeLOpen', { index: 1, min: 0, max: 1.5, neutral: 1 }],
+      ['ParamEyeROpen', { index: 2, min: 0, max: 1.5, neutral: 1 }],
+      ['ParamBrowRY', { index: 3, min: -1, max: 1, neutral: 0 }],
+      ['CheeckPuff', { index: 4, min: 0, max: 1, neutral: 0 }],
+    ]);
+    const values = facialValues(
+      { ...face, eyeL: 0, eyeR: 0.5, browY: 1, cheek: 0.8 },
+      parameters,
+      new Set(['ParamBrowRY']),
+      new Set(['ParamEyeLOpen', 'CheeckPuff']),
+    );
+    expect(Object.fromEntries(values)).toEqual({ 2: 0.5 });
+    expect(facialValues(face, new Map(), new Set())).toEqual(new Map());
+  });
+  it('prefers the shared eye smile input and falls back to independent supported eye smile controls', () => {
+    const parameters = new Map([
+      ['EyeSmile', { index: 1, min: -1, max: 1, neutral: 0 }],
+      ['ParamEyeLSmile', { index: 2, min: 0, max: 2, neutral: 0 }],
+      ['ParamEyeRSmile', { index: 3, min: 0, max: 1, neutral: 0 }],
+    ]);
+    expect(
+      Object.fromEntries(facialValues({ ...face, eyeSmile: 0.5 }, parameters, new Set())),
+    ).toEqual({ 1: 0.5 });
+    expect(
+      Object.fromEntries(
+        facialValues(
+          { ...face, eyeSmile: 0.5 },
+          parameters,
+          new Set(['EyeSmile']),
+          new Set(['ParamEyeLSmile']),
+        ),
+      ),
+    ).toEqual({ 3: 0.5 });
+  });
+  it('uses neutral for nonfinite commands and clamps eyelid ratios and one-sided inputs', () => {
+    const parameters = new Map([
+      ['ParamEyeLOpen', { index: 1, min: 0.2, max: 2, neutral: 1 }],
+      ['ParamEyeROpen', { index: 2, min: 0, max: 1.5, neutral: 0.8 }],
+      ['ParamBrowLY', { index: 3, min: -2, max: 4, neutral: 1 }],
+      ['EyeSmile', { index: 4, min: -1, max: 1, neutral: 0 }],
+    ]);
+    expect(
+      Object.fromEntries(
+        facialValues(
+          { ...face, eyeL: 10, eyeR: -2, browY: NaN, eyeSmile: -1 },
+          parameters,
+          new Set(),
+        ),
+      ),
+    ).toEqual({ 1: 1.5, 2: 0, 3: 1, 4: 0 });
+    expect(
+      Object.fromEntries(
+        facialValues(
+          { ...face, eyeL: NaN, eyeR: Infinity, browY: Infinity, eyeSmile: NaN },
+          parameters,
+          new Set(),
+        ),
+      ),
+    ).toEqual({ 1: 1, 2: 0.8, 3: 1, 4: 0 });
+  });
   it('builds a surprised face within asymmetric rig ranges, skipping absent and physics output controls', () => {
     const parameters = new Map([
       ['ParamBrowRY', { index: 1, min: -3, max: 7, neutral: 2 }],
@@ -18,9 +127,20 @@ describe('model performance composition', () => {
     ]);
     expect(surprisedExpression(parameters, new Set(['ParamEyeLOpen']))).toEqual([
       { index: 1, value: 4.75, blend: 'Overwrite' },
-      { index: 2, value: 1.375, blend: 'Overwrite' },
+      { index: 2, value: 1.375, blend: 'Multiply' },
     ]);
     expect(surprisedExpression(new Map(), new Set())).toEqual([]);
+  });
+  it('widens surprised eyes without reopening a blink and skips a zero neutral eyelid', () => {
+    const parameters = new Map([
+      ['ParamEyeROpen', { index: 1, min: 0, max: 1.5, neutral: 1 }],
+      ['ParamEyeLOpen', { index: 2, min: 0, max: 1, neutral: 0 }],
+    ]);
+    const expression = surprisedExpression(parameters, new Set());
+    expect(expression).toHaveLength(1);
+    const layers = [{ name: 'surprised', parameters: expression, weight: 1 }];
+    expect(expressionValues(layers, () => 0).get(1)).toBe(0);
+    expect(expressionValues(layers, () => 0.4).get(1)).toBeCloseTo(0.55);
   });
   it('crossfades exclusive eye expressions without a neutral gap or accumulated Add', () => {
     const mixer = new ExpressionMixer();

@@ -118,7 +118,15 @@
           <button type="button" data-preview="shy">수줍음</button
           ><button type="button" data-preview="tease">장난</button>
           <button type="button" data-preview="happy">기쁨</button
-          ><button type="button" data-preview="reset">초기화</button>
+          ><button type="button" data-preview="surprised">놀람</button>
+          <button type="button" data-preview="wink">윙크</button>
+          <button type="button" data-preview="nod">끄덕끄덕</button>
+          <button type="button" data-preview="shake">도리도리</button>
+          <button type="button" data-preview="pout">볼빵빵 · 삐짐</button>
+          <button type="button" data-preview="laugh">눈웃음</button>
+          <button type="button" data-preview="heart">하트 눈</button>
+          <button type="button" data-preview="grass">강아지풀</button>
+          <button type="button" data-preview="reset">초기화</button>
         </div>
         <p id="preview-status" class="hint"></p>
         <label>캐릭터를 표시할 모니터<select id="display-list"></select></label>
@@ -138,7 +146,9 @@
         >
         <details>
           <summary>표정·모션 매핑</summary>
-          <p class="hint">실제로 존재하는 표현 중에서만 적용합니다. ‘없음’은 기본 상태입니다.</p>
+          <p class="hint">
+            모델 자산과 기본 연기 중에서 연결합니다. 중립과 ‘없음’은 기본 상태입니다.
+          </p>
           <div id="expression-maps"></div>
           <div id="gesture-maps"></div>
         </details>

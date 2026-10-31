@@ -28,7 +28,11 @@ import type {
   Capabilities,
   OverlayInputRegion,
 } from '../shared/contracts.js';
-import { DEFAULT_PRESENTATION, unsupportedCapabilities } from '../shared/contracts.js';
+import {
+  CHARACTER_PREVIEWS,
+  DEFAULT_PRESENTATION,
+  unsupportedCapabilities,
+} from '../shared/contracts.js';
 import { OverlayInputState } from '../shared/overlay-input.js';
 import {
   defaultOverlayPosition,
@@ -848,7 +852,7 @@ async function runSmoke(): Promise<void> {
       "window.companion.previewCharacter('thinking').then(()=>false,()=>true)",
     );
     const previews: string[] = [];
-    for (const preset of ['thinking', 'explain', 'shy', 'tease', 'happy', 'reset']) {
+    for (const preset of CHARACTER_PREVIEWS) {
       await chat?.webContents.executeJavaScript(
         `document.querySelector('[data-preview="${preset}"]').click()`,
       );
@@ -867,7 +871,7 @@ async function runSmoke(): Promise<void> {
     previewSafety = Boolean(
       invalidPreset &&
       overlayRejected &&
-      previews.length === 6 &&
+      previews.length === CHARACTER_PREVIEWS.length &&
       selectionId === beforeSelection &&
       coordinator?.current?.requestId === beforeRequest &&
       !lastJudgeMs,

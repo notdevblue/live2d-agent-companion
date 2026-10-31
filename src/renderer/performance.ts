@@ -87,6 +87,16 @@ export interface ParameterRange {
   max: number;
   neutral: number;
 }
+/** Eyes multiply their rig neutral; other facial controls are normalized input amounts. */
+export interface FaceFrame {
+  eyeL: number;
+  eyeR: number;
+  eyeSmile: number;
+  browY: number;
+  browInner: number;
+  pout: number;
+  cheek: number;
+}
 export type ActingChannel =
   'headX' | 'headY' | 'headZ' | 'bodyX' | 'bodyY' | 'lean' | 'gazeX' | 'gazeY' | 'smile';
 const candidates: Record<ActingChannel, string[]> = {
@@ -122,6 +132,40 @@ export function parameterValue(range: ParameterRange, amount: number): number {
   return neutral + value * (value < 0 ? neutral - range.min : range.max - neutral);
 }
 
+/** Resolve only supported upstream inputs, preserving authored motion and independent eyelids. */
+export function facialValues(
+  frame: FaceFrame,
+  parameters: ReadonlyMap<string, ParameterRange>,
+  physicsOutputs: ReadonlySet<string>,
+  authored: ReadonlySet<string> = new Set(),
+): Map<number, number> {
+  const values = new Map<number, number>();
+  const available = (id: string): boolean =>
+    parameters.has(id) && !physicsOutputs.has(id) && !authored.has(id);
+  const write = (id: string, amount: number, eye = false): void => {
+    if (!available(id)) return;
+    const range = parameters.get(id)!;
+    if (eye) {
+      const ratio = Number.isFinite(amount) ? clamp(amount, 0, 1.5) : 1;
+      values.set(
+        range.index,
+        clamp(clamp(range.neutral, range.min, range.max) * ratio, range.min, range.max),
+      );
+    } else values.set(range.index, parameterValue(range, amount));
+  };
+  const positive = (amount: number): number => (Number.isFinite(amount) ? clamp(amount) : 0);
+  write('ParamEyeLOpen', frame.eyeL, true);
+  write('ParamEyeROpen', frame.eyeR, true);
+  for (const id of available('EyeSmile') ? ['EyeSmile'] : ['ParamEyeLSmile', 'ParamEyeRSmile'])
+    write(id, positive(frame.eyeSmile));
+  write('ParamBrowLY', frame.browY);
+  write('ParamBrowRY', frame.browY);
+  write('BrowInnerUp', positive(frame.browInner));
+  write('Mouthpucker', positive(frame.pout));
+  write('CheeckPuff', positive(frame.cheek));
+  return values;
+}
+
 /** Use only supported upstream facial controls; keep the model's ranges and physics intact. */
 export function surprisedExpression(
   parameters: ReadonlyMap<string, ParameterRange>,
@@ -135,11 +179,17 @@ export function surprisedExpression(
       ['ParamEyeLOpen', 0.75],
       ['ParamMouthOpenY', 0.18],
     ] as const
-  ).flatMap(([id, amount]) => {
+  ).flatMap<ExpressionParameter>(([id, amount]) => {
     const range = parameters.get(id);
-    return range && !physicsOutputs.has(id)
-      ? [{ index: range.index, value: parameterValue(range, amount), blend: 'Overwrite' as const }]
-      : [];
+    if (!range || physicsOutputs.has(id)) return [];
+    const target = parameterValue(range, amount);
+    if (id === 'ParamEyeROpen' || id === 'ParamEyeLOpen') {
+      const neutral = clamp(range.neutral, range.min, range.max);
+      return neutral > 0
+        ? [{ index: range.index, value: target / neutral, blend: 'Multiply' as const }]
+        : [];
+    }
+    return [{ index: range.index, value: target, blend: 'Overwrite' as const }];
   });
 }
 

@@ -133,6 +133,14 @@ export const CHARACTER_PREVIEWS = [
   'shy',
   'tease',
   'happy',
+  'surprised',
+  'wink',
+  'nod',
+  'shake',
+  'pout',
+  'laugh',
+  'heart',
+  'grass',
   'reset',
 ] as const;
 export type CharacterPreview = (typeof CHARACTER_PREVIEWS)[number];

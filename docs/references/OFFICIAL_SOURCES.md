@@ -25,6 +25,10 @@
 | Shylily 제작자 영상 | https://www.youtube.com/watch?v=CK1_ONe0UNM | 2wintails 쇼케이스 0:00~0:08 연속 프레임에서 상체 높이/기울임·중심 변화를 확인. 고정 주기의 자동 호흡이라고 원인을 확정하지 않음 |
 | Nazuna 제작자 영상 | https://www.youtube.com/watch?v=RDeRNF5BUqQ | Brian Tsui 쇼케이스 0:18~0:26 연속 프레임에서 고개와 어깨/상체 높이 변화 확인 |
 | Vienna 제작자 영상 | https://www.youtube.com/watch?v=KqWia9RBjes | Brian Tsui의 Vienna 4.0 쇼케이스 0:16~0:23에서 자세와 상체 움직임 확인. 편집에 의한 확대는 작은 idle 움직임과 구분 |
+| Cobalt 제작자 쇼케이스 | https://www.youtube.com/watch?v=3dzX8yKuT-Y&t=31s | Hooli Live2D: 0:27~0:45 상세 프레임에서 눈/미소/고개 조합. 편집 전환과 자동 연기를 구분 |
+| Laimu 제작자 쇼케이스 | https://www.youtube.com/watch?v=Gu30oHOF-Lk&t=64s | cillia 본인 리깅 포트폴리오: 반눈/홍조/눈웃음·고개 결합. 480p 상세 재확인에서도 단안 윙크는 확정하지 못함 |
+| Usagi 본인 제작 쇼케이스 | https://www.youtube.com/watch?v=25BSnSCAlCo&t=33s | Aquarelle Usagi: 얼굴 조합·양손 포즈, 컷 전환 때문에 pose 진입 시간을 측정한 근거는 아님 |
+| VTube Studio 애니메이션 | https://github.com/DenchiSoft/VTubeStudio/wiki/Animations | Idle/one-shot, 마지막 프레임 유지·재생 시간 설정. 우리 앱의 pose sequence 설계 근거와 구분 |
 | VTube Studio 적용 순서 | https://github.com/DenchiSoft/VTubeStudio/wiki/Interaction-between-Animations,-Tracking,-Physics,-etc. | idle/tracking/one-shot/expression/physics가 같은 parameter를 덮는 우선순위 설명. Cubism 자체나 현재 앱의 순서와 동일시하지 않음 |
 | Cubism parameter 갱신 | https://docs.live2d.com/en/cubism-sdk-manual/parameters/ | motion/blink/expression/조작/breath/physics/lipsync의 공식 예제. DeepSeek upstream physics 매핑과 별도로 읽어야 함 |
 | Cubism 마스크 용량 | https://github.com/Live2D/CubismWebFramework/blob/5-r.5/src/rendering/cubismclippingmanager.ts | 고정 Framework의 단일 버퍼 36그룹, 다중 버퍼당 32그룹. 모델별 그룹 수로 버퍼 수 계산 |

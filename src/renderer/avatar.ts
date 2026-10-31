@@ -11,7 +11,7 @@ import {
   type OverlayInputRegion,
   type PresentationSettings,
 } from '../shared/contracts.js';
-import { ActingController, type ActingState } from './acting.js';
+import { ActingController, reactionDuration, type ActingState } from './acting.js';
 import { SURPRISED_EXPRESSION, THINKING_MOTION } from '../shared/model-mappings.js';
 import {
   actingChannels,
@@ -19,6 +19,7 @@ import {
   ExpressionMixer,
   parameterValue,
   surprisedExpression,
+  facialValues,
   motionEndpoints,
   PoseSequence,
   type ActingChannel,
@@ -110,6 +111,7 @@ export class Avatar {
   private poseTime = 0;
   private ranges = new Map<string, ParameterRange>();
   private channels: Partial<Record<ActingChannel, ParameterRange>> = {};
+  private physicsOutputs = new Set<string>();
   private presentation: PresentationSettings = { ...DEFAULT_PRESENTATION };
   private framing = { scale: 1, y: 0 };
   private errorUntil = 0;
@@ -158,7 +160,7 @@ export class Avatar {
       if ([min, max, neutral].every(Number.isFinite) && max >= min)
         this.ranges.set(id, { index: i, min, max, neutral });
     }
-    const physicsOutputs = new Set<string>();
+    const physicsOutputs = this.physicsOutputs;
     if (refs.Physics) {
       const buffer = await this.buffer(refs.Physics);
       const physics = JSON.parse(new TextDecoder().decode(buffer)) as {
@@ -265,6 +267,7 @@ export class Avatar {
     for (const [enter, exit, parameter] of [
       ['默认手切举手', '举手切默认手', 'Movement2'],
       ['竖手指切出来动画', '竖手指切回默认', 'Movement3'],
+      ['狗尾草切换出来', '狗尾草切回默认手', 'Movement1'],
     ]) {
       if (!enter || !exit || !parameter || !this.ranges.has(parameter)) continue;
       const entry = this.motionInfo.get(enter),
@@ -330,15 +333,30 @@ export class Avatar {
     this.reset();
     this.actor.preview(preset, now);
     if (preset !== 'reset') {
-      const emotion = preset === 'shy' ? 'embarrassed' : preset === 'happy' ? 'happy' : 'neutral';
+      const emotion =
+        preset === 'shy'
+          ? 'embarrassed'
+          : preset === 'happy'
+            ? 'happy'
+            : preset === 'surprised'
+              ? 'surprised'
+              : 'neutral';
       const name =
-        preset === 'tease' && this.expressions.has('屑屑眼')
-          ? '屑屑眼'
-          : this.inventory.expressionMap[emotion];
-      this.setExpression(name, now);
-      const gesture =
-        preset === 'thinking' ? 'thinking' : preset === 'explain' ? 'explain' : 'none';
-      this.startGesture(this.inventory.gestureMap[gesture], now);
+        preset === 'heart' && this.expressions.has('爱心眼')
+          ? '爱心眼'
+          : preset === 'tease' && this.expressions.has('屑屑眼')
+            ? '屑屑眼'
+            : this.inventory.expressionMap[emotion];
+      this.setExpression(name, now, reactionDuration(preset));
+      const motion =
+        preset === 'grass'
+          ? '狗尾草切换出来'
+          : preset === 'thinking'
+            ? this.inventory.gestureMap.thinking
+            : preset === 'explain'
+              ? this.inventory.gestureMap.explain
+              : undefined;
+      this.startGesture(motion, now);
     }
     if (window.__avatarStatus) window.__avatarStatus.lastPreview = preset;
   }
@@ -347,10 +365,12 @@ export class Avatar {
     if (!this.actor.cue(cue, now)) return;
     const emotion = cue.attitude === 'shy' ? 'embarrassed' : cue.emotion;
     const name =
-      cue.attitude === 'tease' && this.expressions.has('屑屑眼')
+      cue.attitude === 'tease' &&
+      this.actor.sample(now, 0).variant === 0 &&
+      this.expressions.has('屑屑眼')
         ? '屑屑眼'
         : this.inventory.expressionMap[emotion];
-    this.setExpression(name, now);
+    this.setExpression(name, now, reactionDuration(this.actor.sample(now, 0).preset));
     const gesture = cue.gesture === 'none' && cue.attitude === 'explain' ? 'explain' : cue.gesture;
     const motionName = this.inventory.gestureMap[gesture];
     this.startGesture(motionName, now);
@@ -361,8 +381,13 @@ export class Avatar {
       window.__avatarStatus.lastMotion = motionName ?? 'none';
     }
   }
-  private setExpression(name: string | undefined, now: number): void {
-    this.mixer.transition(name ?? 'neutral', name ? (this.expressions.get(name) ?? []) : [], now);
+  private setExpression(name: string | undefined, now: number, holdMs: number): void {
+    this.mixer.transition(
+      name ?? 'neutral',
+      name ? (this.expressions.get(name) ?? []) : [],
+      now,
+      holdMs,
+    );
   }
   private clearPose(): void {
     this.poses.clear();
@@ -488,17 +513,34 @@ export class Avatar {
       }
       for (const id of this.blinkIds) {
         const index = this.indexes.get(id);
-        if (index !== undefined && !animated?.has(id)) this.write(index, acting.blink);
+        if (index !== undefined && !animated?.has(id) && !this.physicsOutputs.has(id))
+          this.write(index, (this.ranges.get(id)?.neutral ?? 1) * acting.blink);
       }
+      const layers = this.mixer.sample(now);
+      // Special eye artwork owns its shape. Do not add a competing procedural wink.
+      const specialEyes = layers.some(
+        (layer) =>
+          layer.weight > 0.01 &&
+          layer.parameters.some(
+            (p) =>
+              ['key3', 'key4', 'key5', 'key6'].some((id) => this.indexes.get(id) === p.index) &&
+              p.value > 0,
+          ),
+      );
+      const face = specialEyes
+        ? { ...acting, eyeL: acting.blink, eyeR: acting.blink, eyeSmile: 0 }
+        : acting;
+      for (const [index, value] of facialValues(face, this.ranges, this.physicsOutputs, animated))
+        this.write(index, value);
       const breath = this.ranges.get('ParamBreath');
       if (breath && this.state !== 'blocked' && !animated?.has('ParamBreath'))
         this.write(breath.index, breath.min + (breath.max - breath.min) * acting.breath);
-      this.runtime._physics?.evaluate(this.model, dt);
-      const layers = this.mixer.sample(now);
       const values = expressionValues(layers, (index) =>
         this.model.getParameterValueByIndex(index),
       );
       for (const [index, value] of values) this.write(index, value);
+      // Facial expressions contain physics inputs too (brows, cheeks, eyes).
+      this.runtime._physics?.evaluate(this.model, dt);
       const weight = Math.min(
         1,
         layers.reduce((sum, layer) => sum + layer.weight, 0),
@@ -509,11 +551,14 @@ export class Avatar {
         window.__avatarStatus.expressionActive = weight > 0;
         window.__avatarStatus.expressionWeight = Math.max(0, weight);
         window.__avatarStatus.actingPreset = acting.preset;
+        window.__avatarStatus.reactionPhase = acting.phase;
+        window.__avatarStatus.variant = acting.variant;
         window.__avatarStatus.posePhase = pose.phase;
         window.__avatarStatus.motionActive =
           pose.phase !== 'none' ||
           !!this.activeGesture ||
-          (acting.preset === 'thinking' && this.inventory.gestureMap.thinking === THINKING_MOTION);
+          ((acting.preset === 'thinking' || acting.gesture === 'thinking') &&
+            this.inventory.gestureMap.thinking === THINKING_MOTION);
       }
       gl.viewport(0, 0, this.canvas.width, this.canvas.height);
       gl.clearColor(0, 0, 0, 0);

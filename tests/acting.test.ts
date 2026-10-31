@@ -13,6 +13,113 @@ function magnitude(frame: ActingFrame): number {
 }
 
 describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
+  it('winks one eye, then releases both eyes without starting a repeated wink', () => {
+    const actor = new ActingController();
+    actor.preview('wink', 0);
+    const wink = advance(actor, 700);
+    expect(wink.eyeL).toBeLessThan(0.08);
+    expect(wink.eyeR).toBeGreaterThan(0.98);
+    expect(wink.phase).toBe('accent');
+    expect(advance(actor, 1700, 60, 700).eyeL).toBeGreaterThan(0.98);
+    expect(advance(actor, 2600, 60, 1700).active).toBe(false);
+  });
+
+  it('keeps facial emotion while composing a thinking gaze and head gesture', () => {
+    const a = new ActingController(),
+      b = new ActingController();
+    a.cue({ emotion: 'happy', gesture: 'thinking' }, 0);
+    b.cue({ emotion: 'happy', gesture: 'none' }, 0);
+    const mixed = advance(a, 1300),
+      happy = advance(b, 1300);
+    expect(mixed.smile).toBeCloseTo(happy.smile);
+    expect(mixed.eyeSmile).toBeCloseTo(happy.eyeSmile);
+    expect(mixed.gazeX - happy.gazeX).toBeGreaterThan(0.12);
+    expect(mixed.headZ).not.toBeCloseTo(happy.headZ, 2);
+  });
+
+  it('gives surprise a quick recoil and shorter release than a shy reaction', () => {
+    const a = new ActingController(),
+      b = new ActingController();
+    a.preview('surprised', 0);
+    b.preview('shy', 0);
+    expect(advance(a, 350).lean).toBeLessThan(-0.12);
+    expect(advance(a, 1800, 60, 350).phase).toBe('release');
+    expect(advance(a, 2300, 60, 1800).active).toBe(false);
+    expect(advance(b, 2300).active).toBe(true);
+  });
+
+  it('puffs cheeks and pouts without opening a speech mouth, reducing and clearing the reaction safely', () => {
+    const actor = new ActingController(),
+      reduced = new ActingController();
+    reduced.configure({ intensity: 'normal', reducedMotion: true });
+    actor.preview('pout', 0);
+    reduced.preview('pout', 0);
+    const face = advance(actor, 1300),
+      quiet = advance(reduced, 1300);
+    expect(face.cheek).toBeGreaterThan(0.4);
+    expect(face.pout).toBeGreaterThan(0.35);
+    expect(quiet.cheek).toBeCloseTo(face.cheek * 0.18);
+    actor.setState('blocked', 1300);
+    expect(actor.sample(1400, 0.1)).toMatchObject({
+      eyeL: 1,
+      eyeR: 1,
+      cheek: 0,
+      pout: 0,
+      eyeSmile: 0,
+      browInner: 0,
+    });
+  });
+
+  it('makes nodding and shaking directional accents instead of repeated whole-window bobbing', () => {
+    for (const [preset, key] of [
+      ['nod', 'headY'],
+      ['shake', 'headX'],
+    ] as const) {
+      const actor = new ActingController();
+      actor.preview(preset, 0);
+      const values: number[] = [];
+      for (let i = 1; i <= 120; i++) values.push(actor.sample((i * 1000) / 60, 1 / 60)[key]);
+      expect(Math.max(...values)).toBeGreaterThan(0.035);
+      expect(Math.min(...values)).toBeLessThan(-0.035);
+      expect(Math.abs(actor.sample(2000, 0).offsetY)).toBeLessThanOrEqual(0.002925);
+    }
+  });
+
+  it('alternates a restrained teasing variant without spending variants on local previews', () => {
+    const actor = new ActingController();
+    actor.preview('tease', 0);
+    actor.reset(1000);
+    const cue = { emotion: 'neutral', gesture: 'none', attitude: 'tease' } as const;
+    actor.cue(cue, 1000);
+    expect(advance(actor, 1700, 60, 1000).variant).toBe(0);
+    actor.cue(cue, 7200);
+    const next = advance(actor, 7900, 60, 7200);
+    expect(next.variant).toBe(1);
+    expect(next.eyeR).toBeLessThan(next.eyeL * 0.3);
+  });
+
+  it('keeps the new face accents deterministic at 30, 60 and 120 FPS', () => {
+    for (const preset of ['wink', 'pout', 'laugh', 'surprised', 'nod', 'shake'] as const) {
+      const frames = [30, 60, 120].map((fps) => {
+        const actor = new ActingController();
+        actor.preview(preset, 0);
+        return advance(actor, 1100, fps);
+      });
+      for (const frame of frames.slice(1))
+        for (const key of [
+          'eyeL',
+          'eyeR',
+          'eyeSmile',
+          'browY',
+          'browInner',
+          'cheek',
+          'pout',
+          ...motionKeys,
+        ] as const)
+          expect(frame[key]).toBeCloseTo(frames[0]![key], 7);
+    }
+  });
+
   it('keeps the same elapsed-time trajectory at 30, 60 and 120 FPS', () => {
     const frames = [30, 60, 120].map((fps) => {
       const actor = new ActingController();

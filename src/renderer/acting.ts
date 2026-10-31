@@ -1,26 +1,23 @@
-import type { Attitude, CharacterCue, Emotion, Gesture } from '../shared/contracts.js';
+import type {
+  Attitude,
+  CharacterCue,
+  CharacterPreview,
+  Emotion,
+  Gesture,
+} from '../shared/contracts.js';
+import type { FaceFrame } from './performance.js';
 
 export type ActingState = 'idle' | 'thinking' | 'working' | 'error' | 'blocked';
 export type ActingPreset =
-  | 'neutral'
-  | 'thinking'
-  | 'working'
-  | 'explain'
-  | 'shy'
-  | 'tease'
-  | 'happy'
-  | 'sad'
-  | 'concerned'
-  | 'surprised'
-  | 'reassure';
-export type ActingPreview = 'thinking' | 'explain' | 'shy' | 'tease' | 'happy' | 'reset';
+  Exclude<CharacterPreview, 'reset'> | 'neutral' | 'working' | 'sad' | 'concerned' | 'reassure';
+export type ActingPreview = CharacterPreview;
 export interface ActingOptions {
   intensity: 'quiet' | 'normal' | 'expressive';
   reducedMotion: boolean;
 }
 /** Rotations, lean and gaze are normalized [-1,1]; blink (1=open), breath, smile
  * and expressionWeight are [0,1]. These are local model inputs, never window offsets. */
-export interface ActingFrame {
+export interface ActingFrame extends FaceFrame {
   headX: number;
   headY: number;
   headZ: number;
@@ -40,10 +37,22 @@ export interface ActingFrame {
   emotion: Emotion;
   gesture: Gesture;
   attitude?: Attitude;
+  variant: number;
+  phase: 'idle' | 'anticipation' | 'accent' | 'settle' | 'release';
 }
 type Pose = Pick<
   ActingFrame,
-  'headX' | 'headY' | 'headZ' | 'bodyX' | 'bodyY' | 'lean' | 'gazeX' | 'gazeY' | 'blink' | 'smile'
+  | 'headX'
+  | 'headY'
+  | 'headZ'
+  | 'bodyX'
+  | 'bodyY'
+  | 'lean'
+  | 'gazeX'
+  | 'gazeY'
+  | 'blink'
+  | 'smile'
+  | keyof FaceFrame
 >;
 interface Reaction {
   attitude?: Attitude;
@@ -51,8 +60,16 @@ interface Reaction {
   emotion: Emotion;
   gesture: Gesture;
   started: number;
+  variant: number;
 }
-const DURATION = 4200;
+const timing = (preset: ActingPreset): { duration: number; attack: number; release: number } => {
+  if (preset === 'surprised') return { duration: 2200, attack: 100, release: 700 };
+  if (preset === 'wink') return { duration: 2400, attack: 220, release: 650 };
+  if (preset === 'nod' || preset === 'shake') return { duration: 2600, attack: 200, release: 750 };
+  if (preset === 'laugh') return { duration: 3600, attack: 250, release: 1000 };
+  return { duration: 4200, attack: 450, release: 1100 };
+};
+export const reactionDuration = (preset: ActingPreset): number => timing(preset).duration;
 const neutral = (): Pose => ({
   headX: 0,
   headY: 0,
@@ -64,12 +81,21 @@ const neutral = (): Pose => ({
   gazeY: 0,
   blink: 1,
   smile: 0,
+  eyeL: 1,
+  eyeR: 1,
+  eyeSmile: 0,
+  browY: 0,
+  browInner: 0,
+  pout: 0,
+  cheek: 0,
 });
 const clamp = (x: number, min = -1, max = 1): number => Math.max(min, Math.min(max, x));
 const smooth = (x: number): number => {
   const t = clamp(x, 0, 1);
   return t * t * (3 - 2 * t);
 };
+const beat = (t: number, start: number, attack: number, hold: number, release: number): number =>
+  smooth((t - start) / attack) * (1 - smooth((t - start - attack - hold) / release));
 // A stable integer hash gives irregular schedules without global randomness or wall clocks.
 const random = (n: number): number => {
   let x = Math.imul(n + 173, 0x45d9f3b);
@@ -95,6 +121,13 @@ const PROFILES: Record<ActingPreset, Partial<Pose>> = {
   concerned: { gazeX: -0.18, headZ: 0.2, headY: -0.12, lean: 0.08 },
   surprised: { gazeY: 0.18, headY: 0.2, lean: -0.3 },
   reassure: { gazeX: -0.05, headZ: 0.1, headY: -0.06, lean: 0.1, smile: 0.35 },
+  wink: { headZ: -0.2, lean: 0.14, smile: 0.65, eyeSmile: 0.5 },
+  nod: { smile: 0.28, eyeSmile: 0.25 },
+  shake: { gazeX: 0.12, browInner: 0.2 },
+  pout: { gazeX: -0.25, headZ: 0.18, headY: -0.1, browY: -0.35, pout: 0.65, cheek: 0.7 },
+  laugh: { smile: 0.85, eyeSmile: 0.9, lean: 0.14 },
+  heart: { gazeY: 0.06, headZ: 0.18, smile: 0.65, eyeSmile: 0.35, lean: 0.18 },
+  grass: { headZ: -0.12, smile: 0.3, eyeSmile: 0.3 },
 };
 
 /** Pure, deterministic local actor. Call sample with a monotonic clock and elapsed seconds.
@@ -112,6 +145,7 @@ export class ActingController {
   private gaze = { x: 0, y: 0 };
   private blinkAt = 0;
   private blinkIndex = 0;
+  private variants = new Map<ActingPreset, number>();
 
   configure(options: ActingOptions): void {
     this.options = { ...options };
@@ -161,7 +195,9 @@ export class ActingController {
             : cue.gesture === 'thinking'
               ? 'thinking'
               : 'happy';
-    this.reaction = { preset, ...cue, started: nowMs };
+    const variant = this.variants.get(preset) ?? 0;
+    this.variants.set(preset, (variant + 1) % 2);
+    this.reaction = { preset, ...cue, started: nowMs, variant };
     this.lastKey = key;
     this.lastCue = nowMs;
     return true;
@@ -176,7 +212,7 @@ export class ActingController {
     if (this.state === 'blocked') return;
     const gesture: Gesture =
       preset === 'thinking' ? 'thinking' : preset === 'explain' ? 'explain' : 'none';
-    this.reaction = { preset, emotion: emotionFor(preset), gesture, started: nowMs };
+    this.reaction = { preset, emotion: emotionFor(preset), gesture, started: nowMs, variant: 0 };
   }
 
   reset(nowMs: number): void {
@@ -199,11 +235,21 @@ export class ActingController {
       for (let i = 1; i <= steps; i++)
         this.advance(now - dt * 1000 + (i * dt * 1000) / steps, dt / steps);
     }
-    if (this.reaction && now - this.reaction.started >= DURATION) this.reaction = undefined;
+    if (this.reaction && now - this.reaction.started >= timing(this.reaction.preset).duration)
+      this.reaction = undefined;
     const reaction = this.reaction;
-    const weight = reaction ? this.envelope(now - reaction.started) : 0;
+    const age = reaction ? now - reaction.started : 0;
+    const weight = reaction ? this.envelope(age, reaction.preset) : 0;
+    const wink =
+      reaction &&
+      (reaction.preset === 'wink' || (reaction.preset === 'tease' && reaction.variant === 1)) &&
+      age > 350 &&
+      age < 1400;
+    const blink = wink ? 1 : this.pose.blink;
     return {
       ...this.pose,
+      eyeL: this.pose.eyeL * blink,
+      eyeR: this.pose.eyeR * blink,
       breath: this.state === 'blocked' ? 0.5 : 0.5 + this.breathWave(now) * 0.48 * this.scale(),
       offsetY: this.state === 'blocked' ? 0 : this.breathWave(now) * 0.0045 * this.scale(),
       preset: reaction?.preset ?? this.base(),
@@ -212,6 +258,16 @@ export class ActingController {
       emotion: reaction?.emotion ?? (this.state === 'error' ? 'concerned' : 'neutral'),
       gesture: reaction?.gesture ?? 'none',
       ...(reaction?.attitude !== undefined ? { attitude: reaction.attitude } : {}),
+      variant: reaction?.variant ?? 0,
+      phase: !reaction
+        ? 'idle'
+        : age < timing(reaction.preset).attack
+          ? 'anticipation'
+          : age < 1200
+            ? 'accent'
+            : age > timing(reaction.preset).duration - timing(reaction.preset).release
+              ? 'release'
+              : 'settle',
     };
   }
 
@@ -236,8 +292,9 @@ export class ActingController {
         ? 'neutral'
         : this.state;
   }
-  private envelope(age: number): number {
-    return smooth(age / 450) * smooth((DURATION - age) / 1100);
+  private envelope(age: number, preset: ActingPreset): number {
+    const { duration, attack, release } = timing(preset);
+    return smooth(age / attack) * smooth((duration - age) / release);
   }
   private breathWave(now: number): number {
     // A 4.8s relaxed cycle: shorter inhale, longer exhale, zero speed at either end.
@@ -256,15 +313,21 @@ export class ActingController {
       };
       this.gazeAt += 1800 + random(this.gazeIndex * 3 + 2) * 3100;
     }
-    while (now >= this.blinkAt + 190) {
+    while (now >= this.blinkAt + (random(70 + this.blinkIndex) > 0.72 ? 445 : 190)) {
       this.blinkIndex++;
       this.blinkAt += 2600 + random(40 + this.blinkIndex) * 4000;
     }
     const reaction = this.reaction;
     const age = reaction ? now - reaction.started : 0;
-    const weight = reaction ? this.envelope(age) : 0;
+    const weight = reaction ? this.envelope(age, reaction.preset) : 0;
     const base = this.target(this.base(), (now - this.epoch!) / 1000);
-    const target = reaction ? this.target(reaction.preset, age / 1000) : base;
+    const target = reaction ? this.target(reaction.preset, age / 1000, reaction.variant) : base;
+    // A gesture carries body/gaze intent independently of the face's emotion or attitude.
+    if (reaction?.gesture === 'thinking' || reaction?.gesture === 'explain') {
+      const gesture = this.target(reaction.gesture, age / 1000, reaction.variant);
+      for (const key of ['headX', 'headY', 'headZ', 'gazeX', 'gazeY'] as const)
+        target[key] += (gesture[key] - target[key]) * 0.7;
+    }
     const scale = this.scale();
     const blend = (a: number, b: number): number => a + (b - a) * weight;
     const follow = (key: keyof Pose, value: number, rate: number): void => {
@@ -281,21 +344,82 @@ export class ActingController {
     follow('bodyY', this.pose.headY * 0.2 + this.breathWave(now) * 0.13 * scale, 2.1);
     follow('lean', blend(base.lean, target.lean) * scale, 2.5);
     follow('smile', blend(base.smile, target.smile), 6);
+    for (const key of ['eyeL', 'eyeR'] as const)
+      follow(
+        key,
+        1 + (blend(base[key], target[key]) - 1) * (this.options.reducedMotion ? 0.18 : 1),
+        28,
+      );
+    for (const key of ['eyeSmile', 'browY', 'browInner', 'pout', 'cheek'] as const)
+      follow(key, blend(base[key], target[key]) * scale, 9);
     const blinkAge = now - this.blinkAt;
+    // Occasional double blinks, with a shorter closure than reopening.
+    const closure = (age: number): number =>
+      age < 0 || age >= 190 ? 0 : age < 65 ? smooth(age / 65) : 1 - smooth((age - 65) / 125);
     this.pose.blink =
-      blinkAge >= 0 && blinkAge < 190 ? 1 - Math.sin((Math.PI * blinkAge) / 190) ** 2 : 1;
+      1 -
+      Math.max(
+        closure(blinkAge),
+        random(70 + this.blinkIndex) > 0.72 ? closure(blinkAge - 255) : 0,
+      );
   }
 
-  private target(preset: ActingPreset, t: number): Pose {
+  private target(preset: ActingPreset, t: number, variant = 0): Pose {
     const p = { ...neutral(), ...PROFILES[preset] };
     const nod = Math.sin(t * 4.8) * Math.exp(-Math.max(0, t - 1) * 0.8);
     if (preset === 'explain') p.headY = nod * 0.13;
     if (preset === 'happy') {
-      p.headZ = Math.sin(t * 3.1) * 0.18;
+      p.headZ = Math.sin(t * 3.1) * 0.18 * (variant ? -1 : 1);
       p.headY = nod * 0.15;
+      p.eyeSmile = 0.65;
+      p.browY = 0.12;
     }
     // Look away first, then cautiously return the eyes while retaining the shy tilt.
     if (preset === 'shy') p.gazeX *= 1 - smooth((t - 1.6) / 1.3);
+    if (preset === 'shy') {
+      p.eyeL = p.eyeR = 0.82;
+      p.browInner = 0.22;
+      p.eyeSmile = 0.25;
+      p.headZ += 0.06 * beat(t, 0.6, 0.2, 0.4, 0.7);
+    }
+    if (preset === 'thinking') {
+      p.browInner = 0.3;
+      p.eyeL = p.eyeR = 0.86;
+      // A second, smaller glance after the first look-up; no window translation.
+      p.gazeX *= 1 - 0.4 * beat(t % 5.2, 2, 0.4, 0.5, 0.6);
+    }
+    if (preset === 'tease') {
+      p.eyeL = p.eyeR = 0.72;
+      p.eyeSmile = 0.45;
+      if (variant === 1) p.eyeR = 1 - beat(t, 0.45, 0.12, 0.3, 0.25);
+      p.headZ -= 0.07 * beat(t, 0.35, 0.2, 0.4, 0.7);
+    }
+    if (preset === 'wink') p[variant ? 'eyeR' : 'eyeL'] = 1 - beat(t, 0.45, 0.12, 0.3, 0.25);
+    if (preset === 'nod' || preset === 'reassure')
+      p.headY += Math.sin(Math.max(0, t - 0.25) * 6.4) * 0.24 * beat(t, 0.15, 0.2, 0.6, 1);
+    if (preset === 'shake')
+      p.headX = Math.sin(Math.max(0, t - 0.25) * 9) * 0.3 * beat(t, 0.15, 0.2, 0.6, 1);
+    if (preset === 'pout') {
+      p.headX = -0.16 * beat(t, 0.35, 0.3, 1, 1);
+      p.eyeL = p.eyeR = 0.7;
+    }
+    if (preset === 'laugh') {
+      const laugh = beat(t, 0.25, 0.2, 1.3, 0.8);
+      p.eyeL = p.eyeR = 1 - 0.9 * laugh;
+      p.headY = Math.sin(t * 12) * 0.06 * laugh;
+      p.headZ = Math.sin(t * 3) * 0.09 * laugh;
+    }
+    if (preset === 'surprised') {
+      const recoil = beat(t, 0, 0.09, 0.15, 0.7);
+      p.lean -= 0.22 * recoil;
+      p.headY += 0.12 * recoil;
+      p.browInner = 0.35;
+    }
+    if (preset === 'sad' || preset === 'concerned') p.browInner = 0.38;
+    if (preset === 'explain') {
+      p.browY = 0.14;
+      p.eyeSmile = 0.2;
+    }
     if (preset === 'neutral') {
       p.headZ = Math.sin(t * 0.79) * 0.025;
       p.lean = Math.sin(t * 1.21) * 0.018;
