@@ -58,10 +58,10 @@ describe('one decision per actual assistant message (FR-DIR-005)', () => {
     d.append('새 요청의 답변.', true, 'other');
     await flush();
     expect(judge.judge.mock.calls[2]![2]).toEqual({ userRequest: 'SECOND REQUEST' });
-    d.begin('restored-without-original');
+    d.begin('restored-without-original', undefined, false);
     d.append('원문 없는 복구 이후 메시지.', true, 'resumed');
     await flush();
-    expect(judge.judge.mock.calls[3]![2]).toBeUndefined();
+    expect(judge.judge).toHaveBeenCalledTimes(3);
     d.invalidate();
   });
   it('ends the waiting pose when visible text streams and retains actual tool work as the fallback', () => {
@@ -131,18 +131,25 @@ describe('one decision per actual assistant message (FR-DIR-005)', () => {
     expect(judge.judge).toHaveBeenCalledTimes(2);
     d.invalidate();
   });
-  it('collects a short streamed prefix briefly and bounds the sole judgement to 800 characters', async () => {
-    const judge = { judge: vi.fn(async (_text: string, _signal: AbortSignal) => happy) };
-    const d = new CharacterDirector({ judge, onEvent: () => {} });
+  it('keeps streamed delivery neutral and judges only the completed head and conclusion', async () => {
+    const judge = { judge: vi.fn(async (_text: string) => happy) };
+    const events: CompanionEvent[] = [];
+    const d = new CharacterDirector({ judge, onEvent: (e) => events.push(e) });
     d.begin('r');
-    d.append('안녕', false, 'a');
-    await vi.advanceTimersByTimeAsync(EXPRESSION_PACING.collectMs - 1);
+    d.append('성공! ' + 'x'.repeat(1000), false, 'm');
+    await vi.advanceTimersByTimeAsync(EXPRESSION_PACING.collectMs);
     expect(judge.judge).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
-    expect(judge.judge.mock.calls[0]![0]).toBe('안녕');
-    d.append('x'.repeat(4000), true, 'b');
+    expect(events).toMatchObject([{ cue: { stage: 'delivery', emotion: 'neutral' } }]);
+    d.complete('성공! ' + 'x'.repeat(1000) + ' 그러나 최종 확인은 실패.', 'm');
     await flush();
-    expect(judge.judge.mock.calls[1]![0]).toHaveLength(800);
+    expect(judge.judge.mock.calls[0]![0]).toHaveLength(800);
+    expect(judge.judge.mock.calls[0]![0]).toMatch(/^성공!/);
+    expect(judge.judge.mock.calls[0]![0]).toContain('\n…\n');
+    expect(judge.judge.mock.calls[0]![0]).toMatch(/최종 확인은 실패\.$/);
+    expect(events).toMatchObject([
+      { cue: { stage: 'delivery', segmentId: 1 } },
+      { cue: { stage: 'semantic', segmentId: 2 } },
+    ]);
     d.invalidate();
   });
   it('caps calls across many progress messages and drops results after sleep or cancellation', async () => {
@@ -167,6 +174,7 @@ describe('one decision per actual assistant message (FR-DIR-005)', () => {
           gesture: 'none',
           confidence: 0,
           source: 'fallback',
+          stage: 'semantic',
         },
       })),
     );
@@ -190,5 +198,88 @@ describe('one decision per actual assistant message (FR-DIR-005)', () => {
     await flush();
     expect(events).toHaveLength(0);
     sleeping.invalidate();
+  });
+  it('shows delivery if completed-message inference is slow, but cancels it after a fast result', async () => {
+    let resolve!: (v: ExpressionDecision) => void;
+    const events: CompanionEvent[] = [];
+    const d = new CharacterDirector({
+      judge: {
+        judge: () =>
+          new Promise((r) => {
+            resolve = r;
+          }),
+      },
+      onEvent: (e) => events.push(e),
+    });
+    d.begin('r');
+    d.complete('완료 본문.', 'm');
+    await vi.advanceTimersByTimeAsync(350);
+    expect(events).toMatchObject([{ cue: { stage: 'delivery' } }]);
+    resolve(happy);
+    await flush();
+    expect(events).toHaveLength(2);
+    d.invalidate();
+    const fastEvents: CompanionEvent[] = [];
+    const fast = new CharacterDirector({
+      judge: { judge: async () => happy },
+      onEvent: (e) => fastEvents.push(e),
+    });
+    fast.begin('r');
+    fast.complete('빠른 완료.', 'm');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fastEvents).toMatchObject([{ cue: { stage: 'semantic' } }]);
+    fast.invalidate();
+  });
+  it('cancels an older judgement on the first new byte and ignores older snapshots/completions', async () => {
+    let resolve!: (v: ExpressionDecision) => void;
+    let signal!: AbortSignal;
+    const judge = {
+      judge: vi.fn((_text: string, s: AbortSignal) => {
+        signal = s;
+        return new Promise<ExpressionDecision>((r) => {
+          resolve = r;
+        });
+      }),
+    };
+    const events: CompanionEvent[] = [];
+    const d = new CharacterDirector({ judge, onEvent: (e) => events.push(e) });
+    d.begin('r');
+    d.complete('처음 완료.', 'old');
+    await flush();
+    d.append('새', false, 'new');
+    expect(signal.aborted).toBe(true);
+    d.replaceSnapshot('old');
+    d.complete('정정된 과거 본문.', 'old', true);
+    resolve(happy);
+    await vi.advanceTimersByTimeAsync(350);
+    expect(events).toMatchObject([{ cue: { messageId: 'new', stage: 'delivery' } }]);
+    d.invalidate();
+  });
+  it('uses the latest complete before a call starts, but clears a correction after calling without rejudging', async () => {
+    let resolve!: (v: ExpressionDecision) => void;
+    const judge = {
+      judge: vi.fn(
+        (_text: string) =>
+          new Promise<ExpressionDecision>((r) => {
+            resolve = r;
+          }),
+      ),
+    };
+    const events: CompanionEvent[] = [];
+    const d = new CharacterDirector({ judge, onEvent: (e) => events.push(e) });
+    d.begin('r');
+    d.complete('초기 완료.', 'm');
+    d.complete('호출 전 정정.', 'm', true);
+    await vi.advanceTimersByTimeAsync(350);
+    expect(judge.judge.mock.calls[0]![0]).toBe('호출 전 정정.');
+    d.complete('호출 후 정정.', 'm', true);
+    resolve(happy);
+    await flush();
+    expect(judge.judge).toHaveBeenCalledOnce();
+    expect(events).toMatchObject([
+      { cue: { stage: 'delivery', segmentId: 1 } },
+      { type: 'cue.clear', requestId: 'r', messageId: 'm', segmentId: 1 },
+    ]);
+    d.invalidate();
   });
 });

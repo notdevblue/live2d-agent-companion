@@ -9,6 +9,7 @@ import {
   ATTITUDES,
   EMOTIONS,
   GESTURES,
+  type Attitude,
   type AgentEvent,
   type UserTurn,
 } from '../src/shared/contracts.js';
@@ -264,14 +265,32 @@ function decision(options: readonly string[], choice: string, confidence: number
     probabilities: Object.fromEntries(options.map((value) => [value, value === choice ? 1 : 0])),
   };
 }
+function attitudeDistribution(weights: Partial<Record<Attitude, number>>) {
+  const probabilities = Object.fromEntries(ATTITUDES.map((value) => [value, weights[value] ?? 0]));
+  const selected = ATTITUDES.reduce((top, value) =>
+    probabilities[value]! > probabilities[top]! ? value : top,
+  );
+  return {
+    type: 'choice',
+    choice: selected,
+    confidence: (probabilities[selected]! - 1 / ATTITUDES.length) / (1 - 1 / ATTITUDES.length),
+    probabilities,
+  };
+}
 describe('TypeSafe Jev expression choices', () => {
-  it('delivers confident shared laughter through Director to the existing actor in one call', async () => {
+  it('delivers a confident playful family independently of weak sadness through Director to the actor', async () => {
     const fetcher = vi.fn<typeof fetch>(async () =>
       json({
         answers: {
-          emotion: decision(EMOTIONS, 'happy', 0.5),
+          emotion: decision(EMOTIONS, 'sad', 0.41),
           gesture: decision(GESTURES, 'none', 0.98),
-          attitude: decision(ATTITUDES, 'laugh', 0.94),
+          attitude: attitudeDistribution({
+            laugh: 0.47,
+            tease: 0.46,
+            neutral: 0.04,
+            shy: 0.02,
+            reassure: 0.01,
+          }),
         },
       }),
     );
@@ -284,19 +303,124 @@ describe('TypeSafe Jev expression choices', () => {
         if (event.type === 'cue') actor.cue(event.cue, 0);
       },
     });
-    director.begin('laughter-request', 'ㅋㅋ 그런듯');
-    director.append('타이밍 놓치면 맞장구만 치는 애 됨 ㅋㅋ', true, 'laughter-message');
+    director.begin('laughter-request', '작은 일에 너무 거창하게 반응하는 상황을 농담해 줘.');
+    director.append(
+      '서류 한 장 고치는데 머릿속에서는 벌써 시상식 음악이 흐르네요.',
+      true,
+      'laughter-message',
+    );
     await vi.waitFor(() => expect(onEvent).toHaveBeenCalledOnce());
     expect(onEvent.mock.calls[0]![0].cue).toMatchObject({
       emotion: 'neutral',
       gesture: 'none',
       attitude: 'laugh',
       source: 'jev',
-      confidence: 0.94,
+      confidence: expect.closeTo(0.86, 6),
     });
     expect(actor.sample(0, 0)).toMatchObject({ preset: 'laugh', active: true });
     expect(fetcher).toHaveBeenCalledOnce();
     director.invalidate();
+  });
+  it.each([
+    {
+      name: 'a split playful family',
+      weights: { laugh: 0.47, tease: 0.46, neutral: 0.04, shy: 0.02, reassure: 0.01 },
+      threshold: 0.65,
+      attitude: 'laugh',
+      confidence: 0.86,
+    },
+    {
+      name: 'the conservative family mass boundary',
+      weights: { laugh: 0.45, tease: 0.4, neutral: 0.15 },
+      threshold: 0.65,
+      attitude: 'laugh',
+      confidence: 0.7,
+    },
+    {
+      name: 'a weak playful family',
+      weights: { laugh: 0.4, tease: 0.39, neutral: 0.2, shy: 0.01 },
+      threshold: 0.65,
+      attitude: 'neutral',
+      confidence: 0.99,
+    },
+    {
+      name: 'insufficient support for the second playful subtype',
+      weights: { laugh: 0.67, tease: 0.19, neutral: 0.14 },
+      threshold: 0.65,
+      attitude: 'neutral',
+      confidence: 0.99,
+    },
+    {
+      name: 'a confidently neutral answer',
+      weights: { neutral: 0.8, laugh: 0.1, tease: 0.1 },
+      threshold: 0.65,
+      attitude: 'neutral',
+      confidence: 0.76,
+    },
+    {
+      name: 'a confidently sincere reassuring answer',
+      weights: { reassure: 0.8, laugh: 0.1, tease: 0.1 },
+      threshold: 0.65,
+      attitude: 'reassure',
+      confidence: 0.76,
+    },
+    {
+      name: 'a confidently specific tease',
+      weights: { tease: 0.85, laugh: 0.1, neutral: 0.05 },
+      threshold: 0.65,
+      attitude: 'tease',
+      confidence: 0.82,
+    },
+    {
+      name: 'a higher configured confidence threshold',
+      weights: { laugh: 0.47, tease: 0.46, neutral: 0.07 },
+      threshold: 0.9,
+      attitude: 'neutral',
+      confidence: 0.99,
+    },
+    {
+      name: 'rounded mass that falls below the family floor after normalization',
+      weights: { laugh: 0.45, tease: 0.4, neutral: 0.16 },
+      threshold: 0.65,
+      attitude: 'neutral',
+      confidence: 0.99,
+    },
+    {
+      name: 'rounded mass that clears the family floor after normalization',
+      weights: { laugh: 0.45, tease: 0.395, neutral: 0.145 },
+      threshold: 0.65,
+      attitude: 'laugh',
+      confidence: 0.707070707,
+    },
+    {
+      name: 'rounded subtype support that falls below the minimum after normalization',
+      weights: { laugh: 0.69, tease: 0.2, neutral: 0.12 },
+      threshold: 0.65,
+      attitude: 'neutral',
+      confidence: 0.99,
+    },
+  ])('handles $name without weakening the confidence scale', async (testCase) => {
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      json({
+        answers: {
+          emotion: decision(EMOTIONS, 'neutral', 0.99),
+          gesture: decision(GESTURES, 'none', 0.99),
+          attitude: attitudeDistribution(testCase.weights),
+        },
+      }),
+    );
+    const result = await new JevJudge({
+      token: async () => 'fixture',
+      fetch: fetcher,
+      confidenceThreshold: testCase.threshold,
+    }).judge('A synthetic displayed reply.', new AbortController().signal);
+    expect(result).toMatchObject({
+      emotion: 'neutral',
+      gesture: 'none',
+      attitude: testCase.attitude,
+    });
+    expect(result.confidence).toBeCloseTo(testCase.confidence, 6);
+    expect(fetcher).toHaveBeenCalledOnce();
   });
   it('sends the current user request and assistant reply as separate data fields in one judgement', async () => {
     const fetcher = vi.fn<typeof fetch>(async (_input, init) => {
@@ -389,6 +513,7 @@ describe('TypeSafe Jev expression choices', () => {
         attitude: 'neutral',
         confidence: 0.92,
         source: 'jev',
+        stage: 'semantic',
       },
     });
     expect(fetcher).toHaveBeenCalledOnce();
@@ -412,6 +537,8 @@ describe('TypeSafe Jev expression choices', () => {
   it('adds attitude in the same response and gates its confidence independently', async () => {
     for (const [attitudeConfidence, expected] of [
       [0.95, 'tease'],
+      [0.65, 'tease'],
+      [0.64, 'neutral'],
       [0.1, 'neutral'],
     ] as const) {
       const fetcher = vi.fn<typeof fetch>(async () =>
@@ -430,7 +557,7 @@ describe('TypeSafe Jev expression choices', () => {
       expect(result).toEqual({
         emotion: 'happy',
         gesture: 'wave',
-        confidence: 0.9,
+        confidence: attitudeConfidence >= 0.65 ? Math.min(attitudeConfidence, 0.9) : 0.9,
         attitude: expected,
       });
       expect(fetcher).toHaveBeenCalledTimes(1);

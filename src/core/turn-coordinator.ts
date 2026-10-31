@@ -351,7 +351,7 @@ export class TurnCoordinator {
     this.submissionStarted = true;
     this.effectsCancelled = pending.effectsCancelled;
     for (const id of pending.eventIds) this.seen.add(id);
-    this.director.begin(pending.requestId);
+    this.director.begin(pending.requestId, undefined, false);
     if (this.effectsCancelled) this.director.invalidate();
     if (pending.approval && pending.approval.expiresAt > Date.now()) {
       this.approval = {
@@ -446,7 +446,10 @@ export class TurnCoordinator {
         delete view.error;
         break;
       case 'message.delta': {
+        if (!event.payload.text) return;
         const old = this.messages.get(event.payload.messageId) ?? '';
+        if (this.completedMessages.has(event.payload.messageId) && event.payload.text)
+          this.director.replaceSnapshot(event.payload.messageId);
         if (!this.putMessage(event.payload.messageId, old + event.payload.text)) return;
         this.completedMessages.delete(event.payload.messageId);
         if (view.state !== 'cancel_requested') view.state = 'streaming';
@@ -460,11 +463,12 @@ export class TurnCoordinator {
       case 'message.snapshot':
         if (!this.putMessage(event.payload.messageId, event.payload.text)) return;
         this.syncText();
-        this.director.replaceSnapshot();
+        this.director.replaceSnapshot(event.payload.messageId);
         break;
       case 'message.complete': {
         const old = this.messages.get(event.payload.messageId) ?? '';
-        if (old && !event.payload.text.startsWith(old)) this.director.replaceSnapshot();
+        const changed =
+          this.completedMessages.has(event.payload.messageId) && old !== event.payload.text;
         if (!this.putMessage(event.payload.messageId, event.payload.text)) return;
         this.completedMessages.add(event.payload.messageId);
         if (['submitting', 'accepted', 'awaiting_result'].includes(view.state))
@@ -472,13 +476,7 @@ export class TurnCoordinator {
         this.syncText();
         this.publish();
         if (!view.approval)
-          this.director.append(
-            event.payload.text.startsWith(old)
-              ? event.payload.text.slice(old.length)
-              : event.payload.text,
-            true,
-            event.payload.messageId,
-          );
+          this.director.complete(event.payload.text, event.payload.messageId, changed);
         this.armTimeout();
         return;
       }

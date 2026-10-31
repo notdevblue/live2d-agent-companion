@@ -273,6 +273,10 @@ function renderEvent(event: CompanionEvent): void {
     avatar?.cue(event.cue);
     return;
   }
+  if (event.type === 'cue.clear') {
+    if (event.requestId === view?.requestId) avatar?.clearCue(event);
+    return;
+  }
   if (isSettings) {
     view = event.turn;
     updatePreviewAvailability();

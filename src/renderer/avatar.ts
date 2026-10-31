@@ -403,6 +403,20 @@ export class Avatar {
       window.__avatarStatus.lastMotion = motionName ?? 'none';
     }
   }
+  clearCue(cue: Pick<CharacterCue, 'requestId' | 'messageId' | 'segmentId'>): void {
+    if (!this.actor.clearCue(cue)) return;
+    const now = performance.now();
+    this.mixer.clear(now, true);
+    this.clearPose();
+    this.lastGesture = -Infinity;
+    this.lastGestureName = '';
+    if (window.__avatarStatus) {
+      window.__avatarStatus.lastCue = undefined;
+      window.__avatarStatus.lastAttitude = 'neutral';
+      window.__avatarStatus.lastExpression = 'neutral';
+      window.__avatarStatus.lastMotion = 'none';
+    }
+  }
   private setExpression(name: string | undefined, now: number, holdMs: number): void {
     this.mixer.transition(
       name ?? 'neutral',

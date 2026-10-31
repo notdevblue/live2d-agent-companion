@@ -67,6 +67,23 @@ afterEach(() => {
 });
 
 describe('Avatar message and background priority — FR-L2D-004/006', () => {
+  it('promotes delivery to a semantic hand pose and clears it without changing background state', () => {
+    const { avatar, runtime } = setup();
+    avatar.setState('working');
+    avatar.cue({ ...cue, emotion: 'neutral', gesture: 'none', stage: 'delivery' });
+    vi.setSystemTime(500);
+    const semantic = { ...cue, segmentId: 2, stage: 'semantic' } as const;
+    avatar.cue(semantic);
+    expect(runtime.poses.sample(500).definition?.parameter).toBe('hand');
+    avatar.clearCue({ ...semantic, segmentId: 1 });
+    expect(runtime.poses.sample(500).definition?.parameter).toBe('hand');
+    avatar.clearCue(semantic);
+    expect(runtime.poses.sample(500).phase).toBe('none');
+    expect(runtime.actor.sample(500, 0)).toMatchObject({ preset: 'working', active: false });
+    avatar.cue({ ...semantic, messageId: 'new', segmentId: 3 });
+    avatar.clearCue(semantic);
+    expect(runtime.poses.sample(500).definition?.parameter).toBe('hand');
+  });
   it('replaces the previous message hand pose immediately, including none, inside the old cooldown', () => {
     for (const nextGesture of ['none', 'thinking', 'wave'] as const) {
       const { avatar, runtime } = setup();

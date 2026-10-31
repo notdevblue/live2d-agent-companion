@@ -147,7 +147,12 @@ export class ActingController {
   private reaction?: Reaction;
   private lastKey = '';
   private lastCue = -Infinity;
-  private lastBeat?: { requestId: string; segmentId: number; messageId?: string };
+  private lastBeat?: {
+    requestId: string;
+    segmentId: number;
+    messageId?: string;
+    stage: 'delivery' | 'semantic' | 'cleared';
+  };
   private epoch?: number;
   private gazeAt = 0;
   private gazeIndex = 0;
@@ -187,7 +192,7 @@ export class ActingController {
 
   cue(
     cue: Pick<CharacterCue, 'emotion' | 'gesture' | 'attitude'> &
-      Partial<Pick<CharacterCue, 'requestId' | 'segmentId' | 'messageId'>>,
+      Partial<Pick<CharacterCue, 'requestId' | 'segmentId' | 'messageId' | 'stage'>>,
     nowMs: number,
   ): boolean {
     this.initialize(nowMs);
@@ -195,17 +200,26 @@ export class ActingController {
     const scoped = !!cue.requestId && Number.isSafeInteger(cue.segmentId) && cue.segmentId! > 0;
     const newRequest = scoped && cue.requestId !== this.lastBeat?.requestId;
     const newBeat = scoped && (newRequest || cue.segmentId! > this.lastBeat!.segmentId);
+    const sameMessage =
+      scoped && !newRequest && !!cue.messageId && cue.messageId === this.lastBeat?.messageId;
+    const promotion =
+      sameMessage && this.lastBeat?.stage === 'delivery' && cue.stage === 'semantic';
     if (
       this.state === 'blocked' ||
       (scoped && !newBeat) ||
-      (scoped && !newRequest && !!cue.messageId && cue.messageId === this.lastBeat?.messageId) ||
+      (sameMessage && !promotion) ||
       (!scoped && cue.emotion === 'neutral' && cue.gesture === 'none' && !hasAttitude)
     )
       return false;
+    if (promotion && cue.emotion === 'neutral' && cue.gesture === 'none' && !hasAttitude) {
+      // Resolving neutral does not restart the existing delivery beat or its variant.
+      this.lastBeat = { ...this.lastBeat!, segmentId: cue.segmentId!, stage: 'semantic' };
+      return false;
+    }
     const key = `${cue.emotion}/${cue.gesture}/${cue.attitude ?? 'neutral'}`;
     const newMessage = scoped && !!cue.messageId && cue.messageId !== this.lastBeat?.messageId;
     const interval = key === this.lastKey ? 6200 : 900;
-    if (!newRequest && !newMessage && nowMs - this.lastCue < interval) return false;
+    if (!newRequest && !newMessage && !promotion && nowMs - this.lastCue < interval) return false;
     const preset: ActingPreset = hasAttitude
       ? (cue.attitude as Exclude<Attitude, 'neutral'>)
       : cue.emotion === 'embarrassed'
@@ -231,7 +245,22 @@ export class ActingController {
         requestId: cue.requestId!,
         segmentId: cue.segmentId!,
         messageId: cue.messageId,
+        stage: cue.stage ?? 'semantic',
       };
+    return true;
+  }
+
+  clearCue(cue: Pick<CharacterCue, 'requestId' | 'messageId' | 'segmentId'>): boolean {
+    if (
+      !cue.messageId ||
+      cue.requestId !== this.lastBeat?.requestId ||
+      cue.messageId !== this.lastBeat.messageId ||
+      cue.segmentId !== this.lastBeat.segmentId
+    )
+      return false;
+    this.reaction = undefined;
+    this.pose = neutral();
+    this.lastBeat.stage = 'cleared';
     return true;
   }
 

@@ -170,6 +170,13 @@ function emit(event: CompanionEvent): void {
   if (event.type === 'turn') conversation(event.turn.binding).update(event.turn);
   event = { ...event, selectionId, revision: ++revision };
   if (event.type === 'cue') lastCue = event;
+  if (
+    event.type === 'cue.clear' &&
+    event.requestId === lastCue?.cue.requestId &&
+    event.messageId === lastCue.cue.messageId &&
+    event.segmentId === lastCue.cue.segmentId
+  )
+    lastCue = undefined;
   for (const window of event.type === 'history' ? [chat] : [overlay, chat, settingsWindow])
     if (window && !window.isDestroyed()) window.webContents.send('companion:event', event);
   if (event.type === 'turn' || event.type === 'character' || event.type === 'cue') persistPending();

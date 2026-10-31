@@ -212,7 +212,7 @@ describe('TurnCoordinator request boundary (FR-AG-003/004/010/012)', () => {
     const judge = { judge: vi.fn((_text: string, _signal: AbortSignal) => pending.promise) };
     const { core, adapter, events } = fixture({ judge });
     await core.send('fixture');
-    adapter.emit('message.delta', { text: '응답입니다. ', messageId: 'm' });
+    adapter.emit('message.complete', { text: '응답입니다. ', messageId: 'm' });
     await flush();
     await core.cancel();
     pending.resolve(happy);
@@ -571,7 +571,7 @@ describe('asynchronous CharacterDirector (FR-DIR-001/002)', () => {
     const judge = { judge: vi.fn(async (_text: string, _signal: AbortSignal) => happy) };
     const { core, adapter, events } = fixture({ judge });
     await core.send('fixture');
-    adapter.emit('message.delta', { text: '첫 문장. 다음 문장. 마지막 문장.', messageId: 'm' });
+    adapter.emit('message.complete', { text: '첫 문장. 다음 문장. 마지막 문장.', messageId: 'm' });
     await flush();
     adapter.emit('approval.requested', {
       approvalId: 'a',
@@ -583,27 +583,62 @@ describe('asynchronous CharacterDirector (FR-DIR-001/002)', () => {
     expect(judge.judge).toHaveBeenCalledTimes(1);
     expect(cueEvents(events)).toHaveLength(1);
     adapter.emit('approval.closed', { approvalId: 'a', reason: 'withdrawn' });
-    adapter.emit('message.delta', { text: '새 문장.', messageId: 'after-approval' });
+    adapter.emit('message.complete', { text: '새 문장.', messageId: 'after-approval' });
     await flush();
     expect(judge.judge).toHaveBeenCalledTimes(2);
     expect(judge.judge.mock.calls[1]?.[0]).toBe('새 문장.');
     await core.dispose();
   });
-  it('cancels an unapplied draft decision when the final message replaces its text', async () => {
-    const pending = deferred<ExpressionDecision>();
-    const judge = { judge: vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue(happy) };
+  it('judges the complete replacement rather than a streamed draft, with one call', async () => {
+    const judge = { judge: vi.fn(async () => sad) };
     const { core, adapter, events } = fixture({ judge });
     await core.send('fixture');
-    adapter.emit('message.delta', { text: '초안 문장.', messageId: 'm' });
+    adapter.emit('message.delta', { text: '초안은 성공.', messageId: 'm' });
+    await vi.advanceTimersByTimeAsync(350);
+    expect(judge.judge).not.toHaveBeenCalled();
+    adapter.emit('message.complete', { text: '최종 확인은 실패.', messageId: 'm' });
     await flush();
-    adapter.emit('message.complete', { text: '수정된 최종 문장.', messageId: 'm' });
+    expect(judge.judge).toHaveBeenCalledOnce();
+    expect(cueEvents(events)).toMatchObject([
+      { cue: { stage: 'delivery', emotion: 'neutral', messageId: 'm' } },
+      { cue: { stage: 'semantic', emotion: 'sad', messageId: 'm' } },
+    ]);
+    await core.dispose();
+  });
+  it('retracts an applied completed draft when the full body changes, even outside its excerpt', async () => {
+    const judge = { judge: vi.fn(async () => happy) };
+    const { core, adapter, events } = fixture({ judge });
+    await core.send('fixture');
+    const first = 'a'.repeat(600) + 'original' + 'z'.repeat(600);
+    adapter.emit('message.complete', { text: first, messageId: 'm' });
     await flush();
-    pending.resolve(sad);
+    adapter.emit('message.complete', { text: first, messageId: 'm' });
+    expect(events.filter((e) => e.type === 'cue.clear')).toHaveLength(0);
+    adapter.emit('message.delta', { text: '', messageId: 'm' });
+    adapter.emit('message.complete', {
+      text: first.replace('original', 'corrected'),
+      messageId: 'm',
+    });
     await flush();
-    expect(cueEvents(events)).toMatchObject([{ cue: { emotion: 'happy', messageId: 'm' } }]);
+    expect(events.filter((e) => e.type === 'cue.clear')).toMatchObject([
+      { requestId: core.current!.requestId, messageId: 'm', segmentId: 1 },
+    ]);
+    expect(judge.judge).toHaveBeenCalledOnce();
+    expect(core.current?.text).toContain('corrected');
+    await core.dispose();
+  });
+  it('treats successful turn completion as finalizing its live message when no message.complete arrives', async () => {
+    const judge = { judge: vi.fn(async (_text: string) => sad) };
+    const { core, adapter } = fixture({ judge });
+    await core.send('fixture');
+    adapter.emit('message.delta', { text: '처음에는 성공. ', messageId: 'm' });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(judge.judge).not.toHaveBeenCalled();
+    adapter.emit('message.delta', { text: '최종 확인은 실패.', messageId: 'm' });
+    adapter.emit('turn.completed', {});
+    await flush();
     expect(judge.judge.mock.calls.map((row) => row[0])).toEqual([
-      '초안 문장.',
-      '수정된 최종 문장.',
+      '처음에는 성공. 최종 확인은 실패.',
     ]);
     await core.dispose();
   });
@@ -615,7 +650,7 @@ describe('asynchronous CharacterDirector (FR-DIR-001/002)', () => {
     };
     const { core, adapter, events } = fixture({ judge, judgeTimeoutMs: 10 });
     await core.send('fixture');
-    adapter.emit('message.delta', { text: 'x'.repeat(900), messageId: 'm' });
+    adapter.emit('message.complete', { text: 'x'.repeat(900), messageId: 'm' });
     await flush();
     expect(judge.judge.mock.calls[0]?.[0]).toHaveLength(800);
     await vi.advanceTimersByTimeAsync(11);
@@ -638,22 +673,20 @@ describe('asynchronous CharacterDirector (FR-DIR-001/002)', () => {
       await f.core.dispose();
     }
   });
-  it('snapshot invalidates inference without rejudging recovered text, fresh delta is allowed', async () => {
-    const pending = deferred<ExpressionDecision>();
-    const judge = { judge: vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue(happy) };
+  it('does not replay snapshot text or its following complete, and accepts a new live message', async () => {
+    const judge = { judge: vi.fn(async () => happy) };
     const { core, adapter, events } = fixture({ judge });
     await core.send('fixture');
     adapter.emit('message.delta', { text: '이전 문장. ', messageId: 'm' });
-    await flush();
     adapter.emit('message.snapshot', { text: '복구된 문장.', messageId: 'm' });
-    pending.resolve(sad);
-    await flush();
-    expect(judge.judge).toHaveBeenCalledTimes(1);
+    adapter.emit('message.complete', { text: '복구된 문장.', messageId: 'm' });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(judge.judge).not.toHaveBeenCalled();
     expect(cueEvents(events)).toHaveLength(0);
-    adapter.emit('message.delta', { text: ' 새 문장. ', messageId: 'm' });
+    adapter.emit('message.complete', { text: '새 문장.', messageId: 'new' });
     await flush();
-    expect(judge.judge).toHaveBeenCalledTimes(2);
-    expect(core.current?.text).toBe('복구된 문장. 새 문장. ');
+    expect(judge.judge).toHaveBeenCalledOnce();
+    expect(cueEvents(events)).toMatchObject([{ cue: { messageId: 'new' } }]);
     await core.dispose();
   });
   it('switch/dispose drops all old character decisions and tool data never goes to judge', async () => {

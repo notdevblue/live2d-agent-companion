@@ -137,6 +137,7 @@ export interface ExpressionContext {
   userRequest: string;
 }
 export interface CharacterCue extends ExpressionDecision {
+  stage?: 'delivery' | 'semantic';
   requestId: string;
   segmentId: number;
   messageId?: string;
@@ -192,6 +193,7 @@ export type CompanionEvent = (
   | { type: 'history'; messages: ConversationMessage[]; restoredRequestId?: string; error?: string }
   | { type: 'character'; state: 'idle' | 'thinking' | 'working' | 'error' }
   | { type: 'cue'; cue: CharacterCue }
+  | { type: 'cue.clear'; requestId: string; messageId: string; segmentId: number }
   | { type: 'presentation'; settings: PresentationSettings }
   | { type: 'character.preview'; preset: CharacterPreview }
   | { type: 'overlay-scale'; scale: number }

@@ -14,6 +14,54 @@ function magnitude(frame: ActingFrame): number {
 }
 
 describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
+  it('promotes a delivery beat once and does not restart it for a neutral semantic result', () => {
+    for (const positive of [true, false]) {
+      const actor = new ActingController();
+      const delivery = {
+        requestId: 'r',
+        messageId: 'm',
+        segmentId: 1,
+        stage: 'delivery',
+        emotion: 'neutral',
+        gesture: 'none',
+      } as const;
+      actor.cue(delivery, 0);
+      const before = advance(actor, 600);
+      const semantic = {
+        ...delivery,
+        segmentId: 2,
+        stage: 'semantic',
+        emotion: positive ? 'happy' : 'neutral',
+      } as const;
+      expect(actor.cue(semantic, 600)).toBe(positive);
+      const after = actor.sample(600, 0);
+      if (positive) expect(after.preset).toBe('happy');
+      else expect(after).toEqual(before);
+      expect(actor.cue({ ...semantic, segmentId: 3 }, 700)).toBe(false);
+    }
+  });
+  it('clears only the exact current cue and never resurrects its semantic result', () => {
+    const actor = new ActingController();
+    const delivery = {
+      requestId: 'r',
+      messageId: 'm',
+      segmentId: 1,
+      stage: 'delivery',
+      emotion: 'neutral',
+      gesture: 'none',
+    } as const;
+    actor.cue(delivery, 0);
+    advance(actor, 500);
+    expect(actor.clearCue({ ...delivery, segmentId: 2 })).toBe(false);
+    expect(actor.clearCue(delivery)).toBe(true);
+    expect(actor.sample(500, 0)).toMatchObject({ active: false, preset: 'neutral' });
+    expect(actor.cue({ ...delivery, stage: 'semantic', emotion: 'happy', segmentId: 2 }, 600)).toBe(
+      false,
+    );
+    actor.cue({ ...delivery, messageId: 'next', segmentId: 3 }, 700);
+    expect(actor.clearCue(delivery)).toBe(false);
+    expect(actor.sample(700, 0).active).toBe(true);
+  });
   it.each(
     EMOTIONS.flatMap((emotion) =>
       ATTITUDES.flatMap((attitude) => GESTURES.map((gesture) => ({ emotion, attitude, gesture }))),

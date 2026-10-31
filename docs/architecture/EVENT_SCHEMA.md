@@ -81,9 +81,13 @@ submitting, accepted, streaming, awaiting_result, cancel_requested, reconciling 
 
 ## 캐릭터 이벤트
 
-현재 `TurnView.messages`는 `messageId/text/completed`의 순서 있는 배열이며 `text` 집계는 기존 호출과 호환하기 위해 유지한다. 말풍선/로컬 표시 cache는 requestId+messageId로 구분한다. `cue.messageId`는 실제 assistant 메시지 하나에, segmentId는 현재 요청의 메시지 순서에 대응한다. 같은 메시지를 문장별로 다시 판단하거나 큐에 쌓지 않는다. 새 메시지는 이전 미적용 판단을 취소하고 애니메이션 종료를 기다리지 않으며, 같은 메시지/복구 텍스트는 재적용하지 않는다. 본문/호출/수집·판단 기한은 shared `EXPRESSION_PACING`을 따른다.
+현재 `TurnView.messages`는 `messageId/text/completed`의 순서 있는 배열이며 `text` 집계는 기존 호출과 호환하기 위해 유지한다. 말풍선/로컬 표시 cache는 requestId+messageId로 구분한다. `cue.messageId`는 실제 assistant 메시지 하나에, segmentId는 현재 요청 안에서 발행한 표현 단계의 증가 순서에 대응한다. 같은 메시지를 문장별로 다시 판단하거나 큐에 쌓지 않는다. 새 메시지는 이전 미적용 판단을 취소하고 애니메이션 종료를 기다리지 않으며, 같은 메시지/복구 텍스트는 재적용하지 않는다. 본문/호출/수집·판단 기한은 shared `EXPRESSION_PACING`을 따른다.
 
 `cue.attitude`의 허용값은 `neutral/explain/tease/laugh/shy/reassure`다. Jev 비활성화 또는 요청당 8회 판단 이후에는 같은 메시지 식별·수집·무효화 규칙으로 `source=fallback, emotion=neutral, gesture=none, confidence=0`을 발행한다. 외부 판단이나 임의의 감정은 추가하지 않는다. 새 메시지의 다른 손 포즈 또는 none은 이전 메시지의 손을 즉시 정리하며, 같은 손동작의 반복 억제와 동일 메시지 중복 거절은 유지한다.
+
+`cue.stage`는 `delivery | semantic`이며 생략된 기존 fixture는 semantic으로 해석한다. delivery는 스트리밍/느린 판단 중 최대 350ms 뒤의 중립 전달이고, semantic은 완료 본문의 유일한 판단 결과다. 같은 messageId는 delivery→semantic만 한 번 허용하며, 중립 semantic은 delivery의 시작 시각·변주를 다시 시작하지 않는다. semantic이 먼저 오면 예약된 delivery를 취소한다. 새 메시지의 첫 글자는 이전 미적용 판단을 즉시 취소한다.
+
+`{type: cue.clear, requestId, messageId, segmentId}`는 이미 적용된 해당 단계의 철회다. 세 식별자가 모두 일치할 때 actor/mixer/손 포즈만 중립으로 정리하고 현재 작업/승인 상태는 유지한다. 철회한 메시지의 지연 semantic과 이전 단계의 clear는 재적용하지 않는다. 같은 본문 완료는 무시하고, 전체 본문 변경은 발췌문 밖의 수정도 감지한다. 복구 snapshot은 해당 ID를 재생 금지로 표시하며 다른 ID의 진행 중 반응은 건드리지 않는다.
 
 `character.state` = `idle | thinking | talking | listening | working | success | error`; `expression` / `motion`은 모델 호환성 검사 후 유효한 매핑으로 축소된다. Audio playback 상태가 실제 입 움직임 시간의 기준이며 text delta 도착 자체가 lip-sync를 켜지 않는다.
 
