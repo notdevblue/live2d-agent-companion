@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { HermesAdapter } from '../src/adapters/hermes.js';
 import { GrokBotAdapter } from '../src/adapters/grok.js';
 import { JevJudge } from '../src/adapters/jev.js';
+import { CharacterDirector } from '../src/core/character-director.js';
 import { endpoint, jsonBody, sseFrames } from '../src/adapters/transport.js';
 import {
   ATTITUDES,
@@ -291,6 +292,53 @@ describe('TypeSafe Jev expression choices', () => {
         new AbortController().signal,
       ),
     ).toEqual({ emotion: 'happy', gesture: 'wave', confidence: 0.9 });
+  });
+  it('keeps a confident greeting wave through Director when emotion and attitude are uncertain', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      json({
+        answers: {
+          emotion: decision(EMOTIONS, 'happy', 0.56),
+          gesture: decision(GESTURES, 'wave', 0.92),
+          attitude: decision(ATTITUDES, 'neutral', 0.59),
+        },
+      }),
+    );
+    const judge = new JevJudge({ token: async () => 'fixture', fetch: fetcher });
+    const onEvent = vi.fn();
+    const director = new CharacterDirector({ judge, onEvent });
+    director.begin('greeting-request');
+    director.append('ㅎㅇ 👋 뭐 하고 있었어?', true, 'greeting-message');
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalled());
+    expect(onEvent).toHaveBeenCalledWith({
+      type: 'cue',
+      cue: {
+        requestId: 'greeting-request',
+        messageId: 'greeting-message',
+        segmentId: 1,
+        emotion: 'neutral',
+        gesture: 'wave',
+        attitude: 'neutral',
+        confidence: 0.92,
+        source: 'jev',
+      },
+    });
+    expect(fetcher).toHaveBeenCalledOnce();
+    director.invalidate();
+  });
+  it('keeps a confident emotion while an uncertain hand gesture independently falls back to none', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      json({
+        answers: {
+          emotion: decision(EMOTIONS, 'happy', 0.88),
+          gesture: decision(GESTURES, 'explain', 0.4),
+        },
+      }),
+    );
+    const result = await new JevJudge({ token: async () => 'fixture', fetch: fetcher }).judge(
+      '작업을 마쳤어요.',
+      new AbortController().signal,
+    );
+    expect(result).toEqual({ emotion: 'happy', gesture: 'none', confidence: 0.88 });
   });
   it('adds attitude in the same response and gates its confidence independently', async () => {
     for (const [attitudeConfidence, expected] of [

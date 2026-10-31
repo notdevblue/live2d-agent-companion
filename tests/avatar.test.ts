@@ -18,7 +18,7 @@ import { Avatar } from '../src/renderer/avatar.js';
 
 const inventory = {
   expressionMap: { happy: 'smile', surprised: 'surprise' },
-  gestureMap: { thinking: 'waiting', explain: 'explain' },
+  gestureMap: { thinking: 'waiting', explain: 'explain', wave: 'greeting' },
 } as unknown as ModelInventory;
 const cue = {
   requestId: 'r',
@@ -42,6 +42,7 @@ function setup() {
   for (const [name, parameter] of [
     ['waiting', 'wait'],
     ['explain', 'hand'],
+    ['greeting', 'greeting-hand'],
   ]) {
     runtime.motions.set(name!, {});
     runtime.poseDefinitions.set(name!, {
@@ -66,6 +67,24 @@ afterEach(() => {
 });
 
 describe('Avatar message and background priority — FR-L2D-004/006', () => {
+  it('plays the greeting hand pose for a confident wave even with neutral emotion and attitude', () => {
+    const { avatar, runtime } = setup();
+    avatar.setState('thinking');
+    vi.setSystemTime(300);
+    avatar.cue({
+      ...cue,
+      emotion: 'neutral',
+      gesture: 'wave',
+      attitude: 'neutral',
+      confidence: 0.92,
+      source: 'jev',
+    });
+    expect(runtime.actor.sample(300, 0)).toMatchObject({ preset: 'happy', active: true });
+    expect(runtime.poses.sample(300)).toMatchObject({
+      phase: 'enter',
+      definition: { parameter: 'greeting-hand' },
+    });
+  });
   it('animates a neutral progress cue locally without starting a hand pose', () => {
     const { avatar, runtime } = setup();
     avatar.cue({ ...cue, emotion: 'neutral', gesture: 'none', attitude: 'neutral' });

@@ -88,8 +88,15 @@ export class JevJudge implements ExpressionJudge {
     const attitude = Object.hasOwn(answers, 'attitude')
       ? choice(answers.attitude, ATTITUDES)
       : undefined;
-    const confidence = Math.min(emotion.confidence, gesture.confidence);
     const threshold = this.options.confidenceThreshold ?? 0.65;
+    // Each channel below falls back independently. Do not let a discarded weak
+    // emotion veto an otherwise confident greeting gesture in the Director.
+    const retained = [emotion, gesture, ...(attitude ? [attitude] : [])].filter(
+      (answer) => answer.confidence >= threshold,
+    );
+    const confidence = retained.length
+      ? Math.min(...retained.map((answer) => answer.confidence))
+      : Math.min(emotion.confidence, gesture.confidence);
     return {
       ...(attitude
         ? { attitude: attitude.confidence >= threshold ? attitude.value : ('neutral' as const) }

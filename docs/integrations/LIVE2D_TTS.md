@@ -14,7 +14,7 @@
 
 대화 본문(사용자에게 보여주는 안전한 텍스트), 원격 tool lifecycle, TTS 재생 상태, 클릭/드래그 이벤트를 입력으로 받는 별도 상태 머신이다. 기본 상태는 결정적 규칙으로 제어하고 의미에 따른 표정/제스처는 사용자가 켠 Jev 판단을 사용한다. TTS 재생 상태 입력은 후속 범위다.
 
-**2026-10-31 구현 범위:** 사용자 요청으로 초기 통합에 Jev를 포함했다. 결정적 기본 상태와 별개로 TypeSafe Choice 질문 3개(emotion/gesture/attitude)를 한 번에 보내며 최대 800자 구간·판단 제한 시간·확신 임계값·최신 구간 검사로 제어한다. attitude는 `neutral/explain/tease/shy/reassure`이며 문장의 주제 대신 말하는 태도를 판단한다. 기존 attitude 없는 응답도 지원한다. confidence는 불확실성이지 움직임의 강도가 아니다. 텍스트 UI는 판단을 기다리지 않는다. 실패/낮은 확신은 neutral/none이며 중단·전환·복구 snapshot은 지연 판단/재판단을 차단한다. 이는 아래 TTS 구현을 뜻하지 않는다.
+**2026-10-31 구현 범위:** 사용자 요청으로 초기 통합에 Jev를 포함했다. 결정적 기본 상태와 별개로 TypeSafe Choice 질문 3개(emotion/gesture/attitude)를 한 번에 보내며 최대 800자 구간·판단 제한 시간·확신 임계값·최신 구간 검사로 제어한다. attitude는 `neutral/explain/tease/shy/reassure`이며 문장의 주제 대신 말하는 태도를 판단한다. 기존 attitude 없는 응답도 지원한다. 각 채널은 독립적으로 확신 임계값을 검사하고 저확신 채널은 neutral/none으로 바꾼다. 통합 confidence는 유지된 채널만의 최솟값이며, 버린 저확신 감정 때문에 확실한 손 인사까지 Director에서 폐기하지 않는다. 전 채널이 낮으면 기존 낮은 confidence/fallback을 유지한다. confidence는 불확실성이지 움직임의 강도가 아니다. 텍스트 UI는 판단을 기다리지 않는다. 실패/낮은 확신은 neutral/none이며 중단·전환·복구 snapshot은 지연 판단/재판단을 차단한다. 이는 아래 TTS 구현을 뜻하지 않는다.
 
 **2026-11-01 설명 과다 보정:** gesture의 `none`은 일반 대화·진행/결과 보고·사실 답변과 대부분의 설명에서 기본이다. `explain`은 예제/대조/단계를 직접 짚어 가르치는 명확한 강조에만 사용하도록 Choice 기준을 좁혔다. 설명 말투(`attitude=explain`)는 손동작이 아니므로 `gesture=none`을 설명 손 포즈로 승격하지 않는다. 인위적 랜덤 동작이나 추가 판단 호출은 넣지 않았다.
 
