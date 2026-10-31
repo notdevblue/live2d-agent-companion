@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CHARACTER_PREVIEWS, DEFAULT_PRESENTATION } from './contracts.js';
+import { CHARACTER_PREVIEWS, DEFAULT_PRESENTATION, OVERLAY_SCALE_LIMITS } from './contracts.js';
 import type { AgentEvent, AppSettings } from './contracts.js';
 
 const id = z.string().min(1).max(512);
@@ -137,7 +137,7 @@ export const settingsSchema = z
       .regex(/^jev-[a-zA-Z0-9.-]+$/)
       .max(100),
     modelPath: z.string().max(4096),
-    scale: z.number().min(0.4).max(2),
+    scale: z.number().min(OVERLAY_SCALE_LIMITS.min).max(OVERLAY_SCALE_LIMITS.max),
     alwaysOnTop: z.boolean(),
     clickThrough: z.boolean(),
     presentation: presentationSchema.optional(),

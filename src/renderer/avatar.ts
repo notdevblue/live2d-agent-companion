@@ -24,7 +24,7 @@ import {
   type ParameterRange,
   type PoseDefinition,
 } from './performance.js';
-import { canGenerateMipmaps, maskBufferCountForGroups } from './rendering.js';
+import { canGenerateMipmaps, canvasDimensions, maskBufferCountForGroups } from './rendering.js';
 import { alphaInputRegion } from '../shared/input-region.js';
 
 interface Motion {
@@ -417,9 +417,14 @@ export class Avatar {
       };
   };
   private resize = (): void => {
-    const ratio = Math.min(window.devicePixelRatio, 2);
-    this.canvas.width = Math.round(innerWidth * ratio);
-    this.canvas.height = Math.round(innerHeight * ratio);
+    const size = canvasDimensions(
+      innerWidth,
+      innerHeight,
+      window.devicePixelRatio,
+      this.gl.getParameter(this.gl.MAX_RENDERBUFFER_SIZE) as number,
+    );
+    this.canvas.width = size.width;
+    this.canvas.height = size.height;
   };
   private draw = (now: number): void => {
     if (this.disposed) return;

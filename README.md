@@ -48,7 +48,7 @@ npm start
 
 `setup:model`은 `~/Downloads/DeepSeek-chan*.zip`에서 런타임 파일만 `local-assets/`에 준비합니다. 다른 ZIP 경로는 `npm run setup:model -- /path/to/model.zip`으로 지정합니다. Core 다운로드는 공식 라이선스 적용 대상이며 로컬 개발용으로만 준비합니다.
 
-캐릭터를 클릭하면 채팅이 열리고 왼쪽 드래그하면 이동합니다. 잡은 상태에서 휠로 크기를 조절하며 위치·크기는 재실행 후에도 유지됩니다. 조작은 사용자 지정 레퍼런스인 Steam [your wife](https://store.steampowered.com/app/3339420/your_wife/?l=english)의 공식 안내를 참고했습니다. `Ctrl+Shift+Space`는 채팅/설정, `Ctrl+Shift+Home`은 위치 복구입니다. 창 없는 상태의 조작은 트레이 메뉴에서도 가능합니다.
+캐릭터를 클릭하면 채팅이 열리고 왼쪽 드래그하면 이동합니다. 잡은 상태에서 휠로 크기를 **0.4~4배**까지 조절하며 위치·크기는 재실행 후에도 유지됩니다. 같은 범위는 ⚙ → 캐릭터 → 캐릭터 크기에서도 설정합니다. 조작은 사용자 지정 레퍼런스인 Steam [your wife](https://store.steampowered.com/app/3339420/your_wife/?l=english)의 공식 안내를 참고했습니다. `Ctrl+Shift+Space`는 채팅/설정, `Ctrl+Shift+Home`은 위치 복구입니다. 창 없는 상태의 조작은 트레이 메뉴에서도 가능합니다.
 
 다른 모니터로는 그대로 드래그하거나 **채팅 창 ⚙ → 캐릭터 → 모니터 선택 → 선택한 모니터로 이동**을 사용하세요. 위치는 즉시 저장되며 별도 연결 저장은 필요하지 않습니다. 화면 경계 제한이 없어 하반신을 화면 아래로 내려 상반신만 표시할 수 있습니다. 부분 표시 위치도 재실행 후 유지하며, 완전히 사라졌으면 위치 복구 단축키를 사용하세요.
 

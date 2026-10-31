@@ -53,7 +53,7 @@ describe('FR-UI-001 drag and wheel scale', () => {
     input.setDragging(true);
     let scale = 1;
     for (let i = 0; i < 30; i++) scale = input.resize(scale, -240, cursor, initial)!.scale;
-    expect(scale).toBe(2);
+    expect(scale).toBe(4);
     for (let i = 0; i < 30; i++) scale = input.resize(scale, 240, cursor, initial)!.scale;
     expect(scale).toBe(0.4);
   });
@@ -61,9 +61,9 @@ describe('FR-UI-001 drag and wheel scale', () => {
   it('preserves the grab anchor beyond a display edge without clipping size', () => {
     const input = new OverlayInputState();
     input.setDragging(true);
-    const start = { x: -800, y: -600, width: 836, height: 1292 };
-    const resized = input.resize(1.9, -240, { x: -800, y: -600 }, start)!;
-    expect(resized.bounds).toEqual({ x: -800, y: -600, width: 880, height: 1360 });
-    expect(resized.scale).toBe(2);
+    const start = { x: -800, y: -600, width: 1672, height: 2584 };
+    const resized = input.resize(3.8, -240, { x: -800, y: -600 }, start)!;
+    expect(resized.bounds).toEqual({ x: -800, y: -600, width: 1760, height: 2720 });
+    expect(resized.scale).toBe(4);
   });
 });

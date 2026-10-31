@@ -2,6 +2,7 @@ import {
   EMOTIONS,
   GESTURES,
   DEFAULT_PRESENTATION,
+  OVERLAY_SCALE_LIMITS,
   type AppSettings,
   type Bootstrap,
   type CompanionEvent,
@@ -271,6 +272,8 @@ function populate(): void {
   input('session-id').value = s.provider.sessionId;
   input('jev-enabled').checked = s.jevEnabled;
   input('jev-model').value = s.jevModel;
+  input('scale').min = String(OVERLAY_SCALE_LIMITS.min);
+  input('scale').max = String(OVERLAY_SCALE_LIMITS.max);
   input('scale').value = String(s.scale);
   input('always-on-top').checked = s.alwaysOnTop;
   input('click-through').checked = s.clickThrough;

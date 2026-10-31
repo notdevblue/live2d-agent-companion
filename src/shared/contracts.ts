@@ -151,6 +151,8 @@ export interface ProviderSettings {
   agentId: string;
   sessionId: string;
 }
+export const OVERLAY_SCALE_LIMITS = { min: 0.4, max: 4 } as const;
+
 export interface AppSettings {
   provider: ProviderSettings;
   jevEnabled: boolean;

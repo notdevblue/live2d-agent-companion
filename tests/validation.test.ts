@@ -89,7 +89,8 @@ describe('character presentation settings (FR-SET-001)', () => {
       null,
     ])
       expect(() => parseSettings({ ...legacySettings, presentation: invalid })).toThrow();
-    for (const scale of [0, 0.39, 2.01, Infinity, NaN])
+    expect(parseSettings({ ...legacySettings, scale: 4 }).scale).toBe(4);
+    for (const scale of [0, 0.39, 4.01, Infinity, NaN])
       expect(() => parseSettings({ ...legacySettings, scale })).toThrow();
   });
   it('accepts only local preview preset enum values', () => {
