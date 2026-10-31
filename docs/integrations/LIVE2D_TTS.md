@@ -20,7 +20,7 @@ DeepSeek-chan은 `.model3.json`에 표정/모션 참조가 없어 `Exp3/`, `Anim
 
 로컬 `ActingController`는 비주기 blink/시선과 눈→고개→몸 지연, thinking/working 및 짧은 감정·태도 반응을 생성한다. `Avatar`는 runtime 범위/중립값과 physics 출력 목록을 검사해 `Angle*`, `Position*`, `LeanInput` 같은 upstream을 구동한다. physics 출력에 해당하는 표준 채널밖에 없으면 그 채널을 생략한다. 표정은 기존/새 레이어를 240ms로 crossfade하고 만료/초기화 시 정리한다. DeepSeek의 알려진 손동작 쌍은 진입→1.5초 유지→복귀이며 유지 시 selector만이 아니라 자산의 모든 손/손목 endpoint를 보존한다. SDK clip은 실제 pose phase 경과 시간으로 진행하고 physics step 제한과 분리한다. 자산 쌍이 없는 사용자 매핑은 기존 단발 motion으로 fallback한다.
 
-idle 호흡은 4.8초 주기(들숨 42%, 날숨 58%)의 부드러운 곡선으로 `ParamBreath`와 작은 bodyY 입력을 함께 구동한다. 호흡 위상은 cue/초기화와 독립적이며 기존 강도/움직임 줄이기를 적용한다. 승인 차단에는 기본 호흡을 정지하고 사용자 gesture의 authored `ParamBreath` curve도 존중한다. OS 창 이동·배율 진동으로 호흡을 흉내 내지 않는다.
+idle 호흡은 4.8초 주기(들숨 42%, 날숨 58%)의 부드러운 곡선으로 `ParamBreath`와 bodyY 입력을 함께 구동한다. 사용자 후속 피드백으로 bodyY 호흡 폭은 첫 구현의 2배로 키웠고, 전체 모델에도 canvas 내부의 작은 수직 offset을 추가했다. 호흡 위상은 cue/초기화와 독립적이며 기존 강도/움직임 줄이기를 적용한다. 승인 차단에는 기본 호흡/offset을 정지하고 사용자 gesture의 authored `ParamBreath` curve도 존중한다. OS 창 위치·배율은 호흡으로 바꾸지 않는다.
 
 설정의 구도는 canvas matrix만 바꾸며 창 배치·모니터·대화 세션을 바꾸지 않는다. 연출 강도와 움직임 줄이기는 로컬 연기만 조절한다. 승인/취소/복구 상태는 transient와 손 포즈를 차단하고, 마지막 Director 상태를 보관해 승인 종료 뒤 복귀한다. 로컬 미리보기는 main의 enum/sender/진행 상태 검사 뒤 실행하며 실제 메시지나 외부 판단을 생성하지 않는다.
 

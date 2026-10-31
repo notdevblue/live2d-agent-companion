@@ -22,6 +22,9 @@
 | Live2D 제작자 영상 | https://www.youtube.com/watch?v=UqwBaQ96iK8 | Iron Vertex 공식 쇼릴: 개요와 일부 상세 구간 프레임 비교. 모델 변형과 편집 컷/확대를 구분. 관찰 범위와 적용 제안은 [상호작용 설계](../ux/INTERACTION_DESIGN.md#버튜버-영상-조사와-표현-발전안) 참조 |
 | hololive 공식 시연 | https://www.youtube.com/watch?v=TtB0GZLum1w&t=20640s | SUPER EXPO 2022 DAY2의 Live2D 3.0 소개 구간 프레임 확인. 손 포즈·특수 표정·근접 구도는 모델 리깅/구도와 구분 |
 | VTube Studio 모델 설정 | https://github.com/DenchiSoft/VTubeStudio/wiki/VTS-Model-Settings | Movement Config, mapping/smoothing, Move Model의 위치·회전·배율·전환 시간, expression/animation hotkey. 우리 앱 구현/플러그인 연결 완료를 뜻하지 않음 |
+| Shylily 제작자 영상 | https://www.youtube.com/watch?v=CK1_ONe0UNM | 2wintails 쇼케이스 0:00~0:08 연속 프레임에서 상체 높이/기울임·중심 변화를 확인. 고정 주기의 자동 호흡이라고 원인을 확정하지 않음 |
+| Nazuna 제작자 영상 | https://www.youtube.com/watch?v=RDeRNF5BUqQ | Brian Tsui 쇼케이스 0:18~0:26 연속 프레임에서 고개와 어깨/상체 높이 변화 확인 |
+| Vienna 제작자 영상 | https://www.youtube.com/watch?v=KqWia9RBjes | Brian Tsui의 Vienna 4.0 쇼케이스 0:16~0:23에서 자세와 상체 움직임 확인. 편집에 의한 확대는 작은 idle 움직임과 구분 |
 | VTube Studio 적용 순서 | https://github.com/DenchiSoft/VTubeStudio/wiki/Interaction-between-Animations,-Tracking,-Physics,-etc. | idle/tracking/one-shot/expression/physics가 같은 parameter를 덮는 우선순위 설명. Cubism 자체나 현재 앱의 순서와 동일시하지 않음 |
 | Cubism parameter 갱신 | https://docs.live2d.com/en/cubism-sdk-manual/parameters/ | motion/blink/expression/조작/breath/physics/lipsync의 공식 예제. DeepSeek upstream physics 매핑과 별도로 읽어야 함 |
 | Cubism 마스크 용량 | https://github.com/Live2D/CubismWebFramework/blob/5-r.5/src/rendering/cubismclippingmanager.ts | 고정 Framework의 단일 버퍼 36그룹, 다중 버퍼당 32그룹. 모델별 그룹 수로 버퍼 수 계산 |

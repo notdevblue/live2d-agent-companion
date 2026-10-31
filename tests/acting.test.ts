@@ -22,30 +22,34 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     });
     for (const trajectory of frames.slice(1)) {
       for (let i = 0; i < trajectory.length; i++) {
-        for (const key of [...motionKeys, 'blink', 'breath', 'smile'] as const)
+        for (const key of [...motionKeys, 'offsetY', 'blink', 'breath', 'smile'] as const)
           expect(trajectory[i]![key]).toBeCloseTo(frames[0]![i]![key], 7);
       }
     }
   });
 
-  it('breathes at idle with a shorter inhale, longer exhale and subtle body rise', () => {
+  it('breathes at idle with a shorter inhale, longer exhale and visible body rise', () => {
     const actor = new ActingController();
     const low = actor.sample(0, 0).breath;
-    expect(low).toBeCloseTo(0.253);
-    expect(advance(actor, 2016).breath).toBeCloseTo(0.747);
+    expect(low).toBeCloseTo(0.188);
+    expect(actor.sample(0, 0).offsetY).toBeCloseTo(-0.0117);
+    const inhaled = advance(actor, 2016);
+    expect(inhaled.breath).toBeCloseTo(0.812);
+    expect(inhaled.offsetY).toBeCloseTo(0.0117);
     expect(advance(actor, 4800, 60, 2016).breath).toBeCloseTo(low);
     actor.preview('happy', 4800);
     const beforeReset = actor.sample(5000, 0).breath;
     actor.reset(5000);
     expect(actor.sample(5000, 0).breath).toBe(beforeReset);
     const peak = advance(actor, 7200, 60, 5000);
-    expect(peak.bodyY).toBeGreaterThan(0.02);
+    expect(peak.bodyY).toBeGreaterThan(0.045);
     actor.configure({ intensity: 'normal', reducedMotion: true });
     expect(Math.abs(actor.sample(7200, 0).breath - 0.5)).toBeCloseTo(
       Math.abs(peak.breath - 0.5) * 0.18,
     );
+    expect(actor.sample(7200, 0).offsetY).toBeCloseTo(peak.offsetY * 0.18);
     actor.setState('blocked', 7200);
-    expect(actor.sample(7300, 0.1)).toMatchObject({ breath: 0.5, bodyY: 0 });
+    expect(actor.sample(7300, 0.1)).toMatchObject({ breath: 0.5, bodyY: 0, offsetY: 0 });
   });
 
   it('expires a cue with attack and release and returns to its ongoing state', () => {

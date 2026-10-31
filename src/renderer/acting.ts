@@ -31,6 +31,8 @@ export interface ActingFrame {
   gazeY: number;
   blink: number;
   breath: number;
+  /** Vertical model translation in clip coordinates, not OS window coordinates. */
+  offsetY: number;
   smile: number;
   preset: ActingPreset;
   active: boolean;
@@ -202,7 +204,8 @@ export class ActingController {
     const weight = reaction ? this.envelope(now - reaction.started) : 0;
     return {
       ...this.pose,
-      breath: this.state === 'blocked' ? 0.5 : 0.5 + this.breathWave(now) * 0.38 * this.scale(),
+      breath: this.state === 'blocked' ? 0.5 : 0.5 + this.breathWave(now) * 0.48 * this.scale(),
+      offsetY: this.state === 'blocked' ? 0 : this.breathWave(now) * 0.018 * this.scale(),
       preset: reaction?.preset ?? this.base(),
       active: !!reaction,
       expressionWeight: weight,
@@ -275,7 +278,7 @@ export class ActingController {
     follow('headY', this.pose.gazeY * 0.45 + blend(base.headY, target.headY) * scale, 4.5);
     follow('headZ', blend(base.headZ, target.headZ) * scale, 4);
     follow('bodyX', this.pose.headX * 0.3, 2.1);
-    follow('bodyY', this.pose.headY * 0.2 + this.breathWave(now) * 0.065 * scale, 2.1);
+    follow('bodyY', this.pose.headY * 0.2 + this.breathWave(now) * 0.13 * scale, 2.1);
     follow('lean', blend(base.lean, target.lean) * scale, 2.5);
     follow('smile', blend(base.smile, target.smile), 6);
     const blinkAge = now - this.blinkAt;

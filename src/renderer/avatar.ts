@@ -514,7 +514,7 @@ export class Avatar {
       const approach = this.presentation.reducedMotion ? 0 : Math.max(0, acting.lean) * 0.25;
       const scale = this.framing.scale * (1 + approach);
       matrix.scale((this.canvas.height / this.canvas.width) * scale, scale);
-      matrix.translateY(this.framing.y - (scale - this.framing.scale) * 0.7);
+      matrix.translateY(this.framing.y + acting.offsetY - (scale - this.framing.scale) * 0.7);
       matrix.multiplyByMatrix(this.runtime.getModelMatrix());
       const renderer = this.runtime.getRenderer();
       renderer.setMvpMatrix(matrix);
