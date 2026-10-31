@@ -83,6 +83,9 @@ function requestActive(): boolean {
   return !!view && !['completed', 'failed', 'cancelled', 'interrupted'].includes(view.state);
 }
 function updateComposer(): void {
+  const message = element<HTMLTextAreaElement>('message');
+  message.style.height = 'auto';
+  message.style.height = `${Math.max(28, Math.min(132, message.scrollHeight))}px`;
   const local =
     !attachments?.count &&
     parseChatCommand(element<HTMLTextAreaElement>('message').value).type !== 'text';
@@ -720,7 +723,6 @@ async function main(): Promise<void> {
     updateComposer();
     element('message').addEventListener('input', updateComposer);
   }
-  element('settings-toggle').onclick = () => safe(() => bridge.openSettings());
   element('settings-close').onclick = () => window.close();
   if (isSettings) settingsWork(refreshDisplays);
   element('move-display').onclick = () =>

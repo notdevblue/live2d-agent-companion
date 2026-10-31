@@ -50,6 +50,7 @@ import { X11InputShape } from './x11-input.js';
 import { characterPreviewSchema, parseSettings } from '../shared/validation.js';
 import { TurnCoordinator, bindingKey, type CoordinatorMetadata } from '../core/turn-coordinator.js';
 import { normalizeAttachments, assertAttachmentSupport } from '../shared/attachments.js';
+import { checkPanelLayout } from './ui-layout-smoke.js';
 import { ConversationHistory } from '../core/conversation-history.js';
 import { MockAdapter } from '../adapters/mock.js';
 import { HermesAdapter } from '../adapters/hermes.js';
@@ -457,7 +458,8 @@ function openPanel(view: 'chat' | 'settings'): void {
     height: 810,
     minWidth: 400,
     minHeight: 600,
-    backgroundColor: '#1e191f',
+    transparent: process.platform === 'linux',
+    backgroundColor: process.platform === 'linux' ? '#00000000' : '#1e191f',
     show: false,
     title: view === 'chat' ? 'Live2D Companion Chat' : 'Live2D Companion Settings',
     // Independent managed dialogs float on Sway without hiding or blocking chat.
@@ -1047,7 +1049,7 @@ async function runSmoke(): Promise<void> {
       document.getElementById('conversation').append(row);
     }
     document.getElementById('conversation').scrollTop=240;
-    document.getElementById('settings-toggle').click();
+    void window.companion.openSettings();
   `);
   for (let i = 0; i < 100; i++) {
     if (
@@ -1059,7 +1061,7 @@ async function runSmoke(): Promise<void> {
   }
   settingsWindow?.show();
   const firstSettings = settingsWindow;
-  await chat?.webContents.executeJavaScript("document.getElementById('settings-toggle').click()");
+  await chat?.webContents.executeJavaScript('window.companion.openSettings()');
   const chatUnchanged = await chat?.webContents.executeJavaScript(`
     window.__chatViewSentinel===document.getElementById('conversation') &&
     document.getElementById('conversation').scrollTop===240 &&
@@ -1084,7 +1086,7 @@ async function runSmoke(): Promise<void> {
     "document.getElementById('settings-close').click()",
   );
   await closedSettings;
-  await chat?.webContents.executeJavaScript("document.getElementById('settings-toggle').click()");
+  await chat?.webContents.executeJavaScript('window.companion.openSettings()');
   for (let i = 0; i < 100; i++) {
     if (
       settingsWindow &&
@@ -1102,6 +1104,10 @@ async function runSmoke(): Promise<void> {
     settingsWindow &&
     chat?.isVisible(),
   );
+  const panelLayout =
+    !smokeHermes && chat && settingsWindow
+      ? await checkPanelLayout(chat, settingsWindow, join(root, 'artifacts'))
+      : { passed: true, skipped: true };
   await chat?.webContents.executeJavaScript(`
     document.getElementById('message').value='';
     for(const row of document.querySelectorAll('[data-window-probe]'))row.remove();
@@ -1271,6 +1277,7 @@ async function runSmoke(): Promise<void> {
   const result = {
     slashMenuVisible,
     independentSettings,
+    panelLayout,
     localizedMaps,
     mappingCoverage,
     mappingChecks,
@@ -1801,6 +1808,7 @@ async function runSmoke(): Promise<void> {
       localizedMaps &&
       slashMenuVisible &&
       independentSettings &&
+      panelLayout.passed &&
       mappingCoverage &&
       presentationControls &&
       previewSafety &&

@@ -13,14 +13,6 @@
       ><button id="model-error" hidden>모델 설정 열기</button>
     </div>
     <main id="chat" hidden>
-      <header>
-        <div class="brand-icon">✳</div>
-        <div>
-          <p class="eyebrow">DESKTOP COMPANION</p>
-          <h1>Live2D Companion<span class="status-dot"></span></h1>
-        </div>
-        <button id="settings-toggle" class="icon-button" aria-label="설정 열기">⚙</button>
-      </header>
       <section id="conversation" aria-label="대화 내용" aria-live="polite"></section>
       <aside id="approval" hidden>
         <p class="eyebrow">HERMES 원격 도구 승인</p>
@@ -45,7 +37,7 @@
           <div id="slash-menu" role="listbox" aria-label="명령" hidden></div>
           <textarea
             id="message"
-            rows="2"
+            rows="1"
             maxlength="32000"
             placeholder="메시지를 입력하세요…"
             aria-label="메시지"

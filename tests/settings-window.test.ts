@@ -75,7 +75,9 @@ describe('FR-UI-002 independent settings view', () => {
     const chat = document.getElementById('chat')!;
     const draft = document.getElementById('message') as HTMLTextAreaElement;
     draft.value = '작성 중';
-    document.getElementById('settings-toggle')!.click();
+    expect(document.querySelector('#chat header')).toBeNull();
+    expect(document.getElementById('settings-toggle')).toBeNull();
+    await bridge.openSettings();
     expect(bridge.openSettings).toHaveBeenCalledOnce();
     expect(chat.hidden).toBe(false);
     expect(document.getElementById('settings')!.hidden).toBe(true);
