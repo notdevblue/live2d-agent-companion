@@ -278,19 +278,18 @@ describe('Hermes SSH native adapter', () => {
   });
 });
 
-describe('dedicated Hermes test session', () => {
-  it('creates only the named test conversation with remote tools disabled', async () => {
+describe('profile-backed Hermes conversation', () => {
+  it('creates a normal conversation inheriting the selected profile tools', async () => {
     const { bridge, adapter } = create();
-    bridge.request.mockResolvedValue({ session_id: 'new-test-session' });
+    bridge.request.mockResolvedValue({ session_id: 'new-session' });
     expect(await adapter.createSession('default')).toEqual({
-      id: 'new-test-session',
-      label: 'Live2D Companion Integration Test',
+      id: 'new-session',
+      label: 'Live2D Companion',
     });
     expect(bridge.request).toHaveBeenCalledWith('session.create', {
       request_id: expect.any(String),
       source: 'gui',
-      title: 'Live2D Companion Integration Test',
-      toolsets: [],
+      title: 'Live2D Companion',
       follow_profile_config: true,
     });
     await expect(adapter.createSession('other-profile')).rejects.toThrow('프로필');

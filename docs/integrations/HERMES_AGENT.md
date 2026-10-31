@@ -4,7 +4,7 @@
 
 ## 공급자 공식 연결 수단
 
-**2026-10-31 앱 구현:** HTTP 어댑터와 SSH/native gateway 어댑터가 있다. 실제 검증은 실행 중인 owner에 SSH로 붙은 전용 새 테스트 세션이다. API 전용 HTTP 세션은 계약 테스트만 통과했으며 canonical Bot Chat의 동일성은 어느 경로에서도 완료로 표시하지 않는다.
+**2026-10-31 앱 구현:** HTTP 어댑터와 SSH/native gateway 어댑터가 있다. 실제 검증은 실행 중인 owner에 SSH로 붙은 전용 테스트 세션과, 후속 사용자 지시로 전환한 default 프로필의 일반 대화다. 일반 대화에서 원격 read_file 호출도 확인했다. API 전용 HTTP 세션은 계약 테스트만 통과했으며 canonical Bot Chat의 동일성은 어느 경로에서도 완료로 표시하지 않는다.
 
 - **API Server:** HTTP + SSE. `POST /v1/chat/completions`, `POST /v1/responses`, `POST /v1/runs`, `GET /v1/runs/{id}/events` 등.
 - **TUI Gateway:** JSON-RPC over stdio 또는 WebSocket. `prompt.submit`, `session.list`, `session.resume`, `session.interrupt` 등.
@@ -55,11 +55,19 @@ Hermes Bot Mode의 Bot은 프로필이며, 별도 기억/스킬/설정을 가지
 
 `session.resume`은 원문 이력을 생략하고, bridge는 reasoning/도구 입출력/내부 transcript를 로컬로 넘기지 않는다. 사용자에게 보이는 assistant 메시지와 도구 lifecycle/승인 요약만 정규화한다. 제출은 session authority admission/receipt와 연결하고 terminal receipt를 확인해야 완료한다. 재접속 replay가 누락됐으면 snapshot을 사용하거나 미확정으로 유지하며 새 prompt를 보내지 않는다.
 
-세션 목록은 메타데이터만 조회하고 기존 ID를 사용자가 명시적으로 고른다. 테스트 전용 새 세션 생성은 별도 버튼이며 도구 목록을 비워 만든다. 이는 기존 Bot Chat 생성/연결 성공으로 간주하지 않는다. 실제 확인한 Hermes 소스 버전은 `6b5df79671`이며 다른 버전은 계약 검증이 필요하다.
+세션 목록은 메타데이터만 조회하고 기존 ID를 사용자가 명시적으로 고른다. ‘새 대화’는 프로필의 설정을 따르는 일반 세션을 만들며 `toolsets`를 강제로 비우지 않는다. 기존 테스트 세션을 계속 사용하던 상태는 사용자 지시로 일반 대화로 전환했다. 이는 기존 Bot Chat 생성/연결 성공으로 간주하지 않는다. 실제 확인한 Hermes 소스 버전은 `6b5df79671`이며 다른 버전은 계약 검증이 필요하다.
+
+### 일반 대화와 통합 검사 구분
+
+초기 생성 코드의 `toolsets: []` 때문에 선택한 프로필에 파일 도구가 있어도 테스트 세션에서 쓸 수 없었다. 원격 메타데이터에서는 이 세션에 x_search 도구 3개가 남아 있었으므로 ‘도구가 모두 꺼진다’고 일반화하지 않는다. 일반 생성은 `toolsets`를 생략하고 `follow_profile_config: true`로 프로필 설정을 따른다. default 일반 세션에서는 file/terminal/memory 등과 최초 tool_count 20을 확인하고 `/etc/os-release`를 `read_file`로 조회해 완료했다. 실제 ID는 앱 사용자 데이터와 ignored 로컬 연결 파일에만 저장한다.
+
+프로필의 기존 실사용 대화는 여러 Discord 세션으로 구분되어 있었다. 이를 임의로 선택하거나 이력을 복제하지 않고 앱용 일반 대화를 default에 생성해 같은 ID를 재사용한다. 이 연결을 canonical Bot Chat 검증 완료라고 표시하지 않는다. 파일 도구는 Hermes가 실행되는 원격 호스트를 대상으로 하며 이 앱이 실행되는 PC의 파일/화면 권한과는 별개다.
+
+`--smoke-hermes`는 선택된 세션의 제목이 전용 `Live2D Companion Integration Test`인지 확인하고, 일반 대화이면 prompt 제출 전에 거절한다. 실사용 연결로 bootstrap 파일을 바꾼 뒤에도 통합 검사가 그 대화에 인사를 넣지 않도록 분리한다. 전용 테스트 연결을 별도로 준비해야 실제 공급자 smoke를 실행할 수 있다.
 
 ### 주소와 인증
 
-Gateway/API 주소·인증 정보는 main에서만. HTTPS/WSS 또는 보호된 local socket을 기본. 모델/프로필 등 선택은 capabilities와 permissions에 따라 달라지며, Agent Companion이 Hermes의 파일/쉘 권한을 자동으로 상속하지 않는다.
+Gateway/API 주소·인증 정보는 main에서만. HTTPS/WSS 또는 보호된 local socket을 기본. 모델/프로필 등 선택은 capabilities와 permissions에 따라 달라지며, 원격 일반 세션은 선택한 Hermes 프로필의 도구 구성을 사용하며, Agent Companion이 실행되는 로컬 PC의 파일/쉘 권한은 별도로 취급한다.
 
 ## 어댑터 이벤트
 

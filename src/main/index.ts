@@ -648,7 +648,7 @@ function registerIpc(): void {
     if (quitting || switching || storageFault || !coordinator || !adapter)
       throw new Error('연결 또는 저장소 준비 상태를 확인하세요.');
     if (settings.provider.sessionId === '__select_session__')
-      throw new Error('기존 세션을 선택하거나 테스트용 새 세션을 생성하세요.');
+      throw new Error('기존 세션을 선택하거나 새 대화를 만드세요.');
     if (expectedSelection !== selectionId)
       throw new Error('대화 대상이 변경되었습니다. 다시 확인하세요.');
     const activeAdapter = adapter;
@@ -818,6 +818,17 @@ function registerIpc(): void {
   });
 }
 async function runSmoke(): Promise<void> {
+  if (smokeHermes) {
+    const sessions = await adapter?.listSessions?.(settings.provider.agentId);
+    const selected = sessions?.find((entry) => entry.id === settings.provider.sessionId);
+    if (selected?.label !== 'Live2D Companion Integration Test') {
+      console.error(
+        '실제 공급자 smoke는 전용 테스트 세션에서만 실행하세요. 일반 대화에는 전송하지 않습니다.',
+      );
+      app.exit(1);
+      return;
+    }
+  }
   await mkdir(join(root, 'artifacts'), { recursive: true });
   openChat();
   overlay?.show();

@@ -273,7 +273,7 @@ export class HermesSshAdapter implements AgentAdapter {
     const results = await Promise.all([
       this.bridge.request('session.list', { scope: 'stored', limit: 200, include_hidden: true }),
       this.bridge.request('session.list', { title: 'Bot Chat' }),
-      this.bridge.request('session.list', { title: 'Live2D Companion Integration Test' }),
+      this.bridge.request('session.list', { title: 'Live2D Companion' }),
     ]);
     const sessions = new Map<string, { id: string; label: string }>();
     // Exact titled lookup also reaches hidden chats and ones outside the bounded picker page.
@@ -295,12 +295,12 @@ export class HermesSshAdapter implements AgentAdapter {
   async createSession(agentId: string): Promise<{ id: string; label: string }> {
     if (agentId !== this.profile)
       throw new Error('연결된 Hermes 프로필과 요청한 프로필이 다릅니다.');
-    const label = 'Live2D Companion Integration Test';
+    const label = 'Live2D Companion';
     const snapshot = await this.bridge.request('session.create', {
       request_id: randomUUID(),
       source: 'gui',
       title: label,
-      toolsets: [],
+      // Omit toolsets so the normal conversation inherits the selected profile's tools.
       follow_profile_config: true,
     });
     const id = boundedString(snapshot.session_id, 256);

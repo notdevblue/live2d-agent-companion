@@ -58,7 +58,7 @@ npm start
 
 Sway에서는 Xwayland로 실행하며(사용자가 backend를 지정하지 않고 `DISPLAY`가 있으면 자동 선택), 항상 위 설정을 켜면 모델 창만 WM 관리에서 제외해 작업공간·전체화면 위에 표시합니다. 클릭해서 여는 채팅·설정 창은 포커스 가능한 floating 창으로 표시합니다. 팝업은 Yuru 팔레트의 어두운 면·크림 글자·민트 강조·버건디 직각 경계와 Sarasa Mono K 글꼴을 사용합니다(미설치 시 로컬 고정폭 글꼴로 대체). Linux 입력 영역 helper의 빌드에는 C 컴파일러와 X11/Xext 개발 헤더가 필요합니다. 준비되지 않으면 클릭 통과를 미지원으로 표시합니다. native Wayland 클릭 통과와 Windows 실사용 검증은 별도입니다.
 
-설정에서 `ssh://user@host`와 Hermes 프로필을 저장한 뒤 기존 세션을 조회/선택하거나 **도구가 꺼진 테스트용 새 세션**을 만들 수 있습니다. 일반 HTTP는 API 소유 세션 전용입니다. 개인 주소·세션은 앱 설정 또는 ignored `local-assets/connection.json`에만 보관합니다. 해당 파일 생성은 `npm run configure:local -- --endpoint ssh://user@example.test --profile default --session SESSION_ID`입니다.
+설정에서 `ssh://user@host`와 Hermes 프로필을 저장한 뒤 기존 세션을 조회/선택하거나 **선택한 프로필 설정을 따르는 일반 새 대화**을 만들 수 있습니다. 일반 HTTP는 API 소유 세션 전용입니다. 개인 주소·세션은 앱 설정 또는 ignored `local-assets/connection.json`에만 보관합니다. 해당 파일 생성은 `npm run configure:local -- --endpoint ssh://user@example.test --profile default --session SESSION_ID`입니다.
 
 Jev는 설정에서 켜고 키를 입력합니다. 표시용 답변 구간만 TypeSafe로 보내며 텍스트 표시를 지연시키지 않습니다. 인증키는 OS 보호 저장소로 암호화하고, 보호 저장소가 없으면 메모리에서만 유지합니다.
 
