@@ -15,7 +15,7 @@
 | `integrations/` | 외부 서비스별 실제 연결·제약·검증 | [GROK_BOT](integrations/GROK_BOT.md), [HERMES_AGENT](integrations/HERMES_AGENT.md), [LIVE2D_TTS](integrations/LIVE2D_TTS.md) |
 | `platform/` | Windows 창, 화면 캡처, 입력 제어 | [WINDOWS_DESKTOP](platform/WINDOWS_DESKTOP.md) |
 | `ux/` | 사용자 흐름과 캐릭터 반응 설계 | [INTERACTION_DESIGN](ux/INTERACTION_DESIGN.md) |
-| `planning/` | 단계별 개발 순서, 리스크, 아키텍처 결정 | [ROADMAP](planning/ROADMAP.md), [RISKS_AND_SPIKES](planning/RISKS_AND_SPIKES.md), [ADR-0001](planning/adrs/0001-adapter-boundary.md), [ADR-0002](planning/adrs/0002-approval-boundary.md) |
+| `planning/` | 단계별 개발 순서, 리스크, 아키텍처 결정 | [ROADMAP](planning/ROADMAP.md), [RISKS_AND_SPIKES](planning/RISKS_AND_SPIKES.md), [ADR-0001](planning/adrs/0001-adapter-boundary.md), [ADR-0002](planning/adrs/0002-approval-boundary.md), [ADR-0003](planning/adrs/0003-request-recovery-and-approvals.md) |
 | `testing/` | 단위/통합/E2E 검증 계획 | [TEST_STRATEGY](testing/TEST_STRATEGY.md) |
 | `development/` | 코드 구조, 변경 절차, PR 기준 | [REPO_CONVENTIONS](development/REPO_CONVENTIONS.md) |
 | `references/` | 공식 자료, 검증일, 링크 | [OFFICIAL_SOURCES](references/OFFICIAL_SOURCES.md) |

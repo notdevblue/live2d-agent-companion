@@ -5,10 +5,10 @@
 ## 핵심 모델
 
 ~~~ts
-type ProviderId = "hermes" | "grok_bot";
+type ProviderId = "hermes" | "grok_bot" | "mock";
 type Capability =
   | "text" | "streaming" | "attachments.image"
-  | "session.list" | "session.resume" | "cancel"
+  | "session.list" | "session.resume" | "request.reconcile" | "cancel"
   | "tool.events" | "tool.approvals" | "pc.tools";
 
 type Support = "supported" | "experimental" | "unsupported";
@@ -19,11 +19,18 @@ type AgentBinding = {
   sessionId: string;    // may be adapter-specific and opaque
   continuity: "verified" | "unverified" | "new-session";
 };
-type UserTurn = {
-  requestId: string; // UUID, generated once
+type RequestRef = {
+  turnId: string;    // one logical user turn
+  requestId: string; // UUID, generated once per submission attempt
   binding: AgentBinding;
+};
+type UserTurn = RequestRef & {
   text: string;
   attachments?: Array<{kind: "image"; localRef: string}>;
+};
+type ProviderApprovalResponse = RequestRef & {
+  approvalId: string;
+  decision: "allow_once" | "deny";
 };
 interface AgentAdapter {
   readonly provider: ProviderId;
@@ -34,10 +41,42 @@ interface AgentAdapter {
   listSessions?(agentId: string): Promise<Array<{id: string; label: string}>>;
   send(turn: UserTurn, sink: (event: NormalizedAgentEvent) => void): Promise<void>;
   cancel?(requestId: string): Promise<"confirmed" | "requested" | "unsupported">;
+  respondApproval?(response: ProviderApprovalResponse):
+    Promise<"applied" | "closed" | "unknown">;
+  reconcile?(request: RequestRef, sink: (event: NormalizedAgentEvent) => void):
+    Promise<"resumed" | "settled" | "unknown">;
 }
 ~~~
 
 `NormalizedAgentEvent`는 `EVENT_SCHEMA.md`의 이벤트 정의를 따른다. 선택적 메서드와 capability 값은 서로 일치해야 한다. 타입은 추후 런타임 유효성 검사 스키마와 함께 결정한다.
+
+`mock`은 개발·테스트 전용 공급자이며 실제 Hermes/Grok 연결로 표시하지 않는다. `request.reconcile`은 기존 요청의 상태 조회·이벤트 재구독 능력이며 `session.resume`과 별개다. `send`의 Promise는 제출 처리 종료를 뜻하고 답변 완료를 뜻하지 않는다. sink는 해당 요청의 종결 또는 재구독 교체까지 유지한다. 복구 시 누적 텍스트는 기존 메시지를 교체하는 snapshot으로 전달하며 delta처럼 덧붙이지 않는다(`EVENT_SCHEMA.md`).
+
+## 식별자 및 재전송
+
+- `turnId`는 사용자의 논리적 입력에, `requestId`는 개별 제출 시도에 발급한다. 원격 run ID는 공급자의 식별자로 별도 보존한다.
+- 재전송은 사용자 확인 후 새 `requestId`를 발급하고 같은 `turnId`로 연결한다. 입력·대상 binding을 바꾸면 새 `turnId`다. 이전 요청의 이벤트는 새 요청의 응답으로 합치지 않는다.
+- 원격 실행 여부가 불명확하면 사용자 확인만으로 같은 세션에 새 요청을 제출하지 않는다. 기존 요청의 원격 종료 또는 미접수를 확인해야 세션 lease를 해제할 수 있다.
+
+## 공급자 승인 응답
+
+`tool.approvals` 지원 시 `respondApproval`을 제공해야 한다. Main은 사용자 선택을 받은 뒤 binding/turn/request/approval 식별자와 만료·미해결 상태를 확인하고 어댑터가 공급자의 실제 응답 형식으로 변환한다. `allow_once`는 해당 요청의 1회 승인만 의미한다.
+
+- `applied`: 공급자 적용이 확인됨. 이때만 `approval.resolved`를 발행한다.
+- `closed`: 이미 응답·만료·철회된 요청. UI를 닫고 실행 권한을 새로 만들지 않는다.
+- `unknown`: 통신 장애 등으로 적용 여부 불명. 성공으로 표시하거나 자동 재전송하지 않고 복구 시 확인한다.
+
+서버 철회·만료는 `approval.closed`로 알린다. 중복 응답은 재적용하지 않으며 재접속 시 살아 있는 승인만 복원한다. 공급자 승인 응답은 PermissionBroker가 발행하는 **로컬 PC 실행 승인과 다른 타입/경로**이며 이를 발행하거나 대체하지 않는다.
+
+## 요청 복구
+
+연결 끊김·로컬 대기 시간 초과·앱 재시작은 원격 종료의 증거가 아니다. 요청을 `reconciling`으로 두고 세션 lease를 유지한다. `reconcile`은 원래 binding과 원격 run의 상태만 확인하며 새 실행을 시작하지 않는다.
+
+- `resumed`: 원격 진행이 확인되고 이벤트 재구독이 연결됨. `turn.resumed`로 원래 진행 상태와 살아 있는 승인을 복원한다.
+- `settled`: 원격 종료 또는 미접수가 확인됨. 해당 terminal 이벤트를 한 번 전달한 뒤 lease를 해제한다.
+- `unknown`: 확인 불가/일시 오류. `reconciling`과 lease를 유지하고 사용자에게 표시한다. 메서드 미지원도 동일하다. 이후 인증된 callback 등으로 원격 종료를 확인할 수 있다.
+
+재구독은 이전 sink를 교체하고 replay/snapshot을 중복 반영하지 않는다. 종료를 확인할 수 없는 세션은 새 제출을 차단한다. 사용자가 명시적으로 별도 세션을 선택해도 원래 요청의 미확정 상태는 보존한다.
 
 ## 필수 어댑터 의미론
 

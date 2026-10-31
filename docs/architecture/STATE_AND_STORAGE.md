@@ -12,8 +12,10 @@
 - `Agent`: `provider + connection_id + agent_id + display_name`.
 - `SessionBinding`: `provider + connection_id + agent_id + session_id + continuity_verification`.
 - `ConversationView`: 사용자 선택/정렬용 로컬 메타데이터; 원격 history의 소유자는 공급자.
-- `Turn`: `request_id, session_binding, state, remote_run_id?, timestamps, terminal_reason`.
-- `Approval`: `approval_id, request_id, action fingerprint, scope, expiry, decision, used_at`.
+- `Turn`: `turn_id, session_binding`. 논리적 입력을 식별하며 본문 저장은 별도 opt-in.
+- `Request`: `request_id, turn_id, state, remote_run_id?, timestamps, terminal_reason`. 개별 제출 시도이며 하나의 Turn에 여러 Request를 연결 가능.
+- `SessionLease`: `session_binding, request_id`. 세션당 하나의 미종결 요청만 허용하고 `reconciling` 중에도 유지.
+- `Approval`: `domain(provider/local_pc), approval_id, turn_id, request_id, action fingerprint, scope, expiry, decision, used_at`. domain + binding + request_id + approval_id로 식별.
 - `CharacterProfile`: 모델 디렉터리, state→motion, 표정 매핑, TTS 프로필.
 - `AudioJob`: request_id, chunk index, generation/cancel state; 원문·오디오 기본 영구 저장 안 함.
 - `AuditEvent`: 시각, 요청 ID, 행동 타입, 승인 상태, 안전한 요약; 비밀/원문 제외.
@@ -29,11 +31,12 @@
 
 ## 상태 정합성
 
-1. turn에 원격 run ID와 고유 request_id를 저장하고 단일 terminal state를 강제.
-2. 앱 재시작 후 진행 상태를 조회할 수 없으면 `interrupted / reconciliation_required`로 표시.
+1. 논리 입력에 turn_id, 제출마다 request_id, 공급자 실행에 remote_run_id를 별도 저장하고 request별 단일 terminal state를 강제한다. 재전송은 새 request_id이며 과거 응답을 새 요청으로 병합하지 않는다.
+2. 앱 재시작 후 미종결 요청은 `reconciling`으로 표시하고 lease를 복원한다. 원격 상태 조회/재구독으로 진행 상태 또는 terminal을 확인한다. 확인 불가 시 미확정으로 유지하고 같은 세션의 새 제출을 차단한다.
 3. 중복 callback의 event_id + request_id를 dedupe. 저장 기간은 실험 결과에 따라 결정.
 4. 공급자 전환은 기존 SessionBinding을 수정하지 않고 active selection pointer만 변경.
 5. 장시간 미완료 요청은 UI에 명시, TTL 지난 민감한 임시 데이터 삭제.
+6. 요청 상태와 lease 변경은 원자적으로 저장한다. 확인된 terminal/미접수 실패만 lease를 해제하며, 연결 종료·로컬 timeout·승인 만료 자체는 원격 실행 종료로 보지 않는다. 복원된 승인에는 기존 식별자와 만료를 유지하고 새 로컬 PC 권한을 만들지 않는다.
 
 ## 데이터 수명
 

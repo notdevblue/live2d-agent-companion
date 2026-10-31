@@ -58,7 +58,7 @@ Desktop request (request_id)
 |---|---|---|
 | Webhook 401/403 | 인증 오류 | 키 교체 요청, 자동 재시도 중지 |
 | Webhook 비-200 | 제출 실패 | 원격 run 시작 불명확 가능성 안내 |
-| Webhook 200, 응답 없음 | 시작됨/결과 미도착 | 정해진 대기 후 timeout, 성공으로 표시 금지 |
+| Webhook 200, 응답 없음 | 시작됨/결과 미도착 | 정해진 대기 후 timeout 안내 + reconciling 유지. 원격 종료 확인 전 같은 세션 재전송 차단 |
 | 중복 callback | 무시 + 진단 | 일회성 request 이벤트 처리 |
 | 세션 연속성 불명 | 검증되지 않음 | '기존 Bot Chat 그대로' 주장 금지 |
 | 아예 callback 불가 | Grok Bot 채팅 미지원 | Hermes 연결은 계속 사용 가능 |

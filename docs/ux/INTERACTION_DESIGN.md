@@ -22,7 +22,8 @@
 | tool.started | 작업 진행 중 · 자세히 보기 | working |
 | approval.requested | 승인 필요 · 실행 전 확인 | neutral, 제스처 중단 |
 | completed | 답변 완료 | talking → idle |
-| failed/timeout | 응답을 받지 못함 · 재시도 유의 | error → idle |
+| reconciling (disconnect/timeout) | 원격 실행 상태 확인 중 · 같은 세션 전송 보류 | error → idle |
+| failed | 요청 실패 확인 · 재시도 가능 여부 표시 | error → idle |
 | unsupported | 이 연결은 해당 기능을 지원하지 않음 | idle |
 
 '보내기 성공'과 '답변 완료'는 서로 다른 상태. 특히 Grok Bot의 callback 미도착은 성공으로 표시하지 않는다.

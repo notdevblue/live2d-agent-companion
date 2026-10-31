@@ -22,10 +22,10 @@ Spikes 성공 전 공급자 어댑터를 `stable`로 표기하지 않는다.
 
 ## 권장 구현 순서
 
-1. 스키마·타입·상태 머신·Mock Agent Adapter
-2. Electron main/preload/renderer의 최소 보안 뼈대
-3. Live2D 로딩 + idle/talking 모션
-4. 채팅 UI + 메시지 이벤트/중단
+1. 스키마·타입·TurnCoordinator·Mock Agent Adapter의 독립 core PoC (`ROADMAP.md`의 첫 구현 범위)
+2. Electron main/preload/renderer의 최소 보안 뼈대 + Mock 채팅 UI/이벤트/중단
+3. S-005 라이선스 확인 후 Live2D 로딩 + idle/talking 모션
+4. Overlay와 채팅 UI 통합 및 Windows 창 동작 검증
 5. Hermes Adapter → 실제 스트리밍
 6. TTS/오디오 + 립싱크 + Character Director
 7. Grok Bot Integration (기술검증 성공 시)

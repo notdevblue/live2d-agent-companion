@@ -50,12 +50,13 @@ Electron main / Local Orchestrator
 ## 메시지 수명주기
 
 1. UI가 선택 중인 provider/agent/session에 `UserTurn` 작성.
-2. TurnCoordinator가 유일한 `request_id` 생성·저장, adapter에 전달.
+2. TurnCoordinator가 논리 입력의 `turn_id`와 제출 시도의 유일한 `request_id`를 생성·저장하고 세션 lease 획득 후 adapter에 전달.
 3. Adapter가 공급자 이벤트를 정규화 (`EVENT_SCHEMA.md`).
 4. 상태 머신이 중복·순서·종결 상태 검증 후 UI 이벤트 전파.
 5. Director는 UI 용도의 의미·상태만 받아 캐릭터 행동 결정.
 6. SpeechOrchestrator는 사용자에게 보여지는 완료/안전한 텍스트에만 TTS 생성.
 7. 사용자가 전환·중단하면 모든 후속 메시지는 원래 세션으로만 라우팅.
+8. 연결 끊김·로컬 timeout·재시작은 `reconciling`으로 두고 기존 원격 실행에 재구독한다. 원격 종료/미접수 확인 전 lease를 유지한다. 공급자 승인 선택은 adapter 응답 경로로만 전달하고 로컬 PC 권한과 분리한다.
 
 ## 선택한 기술과 유연성
 

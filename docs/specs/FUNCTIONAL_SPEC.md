@@ -30,6 +30,8 @@
 | FR-AG-009 | P1 | Grok 응답 Callback/연속성 실증 전 기능을 '실시간 대화 지원'으로 표시 금지 MUST |
 | FR-AG-010 | P1 | 공급자 전환 후 과거 세션의 late response 격리 MUST |
 | FR-AG-011 | P2 | 음성 입력, 다중 봇 동시 표시, 사용자 정의 공급자 어댑터 MAY |
+| FR-AG-012 | P0 | 연결 끊김·로컬 timeout·재시작은 `reconciling`으로 처리하고 원격 종료/미접수 확인 전 세션 lease 유지 및 같은 세션의 새 제출 차단 MUST |
+| FR-AG-013 | P1 | 공급자 승인 응답을 binding/turn/request/approval에 바인딩하고 거절 전달·만료·철회·중복·응답 적용 불명 상태를 로컬 PC 승인과 분리하여 처리 MUST |
 
 ## 음성과 표현
 

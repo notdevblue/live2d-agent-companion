@@ -26,7 +26,7 @@
 
 ## 중요 시나리오
 
-- E-001: `accepted` 후 callback 미도착 → timeout, success 표시 금지.
+- E-001: `accepted` 후 callback 미도착 → 로컬 timeout 안내 + reconciling 유지, success 표시 및 같은 세션 재전송 금지.
 - E-002: callback 서명 또는 bearer 검증 실패 → reject, 원문 미노출.
 - E-003: 같은 event_id 두 번 → 한 번만 상태 전이.
 - E-004: A봇 답변 기다리는 중 B봇 전환 → A 응답은 A에만.
@@ -37,6 +37,15 @@
 - E-009: renderer에서 임의 IPC/Node API 호출 시도 → 차단.
 - E-010: Hermes gateway reconnect → open_requests/inflight 재구성(해당 버전에서 지원 확인).
 - E-011: 같은 Hermes 프로필 새 일반 세션 ≠ 원래 Bot Chat → 잘못된 동일성 주장 금지.
+- E-012: streaming → disconnect → reconciling → 원래 run 재구독 → completed 1회. 복구 누적 본문은 snapshot으로 교체하고 TTS 재생 0회.
+- E-013: reconciling 중 같은 세션 새 submit → 차단. 원격 terminal/미접수 확인 후에만 lease 해제. 별도 세션은 독립적으로 사용 가능.
+- E-014: 미종결 요청 상태 저장 → 앱 재시작 복원 → reconciling과 lease 유지. 조회 불가/복구 미지원도 종료나 자동 재전송으로 바뀌지 않음.
+- E-015: 공급자 승인 거절 → 원래 승인에 deny 응답 1회. 잘못된 binding/turn/request/approval과 중복 응답은 재적용 0회, 로컬 PC 권한 발행 0회.
+- E-016: 승인 대기 중 만료/서버 철회/다른 클라이언트 응답 → 해당 UI만 닫힘. 승인 전송 ack 유실 시 unknown 표시 후 실제 open_requests와 대조.
+- E-017: 종료 확인된 실패의 사용자 재전송 → 같은 turn_id/새 request_id. 과거 요청의 late complete는 새 요청의 상태를 변경하지 않음.
+- E-018: accepted → 비스트리밍 completed 및 accepted/awaiting_result → 로컬 timeout → reconciling → 인증된 늦은 완료 수신. 각 request의 terminal 반영 1회.
+
+E-012~018은 [ADR-0003](../planning/adrs/0003-request-recovery-and-approvals.md)의 회귀 기준이다. 첫 core PoC에서는 가짜 clock과 메모리 상태의 저장/복원으로 검증하고, 실제 앱 재시작·네트워크·Hermes 검증은 Integration/E2E 단계에서 별도로 기록한다.
 
 ## 릴리스 품질 문턱
 

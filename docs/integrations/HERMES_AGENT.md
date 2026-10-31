@@ -33,6 +33,8 @@ Hermes Bot Mode의 Bot은 프로필이며, 별도 기억/스킬/설정을 가지
 - `gateway.ready` 이후 `client.capabilities({"server_requests": true})` 호출해 approval/clarify 등 server→client request 수신 의사를 표시해야 하는 문서 조건을 반영.
 - 지원하지 않는 server request에는 안전한 JSON-RPC method-not-found 응답을 반환.
 - `request.cancel`에 해당하는 UI 질문만 제거; 재연결 시 `open_requests`와 inflight 복구.
+- 로컬 연결 끊김은 `reconciling`으로 처리한다. 기존 원격 run을 조회/재구독하고 누적 텍스트는 snapshot으로 복원하며 새 `prompt.submit`을 보내지 않는다. 실제 run 종료 확인 전 세션 lease를 유지한다.
+- 사용자 승인/거절은 `respondApproval`을 통해 원래 server request ID의 JSON-RPC 응답으로 변환한다. 철회·만료는 `approval.closed`이며 승인 응답 적용 여부가 불명확하면 `open_requests`와 대조한다. 정확한 choice 값과 HTTP 모드의 승인 응답 형식은 대상 버전의 계약 테스트로 확정한다.
 - 서버 gateway의 session 재개와 실제 Bot Mode canonical Chat 바인딩은 별도 검증.
 
 ### 3. Bot Mode 지속성 검증

@@ -4,9 +4,39 @@
 
 ## 우선순위/의존성
 
-**핵심 경로:** S-005 모델 라이선스/렌더 검증 → Mock Chat/Overlay → Hermes 연결 S-001/S-002 → TTS Director → Grok S-003/S-004(병렬 실험) → Screen → PC Tools.
+**핵심 경로:** 계약/TurnCoordinator/Mock PoC → 보안 Electron + Mock Chat → S-005 확인 후 Live2D Overlay → Hermes 연결 S-001/S-002 → TTS Director → Grok S-003/S-004(독립 실험) → Screen → PC Tools.
 
 Grok 연동은 외부 인터페이스 제약에 묶이므로 다른 개발 진행을 막지 않게 별도 트랙으로 유지한다. 실증 실패는 프로젝트 전체 실패가 아님.
+
+## 첫 구현 권장: core PoC
+
+**목표:** 외부 키·모델 자산·Electron 없이 텍스트 한 턴의 제출/응답/중단/복구를 재현하는 TypeScript strict 기반 PoC. 가장 먼저 오류가 나기 쉬운 요청 계약을 검증하고 이후 UI와 실제 공급자가 같은 core를 사용하게 한다. 현재는 계획이며 코드 생성은 이번 문서 정리 범위에 포함하지 않는다.
+
+초기에는 단일 패키지의 `src/contracts/`, `src/core/`, `src/adapters/mock/`, `tests/`로 시작한다. 기존 모노레포 구조 제안은 패키지 분리가 필요해질 때 적용한다. P0-001에서 런타임/패키지 매니저/테스트 도구 버전과 lockfile을 고정한다.
+
+| 순서 | 첫 변경의 범위 | 완료 증거 |
+|---|---|---|
+| 1 | AgentBinding/Turn/Request/승인 응답/이벤트의 타입과 런타임 검증 | 잘못된 binding·payload 거절, FR-AG-003 식별자 테스트 |
+| 2 | 순수 상태 전이와 TurnCoordinator, 메모리 세션 lease 및 저장/복원 인터페이스 | 중복 terminal 차단, reconciling 복구와 같은 세션 중복 제출 차단 |
+| 3 | 결정적인 MockAdapter와 가짜 clock | 정상/비스트리밍/취소/오프라인/승인 거절·철회/지연·중복/재전송 시나리오 |
+| 4 | CLI 데모와 자동 검사 스크립트 | 외부 통신 없이 한 턴 왕복 및 E-003/004/012~018의 core 해당 부분 통과 |
+
+예정 검증 명령은 아래와 같다. P0-001과 첫 코드 변경에서 실제 script/lockfile을 함께 추가하며 **지금 실행 가능한 명령은 아니다**.
+
+~~~sh
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm demo:mock
+~~~
+
+데모는 고정된 비민감 fixture로 정상 왕복과 disconnect → reconciling → 동일 요청 완료를 보여 준다. 테스트는 메모리 상태를 내보낸 뒤 새 coordinator로 복원하는 방식으로 재시작 계약만 검증한다. 실제 프로세스/SQLite/OS 재시작 검증은 이후 단계다. 대화 본문 저장은 기본 비활성화하고 복원 메타데이터에는 식별자·진행 상태·lease만 포함한다.
+
+**다음 변경:** 최소 Electron main/preload/renderer와 채팅 패널에 같은 MockAdapter를 연결한다. 자체 placeholder로 입력·취소·승인 UI를 먼저 검증하고, S-005에서 권리를 확인한 뒤 실제 Live2D 로더/투명 창을 붙인다. core PoC 통과는 AC-01이나 데스크톱 MVP 완료를 뜻하지 않는다. Hermes/Grok 실증은 별도 진행하며 외부 키·라이선스 대기로 core 구현을 막지 않는다.
+
+설계 이슈의 원인·결정·검증 연결은 [ADR-0003](adrs/0003-request-recovery-and-approvals.md)을 따른다.
 
 ## Phase 0 — 환경/문서/실증
 
