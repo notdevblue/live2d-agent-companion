@@ -14,6 +14,8 @@ Chat Panel/Action Panel/Settings는 필요할 때 별도 창으로 열어 모델
 
 Linux에서는 채팅·설정 창을 관리되는 `dialog`로 생성해 Sway/Xwayland에서 자동으로 floating 처리한다. 모델 창의 항상 위 동작과 별개이며, 입력 포커스는 유지한다. 별도 Sway 규칙 없이 새 창 생성·앱 재실행 때 같은 방식이 적용된다.
 
+채팅·설정·승인 팝업은 사용자 현재 rice의 **Yuru** 팔레트(배경 `#1E191F`, 면 `#2A222B`, 크림 `#E1DBD1`, 민트 `#88D4CC`, 버건디 `#712F3E`)를 사용한다. 입력·버튼·말풍선은 직각 1px 경계이며 한영 글꼴은 Sarasa Mono K, 미설치 환경은 Ubuntu Mono/Noto CJK/monospace로 fallback한다. 키보드 포커스·선택·경고/오류·비활성 상태도 구분한다. dark color-scheme은 `#chat` 안에만 적용해 모델 Overlay의 root/배경 투명을 유지한다. CSS 변수와 main 창의 첫 paint 배경에 저장된 테마이며 OS rice의 후속 변경을 자동 감시하지 않는다.
+
 표정·모션 매핑 목록은 DeepSeek 자산의 한국어 표시명을 사용한다. 원본 이름은 항목의 tooltip으로 확인하며 저장값과 파일 이름은 변경하지 않는다. 의미를 확인하지 못한 `脱捕`는 ‘특수 동작 (원문: 脱捕)’로 표시하고, 번역이 없는 다른 모델 자산은 원문을 유지한다.
 
 ## UI 플로우와 의미

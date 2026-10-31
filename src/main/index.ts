@@ -328,7 +328,7 @@ function openChat(): void {
     height: 810,
     minWidth: 400,
     minHeight: 600,
-    backgroundColor: '#f6f8f7',
+    backgroundColor: '#1e191f',
     show: false,
     title: 'Live2D Companion Chat',
     // A managed dialog is automatically floated by Sway/Xwayland. Keep it focusable.

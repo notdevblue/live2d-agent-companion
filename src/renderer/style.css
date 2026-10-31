@@ -1,9 +1,21 @@
+/* Yuru palette, matching the desktop rice. Keep the overlay's root transparent. */
 :root {
-  font-family: Inter, 'Noto Sans KR', system-ui, sans-serif;
-  color: #233d37;
+  --bg: #1e191f;
+  --surface: #2a222b;
+  --fg: #e1dbd1;
+  --bright: #eaecf0;
+  --accent: #88d4cc;
+  --border: #712f3e;
+  --muted: #a69a9f;
+  --error: #d58c97;
+  --warning: #ddc8a3;
+  font-family: 'Sarasa Mono K', 'Ubuntu Mono', 'Noto Sans Mono CJK KR', monospace;
+  color: var(--fg);
   font-synthesis: none;
   font-size: 14px;
+  line-height: 1.5;
 }
+
 * {
   box-sizing: border-box;
 }
@@ -20,14 +32,16 @@ textarea {
 }
 button {
   cursor: pointer;
-  border: 1px solid #d9e5df;
-  background: #fff;
-  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 0;
   padding: 9px 13px;
   color: inherit;
 }
 button:hover {
-  background: #e8f2ed;
+  background: var(--surface);
+  border-color: var(--accent);
+  color: var(--bright);
 }
 button:disabled {
   opacity: 0.45;
@@ -37,26 +51,26 @@ input,
 select,
 textarea {
   width: 100%;
-  border: 1px solid #d9e5df;
-  border-radius: 9px;
-  background: #fff;
-  color: #233d37;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--fg);
   padding: 10px;
   outline: none;
 }
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: #4c8d77;
-  box-shadow: 0 0 0 3px #4c8d7714;
+  border-color: var(--accent);
+  box-shadow: none;
 }
 input[type='checkbox'] {
   width: auto;
-  accent-color: #387b63;
+  accent-color: var(--accent);
 }
 input[type='range'] {
   padding: 0;
-  accent-color: #387b63;
+  accent-color: var(--accent);
 }
 label {
   display: grid;
@@ -77,32 +91,35 @@ p {
 }
 h1 {
   font-size: 20px;
-  letter-spacing: -0.7px;
+  letter-spacing: 0;
 }
 h2 {
   font-size: 16px;
-  letter-spacing: -0.4px;
+  letter-spacing: 0;
 }
 .eyebrow {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 1.8px;
-  color: #7b978a;
+  color: var(--muted);
   margin-bottom: 5px;
 }
 .hint {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
-  color: #74867e;
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
 .primary {
-  background: #316e58;
-  color: #fff;
-  border-color: #316e58;
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
 }
-.primary:hover {
-  background: #245640;
+.primary:hover,
+#send:hover {
+  background: var(--bright);
+  border-color: var(--bright);
+  color: var(--bg);
 }
 .icon-button {
   margin-left: auto;
@@ -110,18 +127,18 @@ h2 {
   background: transparent;
   font-size: 21px;
   padding: 8px;
-  color: #6b8477;
+  color: var(--muted);
 }
 .text-button {
   padding: 3px 5px;
   border: 0;
   background: transparent;
   font-size: 11px;
-  color: #52826e;
+  color: var(--accent);
 }
 .text-button:hover {
   background: transparent;
-  color: #214c39;
+  color: var(--bright);
 }
 #overlay {
   position: fixed;
@@ -144,13 +161,14 @@ h2 {
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
-  background: #f6f8f7;
+  background: var(--bg);
 }
 #chat {
+  color-scheme: dark;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #f6f8f7;
+  background: var(--bg);
 }
 #chat[hidden],
 #overlay[hidden] {
@@ -160,25 +178,26 @@ header {
   display: flex;
   align-items: center;
   gap: 13px;
-  padding: 24px 23px 19px;
-  background: #fff;
+  padding: 20px 23px;
+  background: var(--surface);
 }
 .brand-icon {
-  height: 44px;
-  width: 44px;
-  border-radius: 14px;
-  background: #eaf2ed;
+  height: 40px;
+  width: 40px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg);
   display: grid;
   place-items: center;
-  font-size: 31px;
-  color: #4a856d;
+  font-size: 26px;
+  color: var(--accent);
 }
 .status-dot {
   display: inline-block;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #77aa8d;
+  background: var(--accent);
   vertical-align: middle;
   margin-left: 9px;
 }
@@ -187,30 +206,29 @@ header {
   display: flex;
   gap: 9px;
   align-items: center;
-  border-top: 1px solid #edf2ee;
-  border-bottom: 1px solid #e3eae5;
-  background: #fff;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 .badge,
 .small-pill {
-  border-radius: 6px;
-  padding: 5px 7px;
-  background: #e8f1eb;
-  color: #4d735f;
+  border-radius: 0;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--accent);
   font-size: 10px;
   font-weight: 600;
 }
 #continuity {
   font-size: 10px;
-  color: #8b9b91;
+  color: var(--muted);
 }
 #conversation {
   flex: 1;
   min-height: 90px;
   overflow: auto;
   padding: 22px;
-  scrollbar-width: thin;
-  scrollbar-color: #cfddd4 transparent;
 }
 #welcome {
   text-align: center;
@@ -218,22 +236,22 @@ header {
 }
 #welcome h2 {
   font-size: 23px;
-  letter-spacing: -1px;
+  letter-spacing: 0;
   margin: 16px 0 12px;
 }
 #welcome p {
   font-size: 12px;
   line-height: 1.9;
-  color: #7e9186;
+  color: var(--muted);
   margin-bottom: 22px;
 }
 .welcome-symbol {
   font-size: 51px;
-  color: #9aba9e;
+  color: var(--accent);
 }
 .small-pill {
-  background: #edf2ee;
-  color: #8c9b91;
+  background: var(--surface);
+  color: var(--muted);
   font-weight: 400;
 }
 .message {
@@ -241,9 +259,9 @@ header {
   max-width: 100%;
 }
 .message-label {
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 1px;
-  color: #8d9c94;
+  color: var(--muted);
   margin: 0 4px 8px;
 }
 .message-text {
@@ -252,9 +270,10 @@ header {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 13px;
-  background: #fff;
-  border: 1px solid #e5ece7;
-  border-radius: 4px 15px 15px 15px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  border-left: 2px solid var(--border);
 }
 .message.user {
   margin-left: 35px;
@@ -263,24 +282,25 @@ header {
   text-align: right;
 }
 .message.user .message-text {
-  background: #e3eee5;
-  border-color: #e3eee5;
-  border-radius: 15px 4px 15px 15px;
+  background: var(--surface);
+  border-color: var(--border);
+  border-right: 2px solid var(--accent);
+  border-radius: 0;
 }
 .message.assistant {
   margin-right: 16px;
 }
 footer {
   padding: 15px 20px 17px;
-  background: #fff;
-  border-top: 1px solid #e6ece7;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
 }
 #composer {
   display: flex;
   align-items: flex-end;
-  border: 1px solid #d9e5df;
-  border-radius: 13px;
-  background: #fbfcfa;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg);
   padding: 8px;
 }
 #message {
@@ -293,9 +313,9 @@ footer {
   line-height: 1.6;
 }
 #send {
-  border-radius: 9px;
-  background: #316e58;
-  color: #fff;
+  border-radius: 0;
+  background: var(--accent);
+  color: var(--bg);
   font-size: 24px;
   line-height: 1;
   padding: 7px 11px;
@@ -305,8 +325,8 @@ footer {
   justify-content: space-between;
   gap: 5px;
   margin-top: 10px;
-  font-size: 9px;
-  color: #8a9b90;
+  font-size: 10px;
+  color: var(--muted);
 }
 .composer-meta > span:last-child {
   display: flex;
@@ -316,20 +336,21 @@ footer {
 #notice {
   padding: 0 22px;
   font-size: 11px;
-  color: #927246;
+  color: var(--warning);
   line-height: 1.6;
 }
 #notice:not(:empty) {
   padding-top: 9px;
   padding-bottom: 9px;
-  background: #fbf5e9;
+  background: var(--surface);
+  border-bottom: 1px solid var(--warning);
 }
 #approval {
   margin: 0 20px 8px;
-  border: 1px solid #e6c89d;
-  border-radius: 12px;
+  border: 1px solid var(--warning);
+  border-radius: 0;
   padding: 15px;
-  background: #fff9ec;
+  background: var(--surface);
 }
 #approval-summary {
   font-size: 12px;
@@ -348,7 +369,7 @@ footer {
   padding: 20px 23px;
   min-height: 0;
   flex: 1;
-  background: #fff;
+  background: var(--surface);
 }
 #settings:not([hidden]) ~ #conversation {
   display: none;
@@ -365,7 +386,7 @@ footer {
 }
 .divider {
   height: 1px;
-  background: #e6ece7;
+  background: var(--border);
   margin: 22px 0;
 }
 #save-settings {
@@ -387,7 +408,7 @@ summary {
 }
 .map-title {
   font-size: 11px;
-  color: #718477;
+  color: var(--muted);
   padding-top: 12px;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -396,7 +417,7 @@ summary {
   }
 }
 :focus-visible {
-  outline: 2px solid #387b63;
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 
@@ -413,4 +434,35 @@ summary {
 .preview-buttons button {
   padding: 8px;
   font-size: 12px;
+}
+
+#chat * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) var(--bg);
+}
+#chat ::selection {
+  color: var(--bg);
+  background: var(--accent);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+select option {
+  color: var(--fg);
+  background: var(--surface);
+}
+#deny,
+#stop {
+  color: var(--error);
+  border-color: var(--error);
+}
+#deny:hover {
+  color: var(--bg);
+  background: var(--error);
+}
+#settings .section-heading {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
 }
