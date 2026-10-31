@@ -77,7 +77,7 @@ export interface CoordinatorOptions {
   requestTimeoutMs?: number;
   judgeTimeoutMs?: number;
   confidenceThreshold?: number;
-  beforeSubmit?: (metadata: CoordinatorMetadata) => Promise<void>;
+  beforeSubmit?: (metadata: CoordinatorMetadata, text: string) => Promise<void>;
 }
 
 export class TurnCoordinator {
@@ -141,7 +141,7 @@ export class TurnCoordinator {
     this.director.begin(request.requestId);
     this.publish();
     try {
-      await this.options.beforeSubmit?.(this.snapshot());
+      await this.options.beforeSubmit?.(this.snapshot(), text);
     } catch {
       if (this.owns(request.requestId) && !this.isTerminal())
         this.finish(

@@ -19,6 +19,8 @@ Linux X11 Overlay의 입력 영역 helper는 main이 가진 자기 창의 native
 
 ## 권한 등급
 
+표시용 채팅 복원은 선택한 Hermes SSH session의 `session.history` projection에서 `user/assistant`의 일반 `text`와 행 ID만 원격 host에서 추출한다. system/tool·reasoning/detail sidecar·도구 인수/결과·첨부 데이터·display metadata는 SSH 경계를 넘기지 않는다. 본문은 main과 채팅 renderer의 메모리에서만 보관하며 Overlay의 history bootstrap에는 포함하지 않는다. 파일 로그/진단/저장소나 Jev에 이력을 복제하지 않고, 과거 메시지를 실행 권한으로 해석하지 않는다.
+
 | 위험 | 예시 | 기본 정책 |
 |---|---|---|
 | R0 | 캐릭터 애니메이션, 대화 UI 표시 | 허용 |

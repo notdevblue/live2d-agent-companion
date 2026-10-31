@@ -49,6 +49,8 @@ E-012~018은 [ADR-0003](../planning/adrs/0003-request-recovery-and-approvals.md)
 
 ## 릴리스 품질 문턱
 
+`FR-CHAT-001`: `tests/history.test.ts`는 동시 로드·실패 후 재조회·답변 교체·동일 본문인 다른 요청 구분·snapshot 격리·복원 요청의 provider 기록 사용·원격 sidecar 제거를 검사한다. `tests/adapters-ssh.test.ts`는 정확한 binding/세션 검사와 prompt 없는 history 조회를 고정한다. Mock desktop은 실제 창 reload/닫기·재열기·다른 세션으로 전환 후 복귀를 검사하며 앱 프로세스 재실행은 실제 SSH에서 원문 없는 결과만 기록한다.
+
 1. `docs/specs/ACCEPTANCE_CRITERIA.md`의 해당 Phase 수락 조건 통과.
 2. 기술 검증 결과 및 공식 근거 업데이트.
 3. secrets scan, dependency/vulnerability review, IPC/permission review.

@@ -105,6 +105,28 @@ describe('Hermes SSH native adapter', () => {
     ]);
     await expect(adapter.listSessions('other')).rejects.toThrow('프로필');
   });
+  it('reads only the selected session history without submitting a prompt', async () => {
+    const { bridge, adapter } = create();
+    const original = bridge.request.getMockImplementation()!;
+    bridge.request.mockImplementation(async (method, params) =>
+      method === 'session.history'
+        ? {
+            messages: [
+              { id: 'row:1', role: 'user', text: 'question' },
+              { id: 'row:2', role: 'assistant', text: 'answer' },
+            ],
+          }
+        : original(method, params),
+    );
+    expect(await adapter.history(turn.binding)).toHaveLength(2);
+    expect(bridge.request.mock.calls).toEqual([
+      ['session.resume', { session_id: 'existing-session', omit_messages: true }],
+      ['session.history', { session_id: 'existing-session' }],
+    ]);
+    await expect(adapter.history({ ...turn.binding, agentId: 'other' })).rejects.toThrow();
+    bridge.request.mockResolvedValue({ ...snapshot, session_id: 'other' });
+    await expect(adapter.history(turn.binding)).rejects.toThrow('세션');
+  });
   it('attaches exact existing session and submits JSON data with stable submission ID', async () => {
     const { bridge, adapter } = create();
     const events: AgentEvent[] = [];

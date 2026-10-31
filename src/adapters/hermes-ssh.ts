@@ -11,6 +11,8 @@ import {
   type EventSink,
   type RequestRef,
   type UserTurn,
+  type AgentBinding,
+  type ConversationMessage,
 } from '../shared/contracts.js';
 import { boundedString, object, TransportError } from './transport.js';
 import { parseSshTarget } from '../shared/validation.js';
@@ -261,6 +263,7 @@ export class HermesSshAdapter implements AgentAdapter {
       streaming: 'supported',
       'session.list': 'supported',
       'session.resume': 'supported',
+      'session.history': 'supported',
       'request.reconcile': 'supported',
       cancel: 'supported',
       'tool.events': 'supported',
@@ -304,8 +307,31 @@ export class HermesSshAdapter implements AgentAdapter {
       follow_profile_config: true,
     });
     const id = boundedString(snapshot.session_id, 256);
-    if (!id) throw new Error('Hermes 테스트 세션 식별자가 없습니다.');
+    if (!id) throw new Error('Hermes 새 대화 식별자가 없습니다.');
     return { id, label };
+  }
+  async history(binding: AgentBinding): Promise<ConversationMessage[]> {
+    this.validate({ binding, requestId: 'history', turnId: 'history' });
+    // Attach without messages first so stored sessions become addressable by session.history.
+    const snapshot = await this.bridge.request('session.resume', {
+      session_id: binding.sessionId,
+      omit_messages: true,
+    });
+    if (snapshot.session_id !== binding.sessionId)
+      throw new Error('Hermes 대화 기록의 세션이 일치하지 않습니다.');
+    const result = await this.bridge.request('session.history', { session_id: binding.sessionId });
+    if (!Array.isArray(result.messages))
+      throw new Error('Hermes 대화 기록 형식이 올바르지 않습니다.');
+    return result.messages.map((raw) => {
+      const row = object(raw);
+      if (row.role !== 'user' && row.role !== 'assistant')
+        throw new Error('Hermes 대화 역할이 올바르지 않습니다.');
+      return {
+        id: boundedString(row.id, 256),
+        role: row.role,
+        text: boundedString(row.text, 256_000),
+      };
+    });
   }
   async send(turn: UserTurn, sink: EventSink): Promise<void> {
     this.validate(turn);

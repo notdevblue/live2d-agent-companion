@@ -15,8 +15,9 @@ import sys
 import urllib.parse
 
 MAX_FRAME = 1_000_000
+MAX_NATIVE_FRAME = 16_000_000  # History sidecars are discarded on-host before the smaller SSH boundary.
 METHODS = {'gateway.capabilities', 'session.create', 'session.list', 'session.resume', 'session.events.since',
-           'prompt.submit', 'prompt.receipt', 'prompt.cancel', 'session.interrupt', 'approval.respond'}
+           'session.history', 'prompt.submit', 'prompt.receipt', 'prompt.cancel', 'session.interrupt', 'approval.respond'}
 EVENT_TYPES = {'message.start', 'message.delta', 'message.complete', 'tool.start', 'tool.complete',
                'tool.started', 'tool.completed', 'approval.request', 'approval.settled', 'session.replay_gap'}
 
@@ -81,6 +82,22 @@ def safe_result(method, result):
     if method == 'session.list':
         return {'sessions': [{key: row[key] for key in ('id', 'session_id', 'resolved_id', 'title',
                 'source', 'running', 'execution_state') if key in row} for row in result.get('sessions', [])]}
+    if method == 'session.history':
+        # Native display projection has already removed hidden scaffolding. Never forward its
+        # reasoning/detail sidecars, tool cards, metadata, images or system messages.
+        messages = []
+        for index, row in enumerate(result.get('messages', [])):
+            if not isinstance(row, dict) or row.get('role') not in ('user', 'assistant'):
+                continue
+            text = row.get('text')
+            if row.get('display_kind') == 'hidden' or not isinstance(text, str) or not text.strip():
+                continue
+            if len(text) > 256_000:
+                raise ValueError('history_message_size')
+            row_id = row.get('row_id')
+            ident = 'row:' + str(row_id) if isinstance(row_id, int) else 'position:' + str(index)
+            messages.append({'id': ident, 'role': row['role'], 'text': text})
+        return {'messages': messages}
     if method in ('session.resume', 'session.create'):
         # History is required internally by Hermes attach. Discard it here, on the host, before SSH.
         return {**{key: result[key] for key in ('session_id', 'stored_session_id', 'running',
@@ -193,7 +210,7 @@ def main():
             elif length == 127:
                 if len(buffered) < 10: break
                 length, offset = struct.unpack('!Q', buffered[2:10])[0], 10
-            if length > MAX_FRAME or second & 128:
+            if length > MAX_NATIVE_FRAME or second & 128:
                 raise ValueError('invalid_frame')
             if len(buffered) < offset + length: break
             data, buffered = buffered[offset:offset+length], buffered[offset+length:]
@@ -208,7 +225,7 @@ def main():
                 fragment_opcode = opcode
             elif fragment_opcode is None: raise ValueError('invalid_frame')
             fragments += data
-            if len(fragments) > MAX_FRAME: raise ValueError('response_size')
+            if len(fragments) > MAX_NATIVE_FRAME: raise ValueError('response_size')
             if not first & 128: continue
             frame = json.loads(fragments.decode('utf-8')); fragments, fragment_opcode = b'', None
             if frame.get('method') == 'gateway.ping':
@@ -232,7 +249,7 @@ def main():
             chunk = sock.recv(65536)
             if not chunk: return
             buffered += chunk
-            if len(buffered) > MAX_FRAME + 65536: raise ValueError('response_size')
+            if len(buffered) > MAX_NATIVE_FRAME + 65536: raise ValueError('response_size')
         if 0 in readable:
             chunk = os.read(0, 65536)
             if not chunk:

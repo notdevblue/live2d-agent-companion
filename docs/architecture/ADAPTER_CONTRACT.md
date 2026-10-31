@@ -8,7 +8,7 @@
 type ProviderId = "hermes" | "grok_bot" | "mock";
 type Capability =
   | "text" | "streaming" | "attachments.image"
-  | "session.list" | "session.resume" | "request.reconcile" | "cancel"
+  | "session.list" | "session.resume" | "session.history" | "request.reconcile" | "cancel"
   | "tool.events" | "tool.approvals" | "pc.tools";
 
 type Support = "supported" | "experimental" | "unsupported";
@@ -53,6 +53,12 @@ interface AgentAdapter {
 **현재 구현:** 위 코드는 논리적 초안이며 실제 TypeScript 이름은 `src/shared/contracts.ts`의 `AgentEvent`/`ApprovalResponse`다. `src/shared/validation.ts`가 런타임 검사 기준이다. 실제 어댑터에는 명시적 `listSessions`와 `createSession` 선택 메서드가 있으며 새 세션 생성은 UI 동작으로만 수행한다. HTTP와 SSH는 서로 다른 연결 방식으로 유지한다. 미구현 첨부/listAgents를 지원한다고 선언하지 않는다.
 
 `mock`은 개발·테스트 전용 공급자이며 실제 Hermes/Grok 연결로 표시하지 않는다. `request.reconcile`은 기존 요청의 상태 조회·이벤트 재구독 능력이며 `session.resume`과 별개다. `send`의 Promise는 제출 처리 종료를 뜻하고 답변 완료를 뜻하지 않는다. sink는 해당 요청의 종결 또는 재구독 교체까지 유지한다. 복구 시 누적 텍스트는 기존 메시지를 교체하는 snapshot으로 전달하며 delta처럼 덧붙이지 않는다(`EVENT_SCHEMA.md`).
+
+## 표시용 기록 (현재 구현)
+
+실제 `AgentAdapter`는 선택적 `history(binding): Promise<ConversationMessage[]>`를 제공한다. 각 메시지는 `id`, `role: user | assistant`, `text`이며 로컬 실행 중인 메시지에는 `requestId`가 추가될 수 있다. SSH만 `session.history` capability를 제공한다. native 표시 projection의 역할/본문만 원격 bridge에서 allowlist로 추출하고 main에서 재검증한다. 기록은 selected binding 단위 메모리 cache로만 유지하며 다른 공급자·프로필·세션으로 보내거나 새 prompt의 본문에 덧붙이지 않는다.
+
+기록 행과 admission의 안정적인 join이 없는 Hermes에서는 재시작 때 복원된 미종결 요청의 본문을 별도 bubble로 중복 추가하지 않는다. 기존 기록과 실행 상태를 표시하고 원격 종결 확인 뒤 기록을 다시 읽는다. 같은 문자열을 가진 별개 답변은 합치지 않는다. 이 경로는 Jev와 캐릭터 cue를 재실행하지 않는다.
 
 ## 식별자 및 재전송
 

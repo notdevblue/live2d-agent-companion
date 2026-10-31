@@ -77,6 +77,20 @@ function addMessage(role: 'user' | 'assistant', text: string): HTMLElement {
   element('conversation').append(item);
   return content;
 }
+function restoreHistory(): void {
+  if (!boot.history) return;
+  for (const message of element('conversation').querySelectorAll('.message')) message.remove();
+  assistantMessages.clear();
+  element('welcome').hidden = false;
+  for (const message of boot.history) {
+    const content = addMessage(message.role, message.text);
+    if (message.role === 'assistant' && message.requestId)
+      assistantMessages.set(message.requestId, content);
+  }
+  element('conversation').scrollTop = element('conversation').scrollHeight;
+  // Only apply each snapshot once. Later settings responses may omit history.
+  boot.history = undefined;
+}
 function applyPresentation(settings: PresentationSettings): void {
   boot.settings.presentation = { ...settings };
   avatar?.configure(settings);
@@ -124,6 +138,14 @@ function applyCharacterState(): void {
   appliedCharacterState = state;
 }
 function renderEvent(event: CompanionEvent): void {
+  if (event.type === 'history') {
+    boot.history = event.messages;
+    boot.historyRestoredRequestId = event.restoredRequestId;
+    boot.historyError = event.error;
+    restoreHistory();
+    notice(event.error ?? '');
+    return;
+  }
   if (event.type === 'presentation') {
     applyPresentation(event.settings);
     return;
@@ -172,7 +194,10 @@ function renderEvent(event: CompanionEvent): void {
   if (event.turn.requestId !== view?.requestId) lastCharacterState = 'thinking';
   view = event.turn;
   applyCharacterState();
-  if (view.text || assistantMessages.has(view.requestId)) {
+  if (
+    view.requestId !== boot.historyRestoredRequestId &&
+    (view.text || assistantMessages.has(view.requestId))
+  ) {
     let content = assistantMessages.get(view.requestId);
     if (!content) {
       content = addMessage('assistant', view.text);
@@ -189,7 +214,7 @@ function renderEvent(event: CompanionEvent): void {
   element('approval').hidden = !view.approval;
   if (view.approval) element('approval-summary').textContent = view.approval.summary;
   if (view.error) notice(view.error);
-  else notice('');
+  else notice(boot.historyError ?? '');
 }
 function receive(event: CompanionEvent): void {
   if (!ready) {
@@ -275,6 +300,7 @@ async function refreshDisplays(): Promise<void> {
   }
 }
 function populate(): void {
+  restoreHistory();
   const s = boot.settings;
   element<HTMLSelectElement>('provider').value = s.provider.provider;
   input('endpoint').value = s.provider.endpoint;
@@ -320,6 +346,7 @@ function populate(): void {
       : '표현: Jev 키 입력 필요'
     : '표현: 기본 규칙';
   if (boot.connectionError) notice(boot.connectionError);
+  else if (boot.historyError) notice(boot.historyError);
   populateMaps();
   if (boot.currentTurn) renderEvent({ type: 'turn', turn: boot.currentTurn });
   else {
@@ -336,7 +363,10 @@ function adoptBootstrap(next: Bootstrap): void {
   const switched =
     JSON.stringify(next.settings.provider) !== JSON.stringify(boot.settings.provider);
   const sameSelection = next.selectionId === boot.selectionId;
-  if (sameSelection && next.revision < currentRevision) next.currentTurn = view;
+  if (sameSelection && next.revision < currentRevision) {
+    next.currentTurn = view;
+    next.history = undefined;
+  }
   if (switched) {
     for (const message of element('conversation').querySelectorAll('.message')) message.remove();
     assistantMessages.clear();
@@ -483,6 +513,12 @@ async function overlayMode(): Promise<void> {
 }
 async function main(): Promise<void> {
   if (!bridge) throw new Error('보안 브리지를 불러올 수 없습니다.');
+  const isOverlay = new URLSearchParams(location.search).get('view') === 'overlay';
+  if (!isOverlay) {
+    element('chat').hidden = false;
+    element<HTMLButtonElement>('send').disabled = true;
+    notice('이전 대화를 불러오는 중입니다.');
+  }
   bridge.onEvent(receive);
   boot = await bridge.bootstrap();
   currentRevision = boot.revision;
@@ -493,13 +529,14 @@ async function main(): Promise<void> {
     ready = true;
     for (const event of buffered.splice(0)) receive(event);
   };
-  if (new URLSearchParams(location.search).get('view') === 'overlay') {
+  if (isOverlay) {
     await overlayMode();
     finish();
     return;
   }
   element('chat').hidden = false;
   populate();
+  if (!boot.currentTurn) notice(boot.historyError ?? boot.connectionError ?? '');
   finish();
   const toggle = () => {
     element('settings').hidden = !element('settings').hidden;
@@ -570,7 +607,7 @@ async function main(): Promise<void> {
     safe(async () => {
       adoptBootstrap(await bridge.saveSettings(collectSettings()));
       adoptBootstrap(await bridge.createSession());
-      notice('테스트 전용 새 세션을 생성했습니다. 기존 Bot Chat과 별도입니다.');
+      notice('선택한 프로필에 새 대화를 만들었습니다. 기존 Bot Chat과 별도입니다.');
     });
   element('save-settings').onclick = () =>
     safe(async () => {

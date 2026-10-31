@@ -48,6 +48,7 @@ import {
 import { X11InputShape } from './x11-input.js';
 import { characterPreviewSchema, parseSettings } from '../shared/validation.js';
 import { TurnCoordinator, bindingKey, type CoordinatorMetadata } from '../core/turn-coordinator.js';
+import { ConversationHistory } from '../core/conversation-history.js';
 import { MockAdapter } from '../adapters/mock.js';
 import { HermesAdapter } from '../adapters/hermes.js';
 import { HermesSshAdapter } from '../adapters/hermes-ssh.js';
@@ -131,11 +132,28 @@ let lastCue: Extract<CompanionEvent, { type: 'cue' }> | undefined;
 let lastJudgeMs: number | undefined;
 let position: { x: number; y: number } | undefined;
 let intendedOverlayBounds: Electron.Rectangle | undefined;
+const histories = new Map<string, ConversationHistory>();
+function conversation(binding = currentBinding()): ConversationHistory {
+  const key = bindingKey(binding);
+  let history = histories.get(key);
+  if (!history) {
+    history = new ConversationHistory();
+    histories.set(key, history);
+  }
+  return history;
+}
+async function loadHistory(): Promise<void> {
+  const binding = currentBinding();
+  const active = adapter;
+  if (binding.sessionId === '__select_session__') return;
+  await conversation(binding).load(active?.history ? () => active.history!(binding) : undefined);
+}
 
 function emit(event: CompanionEvent): void {
+  if (event.type === 'turn') conversation(event.turn.binding).update(event.turn);
   event = { ...event, selectionId, revision: ++revision };
   if (event.type === 'cue') lastCue = event;
-  for (const window of [overlay, chat])
+  for (const window of event.type === 'history' ? [chat] : [overlay, chat])
     if (window && !window.isDestroyed()) window.webContents.send('companion:event', event);
   if (event.type === 'turn' || event.type === 'character' || event.type === 'cue') persistPending();
 }
@@ -202,21 +220,59 @@ async function configure(alreadyLocked = false): Promise<void> {
           }
         : jev;
     const ownSelection = selectionId;
+    const ownAdapter = adapter;
+    const ownHistory = conversation(binding);
+    let restoredHistoryRefreshed = false;
     coordinator = new TurnCoordinator({
       adapter,
       binding,
       judge,
       onEvent: (event) => {
-        if (selectionId === ownSelection) emit(event);
+        if (selectionId !== ownSelection) return;
+        emit(event);
+        if (
+          event.type === 'turn' &&
+          event.turn.requestId === ownHistory.restoredRequestId &&
+          !restoredHistoryRefreshed &&
+          ['completed', 'failed', 'cancelled', 'interrupted'].includes(event.turn.state) &&
+          ownAdapter.history
+        ) {
+          restoredHistoryRefreshed = true;
+          void ownHistory
+            .refresh(() => ownAdapter.history!(binding))
+            .then(
+              () => {
+                if (selectionId === ownSelection)
+                  emit({
+                    type: 'history',
+                    messages: ownHistory.snapshot(),
+                    restoredRequestId: ownHistory.restoredRequestId,
+                  });
+              },
+              () => {
+                if (selectionId === ownSelection)
+                  emit({
+                    type: 'history',
+                    messages: ownHistory.snapshot(),
+                    restoredRequestId: ownHistory.restoredRequestId,
+                    error: '복구된 답변의 기록을 불러오지 못했습니다. 채팅창을 다시 열어 주세요.',
+                  });
+              },
+            );
+        }
       },
-      beforeSubmit: async (metadata) => {
+      beforeSubmit: async (metadata, text) => {
         if (storageFault) throw new Error('요청 상태 저장에 실패했습니다.');
         pending[bindingKey(metadata.binding)] = metadata;
         await pendingFile.write(pending);
+        conversation(metadata.binding).submitted(metadata.pending!.requestId, text);
       },
     });
     const saved = pending[bindingKey(binding)];
     if (saved?.pending) {
+      // Native history has no durable admission→row join. Re-read the provider's display
+      // history on settlement instead of adding a second copy of a restored answer.
+      if (adapter.history) ownHistory.restoredRequestId = saved.pending.requestId;
       if (
         (adapter instanceof HermesAdapter || adapter instanceof HermesSshAdapter) &&
         saved.pending.remoteRunId
@@ -232,7 +288,17 @@ async function configure(alreadyLocked = false): Promise<void> {
     if (!alreadyLocked) switching = false;
   }
 }
-async function bootstrap(): Promise<Bootstrap> {
+async function bootstrap(includeHistory = true): Promise<Bootstrap> {
+  let historyError: string | undefined;
+  const selected = selectionId;
+  if (includeHistory) {
+    try {
+      await loadHistory();
+    } catch {
+      historyError = '이전 대화를 불러오지 못했습니다. 연결을 확인하고 채팅창을 다시 열어 주세요.';
+    }
+    if (selected !== selectionId) return bootstrap(includeHistory);
+  }
   const state = {
     selectionId,
     revision,
@@ -246,6 +312,13 @@ async function bootstrap(): Promise<Bootstrap> {
       ? '요청 상태를 저장하지 못해 새 전송을 차단했습니다. 저장 공간과 권한을 확인하세요.'
       : (connectionError ?? modelError),
     currentTurn: coordinator?.current,
+    ...(includeHistory
+      ? {
+          history: conversation().snapshot(),
+          historyError,
+          historyRestoredRequestId: conversation().restoredRequestId,
+        }
+      : {}),
   };
   const [hermes, grok_bot, jev] = await Promise.all([
     vault.has(credentialScope('hermes', state.settings.provider.endpoint)),
@@ -515,7 +588,7 @@ async function createOverlay(): Promise<void> {
 function registerIpc(): void {
   ipcMain.handle('companion:bootstrap', async (event) => {
     trusted(event);
-    return bootstrap();
+    return bootstrap(event.sender === chat?.webContents);
   });
   ipcMain.handle('companion:test', async (event) => {
     trusted(event, true);
@@ -659,6 +732,7 @@ function registerIpc(): void {
     submissionPending = { selectionId: selected, token: submissionToken };
     try {
       await activeAdapter.connect();
+      await loadHistory();
       if (switching || selectionId !== selected || coordinator !== activeCoordinator)
         throw new Error('대화 대상이 변경되어 전송하지 않았습니다.');
       await activeCoordinator.send(z.string().trim().min(1).max(32000).parse(text));
@@ -1023,7 +1097,41 @@ async function runSmoke(): Promise<void> {
   };
   let uiRouting = true;
   let monitorSelection = true;
+  let historyRestored = true;
+  const firstProvider = { ...settings.provider };
   if (!smokeHermes) {
+    const transcript = await chat?.webContents.executeJavaScript(
+      "Array.from(document.querySelectorAll('#conversation .message')).map(row=>({role:row.classList.contains('user')?'user':'assistant',text:row.querySelector('.message-text').textContent}))",
+    );
+    const sameTranscript = async () => {
+      for (let i = 0; i < 100; i++) {
+        if (await chat?.webContents.executeJavaScript('window.__uiReady === true')) break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return chat?.webContents.executeJavaScript(
+        `JSON.stringify(Array.from(document.querySelectorAll('#conversation .message')).map(row=>({role:row.classList.contains('user')?'user':'assistant',text:row.querySelector('.message-text').textContent}))) === ${JSON.stringify(JSON.stringify(transcript))}`,
+      );
+    };
+    chat?.reload();
+    await new Promise<void>((resolve) =>
+      chat?.webContents.once('did-finish-load', () => resolve()),
+    );
+    const reloadRestored = await sameTranscript();
+    const closedChat = new Promise<void>((resolve) => chat?.once('closed', () => resolve()));
+    chat?.close();
+    await closedChat;
+    openChat();
+    const reopenRestored = await sameTranscript();
+    historyRestored = Boolean(transcript?.length === 2 && reloadRestored && reopenRestored);
+    Object.assign(result, {
+      historyRestored,
+      historyRestoreChecks: {
+        initialCount: transcript?.length,
+        cachedCount: conversation().snapshot().length,
+        reloadRestored,
+        reopenRestored,
+      },
+    });
     await chat?.webContents.executeJavaScript("window.companion.previewCharacter('reset')");
     emit({
       type: 'cue',
@@ -1312,6 +1420,27 @@ async function runSmoke(): Promise<void> {
     );
     uiRouting = Boolean(newSessionCleared && providerSwitchCleared);
     Object.assign(result, { uiRouting: { newSessionCleared, providerSwitchCleared } });
+    await chat?.webContents.executeJavaScript(`(async()=>{
+      const boot = await window.companion.bootstrap();
+      await window.companion.saveSettings({...boot.settings,provider:${JSON.stringify(firstProvider)}});
+    })()`);
+    const historyReloaded = new Promise<void>((resolve) =>
+      chat?.webContents.once('did-finish-load', () => resolve()),
+    );
+    chat?.reload();
+    await historyReloaded;
+    for (let i = 0; i < 100; i++) {
+      if (await chat?.webContents.executeJavaScript('window.__uiReady === true')) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    const expectedHistory = conversation()
+      .snapshot()
+      .map(({ role, text }) => ({ role, text }));
+    const sessionHistoryRestored = await chat?.webContents.executeJavaScript(
+      `JSON.stringify(Array.from(document.querySelectorAll('#conversation .message')).map(row=>({role:row.classList.contains('user')?'user':'assistant',text:row.querySelector('.message-text').textContent}))) === ${JSON.stringify(JSON.stringify(expectedHistory))}`,
+    );
+    historyRestored = Boolean(historyRestored && sessionHistoryRestored);
+    Object.assign(result, { historyRestored, sessionHistoryRestored });
   }
   await writeFile(join(root, 'artifacts/desktop-smoke.json'), JSON.stringify(result, null, 2));
   if (smokeHermes && smokeJev)
@@ -1332,6 +1461,7 @@ async function runSmoke(): Promise<void> {
       presentationControls &&
       previewSafety &&
       pendingSelection &&
+      historyRestored &&
       (!smokeJev || (lastCue?.cue.source === 'jev' && renderer.lastCue))
       ? 0
       : 1,

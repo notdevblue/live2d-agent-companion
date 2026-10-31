@@ -53,7 +53,13 @@ Hermes Bot Mode의 Bot은 프로필이며, 별도 기억/스킬/설정을 가지
 
 `ssh://user@host` + 프로필 + 사용자가 선택한 session ID로 접속한다. 고정된 SSH 명령으로 Python stdlib 브리지를 실행하고 원격 프로필의 `gateway.sock`에서 native identify와 일회성 interactive ticket을 얻어 기존 owner의 WebSocket에 접속한다. ticket은 원격 메모리에서만 사용한다. gateway/서비스 시작·정지·설정 변경이나 외부 포트 개방은 하지 않는다.
 
-`session.resume`은 원문 이력을 생략하고, bridge는 reasoning/도구 입출력/내부 transcript를 로컬로 넘기지 않는다. 사용자에게 보이는 assistant 메시지와 도구 lifecycle/승인 요약만 정규화한다. 제출은 session authority admission/receipt와 연결하고 terminal receipt를 확인해야 완료한다. 재접속 replay가 누락됐으면 snapshot을 사용하거나 미확정으로 유지하며 새 prompt를 보내지 않는다.
+실행 attach의 `session.resume`은 원문 이력을 생략한다. 채팅 복원은 같은 session을 지정한 별도 `session.history`로 읽고, 원격 bridge가 표시 projection의 user/assistant `text`와 행 ID만 추출한다. reasoning/도구 입출력/내부 transcript·sidecar는 로컬로 넘기지 않는다. 실시간 응답은 사용자에게 보이는 assistant 메시지와 도구 lifecycle/승인 요약만 정규화한다. 제출은 session authority admission/receipt와 연결하고 terminal receipt를 확인해야 완료한다. 재접속 replay가 누락됐으면 snapshot을 사용하거나 미확정으로 유지하며 새 prompt를 보내지 않는다.
+
+### 채팅 기록 이어보기
+
+기존 구현은 같은 session ID를 저장했지만 완료한 대화를 DOM에만 쌓아 창 재생성/앱 재실행 때 보이지 않았다. `ConversationHistory`는 binding별 표시 cache를 main 메모리에 유지하고, 프로세스 재시작 때는 같은 원격 session의 기록을 다시 읽는다. loader는 동시에 한 번만 실행하고 새 제출보다 먼저 완료해 과거 기록과 현재 답변을 중복 쌓지 않는다. 기록 로드는 prompt/도구/Jev를 호출하지 않는다. 재시작 중인 pending 요청은 admission과 history row의 안정적인 join이 없으므로 텍스트 비교로 합치지 않고, 원래 실행의 상태만 별도로 복구하다 종결 뒤 history를 재조회한다.
+
+확인한 Hermes `6b5df79671`의 `tui_gateway/methods_session.py` `session.history`는 continuation tip과 ancestors를 읽고, `session_history.py` `_history_to_messages`가 표시용 text/row_id를 만든다. 별도 pagination 인자는 없으며 frame 한도 초과는 조용한 절단 대신 오류로 표시한다([저장 설계](../architecture/STATE_AND_STORAGE.md)). 원격 보존 정책이나 canonical Bot Chat 동일성을 변경/검증한 기능은 아니다.
 
 세션 목록은 메타데이터만 조회하고 기존 ID를 사용자가 명시적으로 고른다. ‘새 대화’는 프로필의 설정을 따르는 일반 세션을 만들며 `toolsets`를 강제로 비우지 않는다. 기존 테스트 세션을 계속 사용하던 상태는 사용자 지시로 일반 대화로 전환했다. 이는 기존 Bot Chat 생성/연결 성공으로 간주하지 않는다. 실제 확인한 Hermes 소스 버전은 `6b5df79671`이며 다른 버전은 계약 검증이 필요하다.
 

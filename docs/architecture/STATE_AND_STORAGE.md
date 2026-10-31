@@ -40,4 +40,10 @@
 
 ## 데이터 수명
 
+### 현재 SSH 대화 표시 복원
+
+사용자 요청(2026-10-31)에 따라 Hermes SSH는 같은 session의 `session.history`를 읽어 채팅을 복원한다. 본문을 로컬 디스크에 저장하지 않고 provider/connection/profile/session별 `ConversationHistory` 메모리 cache를 사용한다. 창을 닫거나 세션을 바꿨다 돌아오면 같은 cache를 표시하고, 앱 재실행은 원격 원본을 다시 읽는다. 설정과 미종결 요청 JSON에는 대화 본문을 추가하지 않는다. HTTP/Mock/Grok에는 원격 이력 복원을 구현하지 않았다.
+
+복원된 pending 요청은 기존 lease/receipt 복구를 유지하고, 원격 완료 뒤 history를 다시 읽어 답변을 한 번만 표시한다. 네트워크 실패는 기록 오류로 안내하며 자동 prompt 재전송은 없다. 원격 전체 frame 16 MB·정제된 SSH JSON 1 MB 제한을 넘는 큰 기록은 오류로 표시한다. 현재 Hermes `session.history`는 pagination이 없어 이 경우 별도 페이징 API 연동이 필요하다. 원격 보존·삭제·압축 정책 자체를 변경하지 않는다.
+
 설정/선택 목록은 앱 삭제 또는 사용자 명시 삭제까지 보존. 감사 로그는 bounded 로테이션 + 사용자가 삭제 가능. 인증키 삭제는 서비스 토큰 폐기와 다름을 UI에 안내. 진단 업로드는 초기 버전 기본 OFF.

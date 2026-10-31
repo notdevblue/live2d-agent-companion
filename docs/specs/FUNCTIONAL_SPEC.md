@@ -21,6 +21,8 @@
 
 ## 에이전트
 
+`FR-CHAT-001` (P0): Hermes SSH에서 선택한 connection/profile/session을 유지하고, 채팅창 재생성·renderer reload·앱 재실행 후 공급자의 표시용 대화를 다시 보여줘야 한다. 사용자/assistant 본문만 읽으며 도구 입출력·reasoning은 제외한다. 기록 복원은 prompt 재전송·Jev 재판단을 발생시키지 않고 다른 binding의 기록을 섞지 않는다. 원격 기록 읽기를 지원하지 않는 공급자에 재시작 복원을 제공한다고 표시하지 않는다.
+
 | ID | 우선 | 요구사항 |
 |---|---|---|
 | FR-AG-001 | P0 | `AgentAdapter` 인터페이스 및 capability discovery MUST |

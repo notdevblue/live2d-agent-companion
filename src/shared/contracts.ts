@@ -6,6 +6,7 @@ export type Capability =
   | 'attachments.image'
   | 'session.list'
   | 'session.resume'
+  | 'session.history'
   | 'request.reconcile'
   | 'cancel'
   | 'tool.events'
@@ -26,6 +27,12 @@ export interface RequestRef {
 }
 export interface UserTurn extends RequestRef {
   text: string;
+}
+export interface ConversationMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  requestId?: string;
 }
 export interface ApprovalResponse extends RequestRef {
   approvalId: string;
@@ -76,6 +83,7 @@ export interface AgentAdapter {
   discover(): Promise<Capabilities>;
   listSessions?(agentId: string): Promise<Array<{ id: string; label: string }>>;
   createSession?(agentId: string): Promise<{ id: string; label: string }>;
+  history?(binding: AgentBinding): Promise<ConversationMessage[]>;
   send(turn: UserTurn, sink: EventSink): Promise<void>;
   cancel?(requestId: string): Promise<'confirmed' | 'requested' | 'unsupported'>;
   respondApproval?(response: ApprovalResponse): Promise<'applied' | 'closed' | 'unknown'>;
@@ -146,6 +154,7 @@ export const CHARACTER_PREVIEWS = [
 export type CharacterPreview = (typeof CHARACTER_PREVIEWS)[number];
 export type CompanionEvent = (
   | { type: 'turn'; turn: TurnView }
+  | { type: 'history'; messages: ConversationMessage[]; restoredRequestId?: string; error?: string }
   | { type: 'character'; state: 'idle' | 'thinking' | 'working' | 'error' }
   | { type: 'cue'; cue: CharacterCue }
   | { type: 'presentation'; settings: PresentationSettings }
@@ -207,6 +216,9 @@ export interface Bootstrap {
   capabilities: Capabilities;
   connectionError?: string;
   currentTurn?: TurnView;
+  history?: ConversationMessage[];
+  historyError?: string;
+  historyRestoredRequestId?: string;
 }
 export interface CompanionBridge {
   bootstrap(): Promise<Bootstrap>;
@@ -239,6 +251,7 @@ export const unsupportedCapabilities = (): Capabilities =>
       'attachments.image',
       'session.list',
       'session.resume',
+      'session.history',
       'request.reconcile',
       'cancel',
       'tool.events',
