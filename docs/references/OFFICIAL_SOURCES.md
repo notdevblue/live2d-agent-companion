@@ -13,6 +13,9 @@
 | Cubism LipSync | https://docs.live2d.com/en/cubism-sdk-manual/lipsync/ | 립싱크 parameter mapping |
 | Cubism MotionSync | https://docs.live2d.com/en/cubism-sdk-manual/cubism-sdk-motionsync-plugin-for-web/ | Web MotionSync plugin, 별도 라이선스 조건 검토 |
 | Electron | https://www.electronjs.org/docs/latest/tutorial/security | context isolation, sandbox, CSP, IPC, remote-content security guidance |
+| Electron 창 | https://www.electronjs.org/docs/latest/tutorial/custom-window-styles | `frame: false`, `transparent: true`. 투명 영역 클릭 통과는 자동 제공되지 않으며 투명 창 리사이즈에 제약이 있음 |
+| Electron 입력 | https://www.electronjs.org/docs/latest/api/base-window#winsetignoremouseeventsignore-options | 창 전체 mouse event 무시 및 Windows mousemove forwarding 옵션. 모델별 hit-test 조합은 별도 PoC 필요 |
+| Cubism Web 모델 | https://docs.live2d.com/en/cubism-sdk-manual/model-web/ | `.model3.json` 참조에 따라 모델/텍스처를 로드하고 WebGL 렌더러를 구성하는 공식 흐름 |
 
 ## 증거 등급
 
