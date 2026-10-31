@@ -116,6 +116,8 @@ export type CompanionEvent = (
   | { type: 'turn'; turn: TurnView }
   | { type: 'character'; state: 'idle' | 'thinking' | 'working' | 'error' }
   | { type: 'cue'; cue: CharacterCue }
+  | { type: 'overlay-scale'; scale: number }
+  | { type: 'overlay-input'; mode: OverlayInputMode; error?: string }
 ) & { selectionId?: string; revision?: number };
 export interface ProviderSettings {
   provider: ProviderId;
@@ -143,6 +145,12 @@ export interface ModelInventory {
   expressionMap: Partial<Record<Emotion, string>>;
   gestureMap: Partial<Record<Gesture, string>>;
 }
+export interface OverlayInputRegion {
+  width: number;
+  height: number;
+  rects: Array<{ x: number; y: number; width: number; height: number }>;
+}
+export type OverlayInputMode = 'forward' | 'native-shape' | 'unsupported';
 export interface Bootstrap {
   selectionId: string;
   revision: number;
@@ -150,6 +158,8 @@ export interface Bootstrap {
   model?: ModelInventory;
   credentials: { hermes: boolean; grok_bot: boolean; jev: boolean };
   storageSecure: boolean;
+  overlayInput: OverlayInputMode;
+  overlayInputError?: string;
   capabilities: Capabilities;
   connectionError?: string;
   currentTurn?: TurnView;
@@ -168,7 +178,10 @@ export interface CompanionBridge {
   approve(approvalId: string, decision: 'allow_once' | 'deny', requestId: string): Promise<void>;
   openChat(): Promise<void>;
   move(dx: number, dy: number): Promise<void>;
+  resizeOverlay(deltaY: number, screenX: number, screenY: number): Promise<void>;
+  setDragging(active: boolean): void;
   hitTest(hit: boolean): void;
+  setInputRegion(region: OverlayInputRegion | null): void;
   onEvent(listener: (event: CompanionEvent) => void): () => void;
 }
 export const unsupportedCapabilities = (): Capabilities =>

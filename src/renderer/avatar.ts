@@ -2,7 +2,10 @@ import { CubismFramework } from '@cubism/live2dcubismframework';
 import { CubismUserModel } from '@cubism/model/cubismusermodel';
 import { CubismMotionManager } from '@cubism/motion/cubismmotionmanager';
 import { CubismMatrix44 } from '@cubism/math/cubismmatrix44';
-import type { CharacterCue, ModelInventory } from '../shared/contracts.js';
+import { CubismClippingManager_WebGL } from '@cubism/rendering/cubismrenderer_webgl';
+import type { CharacterCue, ModelInventory, OverlayInputRegion } from '../shared/contracts.js';
+import { canGenerateMipmaps, maskBufferCountForGroups } from './rendering.js';
+import { alphaInputRegion } from '../shared/input-region.js';
 
 interface Motion {
   setLoop(loop: boolean): void;
@@ -27,7 +30,7 @@ interface Runtime {
   loadMotion(buffer: ArrayBuffer, size: number, name: string): Motion;
   getModel(): Model;
   getModelMatrix(): { setHeight(height: number): void; getArray(): Float32Array };
-  createRenderer(width: number, height: number): void;
+  createRenderer(width: number, height: number, maskBufferCount: number): void;
   getRenderer(): {
     startUp(gl: WebGLRenderingContext): void;
     bindTexture(index: number, texture: WebGLTexture): void;
@@ -35,6 +38,7 @@ interface Runtime {
     setMvpMatrix(matrix: unknown): void;
     setRenderState(fbo: WebGLFramebuffer | null, viewport: number[]): void;
     loadShaders(path: string): void;
+    setClippingMaskBufferSize(size: number): void;
     drawModel(): void;
   };
   _physics?: { evaluate(model: Model, dt: number): void };
@@ -69,11 +73,15 @@ export class Avatar {
   private expression: ExpressionParameter[] = [];
   private expressionUntil = 0;
   private expressionStarted = 0;
-  private lastGesture = 0;
+  private lastGesture = -Infinity;
   private previous = 0;
   private frame = 0;
   private disposed = false;
   private state = 'idle';
+  onInputRegion?: (region: OverlayInputRegion | null) => void;
+  private regionAt = -Infinity;
+  private regionPixels = new Uint8Array();
+  private regionReady = false;
   private blinkIds: string[] = [];
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -112,8 +120,16 @@ export class Avatar {
     this.blinkIds = manifest.Groups?.find((group) => group.Name === 'EyeBlink')?.Ids ?? [];
     this.resize();
     this.runtime.getModelMatrix().setHeight(1.82);
-    this.runtime.createRenderer(this.canvas.width, this.canvas.height);
+    // Let the SDK deduplicate masks using its own group identity rules.
+    // A single buffer silently overlaps groups once its 36-group limit is exceeded.
+    const clipping = new CubismClippingManager_WebGL();
+    clipping.initializeForDrawable(this.model, 1);
+    const maskGroups = clipping.getClippingMaskCount() as number;
+    clipping.release();
+    const maskBuffers = maskBufferCountForGroups(maskGroups);
+    this.runtime.createRenderer(this.canvas.width, this.canvas.height, maskBuffers);
     const renderer = this.runtime.getRenderer();
+    renderer.setClippingMaskBufferSize(512);
     renderer.startUp(gl);
     renderer.setIsPremultipliedAlpha(true);
     renderer.loadShaders('app://runtime/shaders/');
@@ -133,6 +149,12 @@ export class Avatar {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
+        // WebGL 1 only permits mipmaps for power-of-two textures.
+        if (canGenerateMipmaps(bitmap.width, bitmap.height)) {
+          gl.generateMipmap(gl.TEXTURE_2D);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        }
+        gl.bindTexture(gl.TEXTURE_2D, null);
         bitmap.close();
         renderer.bindTexture(index, texture);
       }),
@@ -175,7 +197,13 @@ export class Avatar {
         }
       }
     this.model.saveParameters();
-    window.__avatarStatus = { loaded: true, frames: 0, parameters: this.model.getParameterCount() };
+    window.__avatarStatus = {
+      loaded: true,
+      frames: 0,
+      parameters: this.model.getParameterCount(),
+      maskGroups,
+      maskBuffers,
+    };
     this.frame = requestAnimationFrame(this.draw);
     window.addEventListener('resize', this.resize);
     this.canvas.addEventListener('webglcontextlost', this.contextLost);
@@ -228,6 +256,7 @@ export class Avatar {
   private contextLost = (event: Event): void => {
     event.preventDefault();
     this.disposed = true;
+    this.onInputRegion?.(null);
     if (window.__avatarStatus)
       window.__avatarStatus = {
         ...window.__avatarStatus,
@@ -297,9 +326,41 @@ export class Avatar {
       renderer.setMvpMatrix(matrix);
       renderer.setRenderState(null, [0, 0, this.canvas.width, this.canvas.height]);
       renderer.drawModel();
+      if (this.onInputRegion && now - this.regionAt >= 100) {
+        this.regionAt = now;
+        const width = this.canvas.width,
+          height = this.canvas.height;
+        if (
+          width <= 0 ||
+          height <= 0 ||
+          width > 8192 ||
+          height > 8192 ||
+          width * height > 16_777_216 ||
+          innerWidth > 8192 ||
+          innerHeight > 8192
+        ) {
+          this.onInputRegion(null);
+        } else {
+          if (this.regionPixels.length !== width * height * 4)
+            this.regionPixels = new Uint8Array(width * height * 4);
+          gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, this.regionPixels);
+          const region = alphaInputRegion(
+            this.regionPixels,
+            width,
+            height,
+            innerWidth,
+            innerHeight,
+          );
+          if (region.rects.length || this.regionReady) {
+            this.regionReady = true;
+            this.onInputRegion(region);
+          }
+        }
+      }
       if (window.__avatarStatus) window.__avatarStatus.frames++;
       this.frame = requestAnimationFrame(this.draw);
     } catch {
+      this.onInputRegion?.(null);
       window.__avatarStatus = {
         loaded: false,
         frames: window.__avatarStatus?.frames ?? 0,

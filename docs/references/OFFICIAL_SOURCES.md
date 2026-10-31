@@ -15,6 +15,11 @@
 | Electron | https://www.electronjs.org/docs/latest/tutorial/security | context isolation, sandbox, CSP, IPC, remote-content security guidance |
 | Electron 창 | https://www.electronjs.org/docs/latest/tutorial/custom-window-styles | `frame: false`, `transparent: true`. 투명 영역 클릭 통과는 자동 제공되지 않으며 투명 창 리사이즈에 제약이 있음 |
 | Electron 입력 | https://www.electronjs.org/docs/latest/api/base-window#winsetignoremouseeventsignore-options | 창 전체 mouse event 무시 및 Windows mousemove forwarding 옵션. 모델별 hit-test 조합은 별도 PoC 필요 |
+| Electron Linux Overlay | https://www.electronjs.org/docs/latest/api/base-window | 생성 옵션 `focusable: false`는 Linux WM 관리에서 제외되어 모든 작업공간 위에 표시. 런타임 `setFocusable`는 Linux 미지원이므로 옵션 변경 시 Overlay만 재생성 |
+| X11 입력 영역 | https://xorg.freedesktop.org/archive/X11R7.7/doc/xextproto/shape.html | Shape 1.1의 Input region은 표시용 bounding/clip과 별도다. Linux 클릭 통과는 모델의 입력 영역만 지정하며 Electron `setShape`의 표시 잘림을 피함 |
+| 조작 레퍼런스 | https://store.steampowered.com/app/3339420/your_wife/?l=english | 사용자 지정 Steam `your wife`: 왼쪽 드래그, 드래그 중 휠 배율, 마우스 시선 추적. 2026-10-31 공식 설명 확인이며 직접 플레이 검증은 아님 |
+| Cubism 마스크 용량 | https://github.com/Live2D/CubismWebFramework/blob/5-r.5/src/rendering/cubismclippingmanager.ts | 고정 Framework의 단일 버퍼 36그룹, 다중 버퍼당 32그룹. 모델별 그룹 수로 버퍼 수 계산 |
+| Cubism 텍스처 예제 | https://github.com/Live2D/CubismWebSamples/blob/5-r.5/Samples/TypeScript/Demo/src/lapptexturemanager.ts | 축소 시 mipmap 필터 사용. WebGL 1의 POT 조건은 앱에서 검사 |
 | Cubism Web 모델 | https://docs.live2d.com/en/cubism-sdk-manual/model-web/ | `.model3.json` 참조에 따라 모델/텍스처를 로드하고 WebGL 렌더러를 구성하는 공식 흐름 |
 | TypeSafe Jev | https://docs.typesafe.ai/api/system-one | state와 typed questions의 API, Choice 기반 표현 판단 |
 | TypeSafe Choice | https://docs.typesafe.ai/primitives/choice | choice/probabilities/confidence의 구조. 한국어 표현 품질은 앱 실증과 별도 |

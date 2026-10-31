@@ -10,6 +10,7 @@
 | FR-UI-002 | P0 | 채팅 패널 표시/숨기기·입력·스크롤·기본 키보드 조작 MUST 제공 |
 | FR-UI-003 | P0 | 클릭 통과/포커스/작업표시줄/다중 모니터 동작을 설정 가능하게 설계 |
 | FR-UI-004 | P1 | 트레이 아이콘·게임/전체화면 시 숨김 옵션 SHOULD 제공 |
+| FR-UI-005 | P0 | 사용자 지정 Linux/Sway 로컬 환경에서는 모델 창을 모든 작업공간·전체화면 위에 표시 가능하게 하고, 왼쪽 드래그·드래그 중 휠 배율·투명 영역 통과 후 모델 재진입 및 앱 재실행 뒤 설정 복원을 검증 MUST. native Wayland·Windows 검증과 구분 |
 | FR-L2D-001 | P0 | 사용자가 지정한 `.model3.json` 로딩, 실패 원인 및 의존 자산 검증 MUST |
 | FR-L2D-002 | P0 | idle/blink/breathing 기본 상태와 표현 불가 모션 fallback MUST |
 | FR-L2D-003 | P1 | talking/thinking/working/success 상태 및 사용자 정의 모션 매핑 MUST |

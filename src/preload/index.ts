@@ -16,7 +16,11 @@ const bridge: CompanionBridge = {
     ipcRenderer.invoke('companion:approve', id, decision, requestId),
   openChat: () => ipcRenderer.invoke('companion:chat'),
   move: (dx, dy) => ipcRenderer.invoke('companion:move', dx, dy),
+  resizeOverlay: (deltaY, screenX, screenY) =>
+    ipcRenderer.invoke('companion:resize', deltaY, screenX, screenY),
+  setDragging: (active) => ipcRenderer.send('companion:drag', active),
   hitTest: (hit) => ipcRenderer.send('companion:hit', hit),
+  setInputRegion: (region) => ipcRenderer.send('companion:input-region', region),
   onEvent(listener) {
     const callback = (_: unknown, event: CompanionEvent) => listener(event);
     ipcRenderer.on('companion:event', callback);

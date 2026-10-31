@@ -26,8 +26,12 @@ import type {
   ModelInventory,
   AgentBinding,
   Capabilities,
+  OverlayInputRegion,
 } from '../shared/contracts.js';
 import { unsupportedCapabilities } from '../shared/contracts.js';
+import { OverlayInputState } from '../shared/overlay-input.js';
+import { parseInputRegion } from '../shared/input-region.js';
+import { X11InputShape } from './x11-input.js';
 import { parseSettings } from '../shared/validation.js';
 import { TurnCoordinator, bindingKey, type CoordinatorMetadata } from '../core/turn-coordinator.js';
 import { MockAdapter } from '../adapters/mock.js';
@@ -46,6 +50,27 @@ const smokeStdinJev = process.argv.includes('--jev-key-fd=3');
 const smokeEnv = process.argv.includes('--smoke-env');
 const smokeJev = smokeStdinJev || smokeEnv;
 app.setName('Live2D Agent Companion');
+// Linux mouse forwarding and global cursor queries are unavailable on native
+// Wayland. Prefer Xwayland when present, while respecting an explicit backend.
+if (
+  process.platform === 'linux' &&
+  process.env.DISPLAY &&
+  !app.commandLine.hasSwitch('ozone-platform')
+)
+  app.commandLine.appendSwitch('ozone-platform', 'x11');
+const x11InputRequested =
+  process.platform === 'linux' && app.commandLine.getSwitchValue('ozone-platform') === 'x11';
+let overlayInput: Bootstrap['overlayInput'] =
+  process.platform === 'linux' ? 'unsupported' : 'forward';
+let overlayInputError: string | undefined =
+  process.platform === 'linux'
+    ? '이 창 시스템에서는 클릭 통과를 지원하지 않습니다. X11/Xwayland와 X11 input helper가 필요합니다.'
+    : undefined;
+const overlayInputState = new OverlayInputState();
+let ignoredMouseEvents = false;
+let inputShape: X11InputShape | undefined;
+let inputRegion: OverlayInputRegion | undefined;
+let inputRegionAt = 0;
 if (smoke) {
   app.setPath('userData', resolve(root, '.tmp/smoke-profile'));
   app.commandLine.appendSwitch('use-gl', 'angle');
@@ -89,13 +114,14 @@ let pending: Record<string, CoordinatorMetadata> = {};
 let lastCue: Extract<CompanionEvent, { type: 'cue' }> | undefined;
 let lastJudgeMs: number | undefined;
 let position: { x: number; y: number } | undefined;
+let intendedOverlayBounds: Electron.Rectangle | undefined;
 
 function emit(event: CompanionEvent): void {
   event = { ...event, selectionId, revision: ++revision };
   if (event.type === 'cue') lastCue = event;
   for (const window of [overlay, chat])
     if (window && !window.isDestroyed()) window.webContents.send('companion:event', event);
-  persistPending();
+  if (event.type !== 'overlay-scale' && event.type !== 'overlay-input') persistPending();
 }
 function persistPending(): void {
   if (!coordinator || !pendingFile) return;
@@ -197,6 +223,8 @@ async function bootstrap(): Promise<Bootstrap> {
     settings: structuredClone(settings),
     model: structuredClone(model),
     storageSecure: vault.secure,
+    overlayInput,
+    overlayInputError,
     capabilities: structuredClone(capabilities),
     connectionError: storageFault
       ? '요청 상태를 저장하지 못해 새 전송을 차단했습니다. 저장 공간과 권한을 확인하세요.'
@@ -314,6 +342,31 @@ function openChat(): void {
   });
   void chat.loadURL('app://ui/index.html?view=chat');
 }
+function updateOverlayInput(): void {
+  if (!overlay || overlay.isDestroyed()) return;
+  if (overlayInput === 'native-shape') {
+    const { width, height } = intendedOverlayBounds ?? overlay.getBounds();
+    const shape =
+      settings.clickThrough &&
+      !overlayInputState.dragging &&
+      inputRegion?.width === width &&
+      inputRegion.height === height
+        ? inputRegion
+        : { width, height, rects: [{ x: 0, y: 0, width, height }] };
+    inputShape?.update(shape);
+    return;
+  }
+  const ignore = overlayInputState.shouldIgnore(
+    settings.clickThrough && overlayInput === 'forward',
+  );
+  if (ignore === ignoredMouseEvents) return;
+  ignoredMouseEvents = ignore;
+  overlay.setIgnoreMouseEvents(ignore, overlayInput === 'forward' ? { forward: true } : undefined);
+}
+function stopOverlayDrag(): void {
+  overlayInputState.setDragging(false);
+  updateOverlayInput();
+}
 function positionOverlay(): void {
   if (!overlay) return;
   const size = {
@@ -321,7 +374,8 @@ function positionOverlay(): void {
     height: Math.round(680 * settings.scale),
   };
   if (smoke) {
-    overlay.setBounds({ ...size, x: 0, y: 0 });
+    intendedOverlayBounds = { ...size, x: 0, y: 0 };
+    overlay.setBounds(intendedOverlayBounds);
     return;
   }
   const point = position ?? {
@@ -336,7 +390,7 @@ function positionOverlay(): void {
       size.height,
   };
   const area = screen.getDisplayNearestPoint(point).workArea;
-  overlay.setBounds({
+  const bounds = {
     width: Math.min(size.width, area.width),
     height: Math.min(size.height, area.height),
     x: Math.max(area.x, Math.min(point.x, area.x + area.width - Math.min(size.width, area.width))),
@@ -344,8 +398,112 @@ function positionOverlay(): void {
       area.y,
       Math.min(point.y, area.y + area.height - Math.min(size.height, area.height)),
     ),
-  });
+  };
+  if (position) position = { x: bounds.x, y: bounds.y };
+  intendedOverlayBounds = bounds;
+  overlay.setBounds(bounds);
   overlay.setAlwaysOnTop(settings.alwaysOnTop);
+  updateOverlayInput();
+}
+async function createOverlay(): Promise<void> {
+  // Linux focusable:false opts out of WM management, keeping only this overlay
+  // above fullscreen windows without taking keyboard focus. The option is
+  // constructor-only on Linux, so toggling alwaysOnTop recreates this window.
+  ignoredMouseEvents = false;
+  inputRegion = undefined;
+  inputRegionAt = 0;
+  overlayInputState.setDragging(false);
+  overlayInputState.acceptHit(true);
+  overlay = new BrowserWindow({
+    width: 440,
+    height: 680,
+    title: 'Live2D Companion Overlay',
+    focusable: process.platform !== 'linux' || !settings.alwaysOnTop,
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    show: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: join(root, 'dist/preload/index.cjs'),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      webSecurity: true,
+      backgroundThrottling: false,
+    },
+  });
+  const created = overlay;
+  secureWindow(overlay);
+  overlay.on('page-title-updated', (event) => event.preventDefault());
+  overlay.on('blur', stopOverlayDrag);
+  overlay.on('hide', stopOverlayDrag);
+  overlay.on('show', updateOverlayInput);
+  overlay.on('resize', () => {
+    inputRegion = undefined;
+    updateOverlayInput();
+  });
+  overlay.webContents.on('did-start-loading', () => {
+    inputRegion = undefined;
+    stopOverlayDrag();
+    // Keep the error/settings fallback clickable while the renderer reloads.
+    overlayInputState.acceptHit(true);
+    updateOverlayInput();
+  });
+  overlay.webContents.on('render-process-gone', () => {
+    inputRegion = undefined;
+    stopOverlayDrag();
+  });
+  overlay.on('closed', () => {
+    if (overlay !== created) return;
+    inputShape?.close();
+    inputShape = undefined;
+    inputRegion = undefined;
+    overlay = undefined;
+  });
+  positionOverlay();
+  if (x11InputRequested) {
+    const unavailable = (): void => {
+      if (overlay !== created || created.isDestroyed()) return;
+      inputShape = undefined;
+      overlayInput = 'unsupported';
+      overlayInputError =
+        'X11 input helper를 사용할 수 없어 클릭 통과를 적용하지 않습니다. 설정값은 유지됩니다.';
+      // A killed helper can leave its last server-side input region behind.
+      // Electron restores the full region; the visual shape is never changed.
+      // Force a state transition: Chromium may otherwise cache an unchanged
+      // false value while a helper has independently changed the server region.
+      created.setIgnoreMouseEvents(true);
+      created.setIgnoreMouseEvents(false);
+      ignoredMouseEvents = false;
+      emit({ type: 'overlay-input', mode: overlayInput, error: overlayInputError });
+    };
+    try {
+      const helper = await X11InputShape.open(
+        join(root, 'dist/native/x11-input'),
+        created.getNativeWindowHandle().readUInt32LE(0),
+        unavailable,
+      );
+      if (overlay !== created || created.isDestroyed() || quitting) {
+        helper.close();
+        return;
+      }
+      inputShape = helper;
+      overlayInput = 'native-shape';
+      overlayInputError = undefined;
+      updateOverlayInput();
+    } catch {
+      unavailable();
+    }
+  }
+  overlay.once('ready-to-show', () => {
+    if (!smoke) overlay?.showInactive();
+  });
+  await overlay.loadURL('app://ui/index.html?view=overlay');
 }
 function registerIpc(): void {
   ipcMain.handle('companion:bootstrap', async (event) => {
@@ -392,6 +550,8 @@ function registerIpc(): void {
   ipcMain.handle('companion:settings', async (event, input: unknown) => {
     trusted(event, true);
     const next = parseSettings(input);
+    const recreateOverlay =
+      process.platform === 'linux' && next.alwaysOnTop !== settings.alwaysOnTop;
     if (switching || quitting) throw new Error('연결을 변경 중이거나 앱을 종료하고 있습니다.');
     if (next.modelPath !== settings.modelPath)
       throw new Error('모델은 파일 선택 버튼으로 변경하세요.');
@@ -409,8 +569,13 @@ function registerIpc(): void {
       await settingsFile.write({ settings, position });
       await loadModel();
       if (runtimeChanged) await configure(true);
-      positionOverlay();
-      overlay?.reload();
+      if (recreateOverlay) {
+        overlay?.destroy();
+        await createOverlay();
+      } else {
+        positionOverlay();
+        overlay?.reload();
+      }
       return await bootstrap();
     } finally {
       switching = false;
@@ -491,16 +656,85 @@ function registerIpc(): void {
     const x = delta.parse(dx);
     const y = delta.parse(dy);
     if (event.sender !== overlay?.webContents) throw new Error('Overlay 전용 요청입니다.');
-    const [oldX = 0, oldY = 0] = overlay.getPosition();
-    position = { x: Math.round(oldX + x), y: Math.round(oldY + y) };
+    if (!overlayInputState.dragging)
+      throw new Error('캐릭터를 드래그하는 동안만 이동할 수 있습니다.');
+    // Use the intended position, rather than a compositor acknowledgement that
+    // can lag several pointer events behind on Xwayland.
+    const bounds = position ?? overlay.getBounds();
+    position = { x: Math.round(bounds.x + x), y: Math.round(bounds.y + y) };
     positionOverlay();
     await settingsFile.write({ settings, position });
+  });
+  ipcMain.handle(
+    'companion:resize',
+    async (event, wheel: unknown, screenX: unknown, screenY: unknown) => {
+      trusted(event);
+      if (event.sender !== overlay?.webContents) throw new Error('Overlay 전용 요청입니다.');
+      if (switching || quitting) throw new Error('설정 변경 중이거나 앱을 종료하고 있습니다.');
+      const deltaY = z.number().finite().min(-240).max(240).parse(wheel);
+      const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
+      const cursor = { x: coordinate.parse(screenX), y: coordinate.parse(screenY) };
+      const bounds = { ...(intendedOverlayBounds ?? overlay.getBounds()), ...position };
+      const workArea = screen.getDisplayMatching(bounds).workArea;
+      const resized = overlayInputState.resize(settings.scale, deltaY, cursor, bounds, workArea);
+      if (!resized) throw new Error('캐릭터를 드래그하는 동안만 배율을 바꿀 수 있습니다.');
+      if (resized.scale === settings.scale) return;
+      settings = { ...settings, scale: resized.scale };
+      position = { x: resized.bounds.x, y: resized.bounds.y };
+      intendedOverlayBounds = resized.bounds;
+      inputRegion = undefined;
+      overlay.setBounds(resized.bounds);
+      updateOverlayInput();
+      emit({ type: 'overlay-scale', scale: settings.scale });
+      await settingsFile.write({ settings, position });
+    },
+  );
+  ipcMain.on('companion:drag', (event, active: unknown) => {
+    try {
+      trusted(event);
+      if (event.sender !== overlay?.webContents || typeof active !== 'boolean') return;
+      if (active) {
+        const bounds = overlay.getBounds();
+        position = { x: bounds.x, y: bounds.y };
+      }
+      overlayInputState.setDragging(active);
+      updateOverlayInput();
+    } catch {
+      /* invalid renderer input is ignored */
+    }
+  });
+  ipcMain.on('companion:input-region', (event, value: unknown) => {
+    try {
+      trusted(event);
+      if (event.sender !== overlay?.webContents || overlayInput !== 'native-shape') return;
+      if (value === null) {
+        inputRegion = undefined;
+        updateOverlayInput();
+        return;
+      }
+      const now = performance.now();
+      if (now - inputRegionAt < 50) return;
+      inputRegionAt = now;
+      const region = parseInputRegion(value);
+      const bounds = intendedOverlayBounds ?? overlay.getBounds();
+      if (!region || region.width !== bounds.width || region.height !== bounds.height) return;
+      inputRegion = region;
+      updateOverlayInput();
+    } catch {
+      /* invalid renderer input is ignored */
+    }
   });
   ipcMain.on('companion:hit', (event, hit: unknown) => {
     try {
       trusted(event);
-      if (event.sender !== overlay?.webContents || typeof hit !== 'boolean') return;
-      overlay.setIgnoreMouseEvents(settings.clickThrough && !hit, { forward: true });
+      if (
+        event.sender !== overlay?.webContents ||
+        typeof hit !== 'boolean' ||
+        overlayInput !== 'forward'
+      )
+        return;
+      overlayInputState.acceptHit(hit);
+      updateOverlayInput();
     } catch {
       /* invalid renderer input is ignored */
     }
@@ -711,35 +945,9 @@ app
       { urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] },
       (_details, callback) => callback({ cancel: true }),
     );
-    overlay = new BrowserWindow({
-      width: 440,
-      height: 680,
-      frame: false,
-      transparent: true,
-      hasShadow: false,
-      resizable: false,
-      maximizable: false,
-      fullscreenable: false,
-      skipTaskbar: true,
-      show: false,
-      backgroundColor: '#00000000',
-      webPreferences: {
-        preload: join(root, 'dist/preload/index.cjs'),
-        contextIsolation: true,
-        sandbox: true,
-        nodeIntegration: false,
-        webSecurity: true,
-        backgroundThrottling: false,
-      },
-    });
-    secureWindow(overlay);
-    positionOverlay();
-    overlay.once('ready-to-show', () => {
-      if (!smoke) overlay?.showInactive();
-    });
     registerIpc();
     await configure();
-    await overlay.loadURL('app://ui/index.html?view=overlay');
+    await createOverlay();
     const iconPixels = Buffer.alloc(24 * 24 * 4);
     for (let y = 0; y < 24; y++)
       for (let x = 0; x < 24; x++) {
@@ -795,6 +1003,8 @@ app.on('before-quit', (event) => {
   event.preventDefault();
   quitting = true;
   globalShortcut.unregisterAll();
+  inputShape?.close();
+  inputShape = undefined;
   void (async () => {
     await coordinator?.dispose();
     persistPending();

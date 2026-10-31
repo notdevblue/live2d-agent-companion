@@ -18,7 +18,8 @@
     "setup:model": "python3 scripts/setup-model.py",
     "setup:electron": "install-electron",
     "configure:local": "node scripts/configure-local.mjs",
-    "test:desktop": "node scripts/smoke-desktop.mjs"
+    "test:desktop": "node scripts/smoke-desktop.mjs",
+    "test:x11": "node scripts/test-x11-input.mjs"
   },
   "dependencies": {
     "zod": "4.6.7"

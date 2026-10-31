@@ -1,7 +1,9 @@
 import { build as bundle } from 'esbuild';
 import { build as viteBuild } from 'vite';
 import { resolve } from 'node:path';
-import { mkdir, cp } from 'node:fs/promises';
+import { mkdir, cp, rm } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const root = resolve(import.meta.dirname, '..');
 await bundle({
@@ -37,3 +39,26 @@ await cp(
 await cp(resolve(root, 'vendor/framework/Shaders/WebGL'), resolve(root, 'dist/runtime/shaders'), {
   recursive: true,
 });
+
+if (process.platform === 'linux') {
+  const binary = resolve(root, 'dist/native/x11-input');
+  await mkdir(resolve(root, 'dist/native'), { recursive: true });
+  try {
+    await promisify(execFile)('cc', [
+      '-std=c11',
+      '-O2',
+      '-Wall',
+      '-Wextra',
+      resolve(root, 'scripts/native/x11-input.c'),
+      '-o',
+      binary,
+      '-lX11',
+      '-lXext',
+    ]);
+  } catch {
+    await rm(binary, { force: true });
+    console.warn(
+      'X11 input shape helper unavailable: install cc and X11/Xext development libraries. Linux click-through will be unavailable.',
+    );
+  }
+}

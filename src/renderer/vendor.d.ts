@@ -8,6 +8,8 @@ interface Window {
     frames: number;
     error?: string;
     parameters?: number;
+    maskGroups?: number;
+    maskBuffers?: number;
     lastCue?: string;
     lastExpression?: string;
     lastMotion?: string;

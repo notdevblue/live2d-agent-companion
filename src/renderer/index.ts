@@ -68,6 +68,22 @@ function addMessage(role: 'user' | 'assistant', text: string): HTMLElement {
   return content;
 }
 function renderEvent(event: CompanionEvent): void {
+  if (event.type === 'overlay-input') {
+    boot.overlayInput = event.mode;
+    boot.overlayInputError = event.error;
+    populateOverlayInput();
+    if (avatar)
+      avatar.onInputRegion =
+        event.mode === 'native-shape' && boot.settings.clickThrough
+          ? bridge.setInputRegion
+          : undefined;
+    return;
+  }
+  if (event.type === 'overlay-scale') {
+    boot.settings.scale = event.scale;
+    input('scale').value = String(event.scale);
+    return;
+  }
   if (event.type === 'character') {
     avatar?.setState(event.state);
     return;
@@ -165,6 +181,19 @@ function populateMaps(): void {
     }
   }
 }
+function populateOverlayInput(): void {
+  input('click-through').disabled = boot.overlayInput === 'unsupported';
+  let clickThroughStatus = document.getElementById('click-through-status');
+  if (!clickThroughStatus) {
+    clickThroughStatus = document.createElement('span');
+    clickThroughStatus.id = 'click-through-status';
+    input('click-through').after(clickThroughStatus);
+  }
+  clickThroughStatus.textContent =
+    boot.overlayInput === 'unsupported'
+      ? ` · ${boot.overlayInputError ?? '현재 창 시스템에서는 미지원 (설정값은 유지).'}`
+      : '';
+}
 function populate(): void {
   const s = boot.settings;
   element<HTMLSelectElement>('provider').value = s.provider.provider;
@@ -176,6 +205,7 @@ function populate(): void {
   input('scale').value = String(s.scale);
   input('always-on-top').checked = s.alwaysOnTop;
   input('click-through').checked = s.clickThrough;
+  populateOverlayInput();
   const ssh = s.provider.endpoint.startsWith('ssh:');
   element('provider-badge').textContent =
     s.provider.provider === 'mock'
@@ -261,6 +291,12 @@ function collectSettings(): AppSettings {
 }
 async function overlayMode(): Promise<void> {
   element('overlay').hidden = false;
+  const hitAt = (x: number, y: number): boolean => {
+    if (avatar) return avatar.hit(x, y);
+    const fallback = element('model-error');
+    const rect = fallback.getBoundingClientRect();
+    return !fallback.hidden && x >= rect.left && y >= rect.top && x < rect.right && y < rect.bottom;
+  };
   if (!boot.model) {
     element('model-error').hidden = false;
     element('model-error').onclick = () => void bridge.openChat();
@@ -269,51 +305,86 @@ async function overlayMode(): Promise<void> {
   try {
     const { Avatar } = await import('./avatar.js');
     avatar = new Avatar(element<HTMLCanvasElement>('avatar'), boot.model);
+    if (boot.overlayInput === 'native-shape' && boot.settings.clickThrough)
+      avatar.onInputRegion = bridge.setInputRegion;
     await avatar.load();
   } catch {
+    avatar?.dispose();
+    avatar = undefined;
+    bridge.setInputRegion(null);
     element('model-error').hidden = false;
     element('model-error').textContent = '모델 로드 실패 · 설정 열기';
     element('model-error').onclick = () => void bridge.openChat();
     window.__avatarStatus = { loaded: false, frames: 0, error: '모델 로드 실패' };
   }
-  let dragging = false;
+  let pointerId: number | undefined;
   let moved = false;
+  let startX = 0;
+  let startY = 0;
   let lastX = 0;
   let lastY = 0;
   let hitTime = 0;
   const canvas = element<HTMLCanvasElement>('avatar');
+  const finishDrag = (clicked = false, x?: number, y?: number): void => {
+    const captured = pointerId;
+    if (captured === undefined) return;
+    pointerId = undefined;
+    bridge.setDragging(false);
+    if (canvas.hasPointerCapture(captured)) canvas.releasePointerCapture(captured);
+    bridge.hitTest(x !== undefined && y !== undefined && hitAt(x, y));
+    if (clicked && !moved) void bridge.openChat();
+  };
   canvas.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || !avatar?.hit(event.offsetX, event.offsetY)) return;
-    dragging = true;
-    moved = false;
-    lastX = event.screenX;
-    lastY = event.screenY;
+    if (pointerId !== undefined || event.button !== 0 || !hitAt(event.clientX, event.clientY))
+      return;
     canvas.setPointerCapture(event.pointerId);
-    bridge.hitTest(true);
+    pointerId = event.pointerId;
+    moved = false;
+    startX = lastX = event.screenX;
+    startY = lastY = event.screenY;
+    bridge.setDragging(true);
+    event.preventDefault();
   });
   window.addEventListener('pointermove', (event) => {
-    if (dragging) {
+    if (pointerId !== undefined) {
+      if (event.pointerId !== pointerId) return;
+      if (!(event.buttons & 1)) {
+        finishDrag();
+        return;
+      }
       const dx = event.screenX - lastX;
       const dy = event.screenY - lastY;
       lastX = event.screenX;
       lastY = event.screenY;
-      if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+      if (Math.abs(event.screenX - startX) + Math.abs(event.screenY - startY) > 3) moved = true;
       if (Math.abs(dx) <= 200 && Math.abs(dy) <= 200) void bridge.move(dx, dy).catch(() => {});
     } else if (performance.now() - hitTime > 30) {
       hitTime = performance.now();
-      bridge.hitTest(Boolean(avatar?.hit(event.clientX, event.clientY)));
+      bridge.hitTest(hitAt(event.clientX, event.clientY));
     }
   });
+  canvas.addEventListener(
+    'wheel',
+    (event) => {
+      if (pointerId === undefined || !(event.buttons & 1)) return;
+      event.preventDefault();
+      moved = true; // Resizing is a manipulation, so release must not open chat.
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
+      const deltaY = Math.max(-240, Math.min(240, event.deltaY * unit));
+      void bridge.resizeOverlay(deltaY, event.screenX, event.screenY).catch(() => {});
+    },
+    { passive: false },
+  );
   canvas.addEventListener('pointerup', (event) => {
-    if (!dragging) return;
-    dragging = false;
-    canvas.releasePointerCapture(event.pointerId);
-    if (!moved) void bridge.openChat();
+    if (event.pointerId === pointerId) finishDrag(true, event.clientX, event.clientY);
   });
-  canvas.addEventListener('pointercancel', () => {
-    dragging = false;
+  canvas.addEventListener('pointercancel', () => finishDrag());
+  canvas.addEventListener('lostpointercapture', () => finishDrag());
+  window.addEventListener('blur', () => finishDrag());
+  window.addEventListener('unload', () => {
+    finishDrag();
+    avatar?.dispose();
   });
-  window.addEventListener('unload', () => avatar?.dispose());
 }
 async function main(): Promise<void> {
   if (!bridge) throw new Error('보안 브리지를 불러올 수 없습니다.');
