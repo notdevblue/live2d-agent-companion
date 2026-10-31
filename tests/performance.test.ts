@@ -4,11 +4,24 @@ import {
   expressionValues,
   ExpressionMixer,
   parameterValue,
+  surprisedExpression,
   motionEndpoints,
   PoseSequence,
 } from '../src/renderer/performance.js';
 
 describe('model performance composition', () => {
+  it('builds a surprised face within asymmetric rig ranges, skipping absent and physics output controls', () => {
+    const parameters = new Map([
+      ['ParamBrowRY', { index: 1, min: -3, max: 7, neutral: 2 }],
+      ['ParamEyeROpen', { index: 2, min: 0, max: 1.5, neutral: 1 }],
+      ['ParamEyeLOpen', { index: 3, min: 0, max: 1, neutral: 1 }],
+    ]);
+    expect(surprisedExpression(parameters, new Set(['ParamEyeLOpen']))).toEqual([
+      { index: 1, value: 4.75, blend: 'Overwrite' },
+      { index: 2, value: 1.375, blend: 'Overwrite' },
+    ]);
+    expect(surprisedExpression(new Map(), new Set())).toEqual([]);
+  });
   it('crossfades exclusive eye expressions without a neutral gap or accumulated Add', () => {
     const mixer = new ExpressionMixer();
     const happy = [{ index: 1, value: 1, blend: 'Add' as const }];

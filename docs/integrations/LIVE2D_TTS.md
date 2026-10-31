@@ -8,7 +8,7 @@
 - 로더는 `.model3.json` 파일로 모델·텍스처·물리·모션·표정 참조를 해석한다.
 - 모델 로딩 시 사용 가능한 parameter ID, motion 그룹, expression을 inventory로 수집.
 - 알 수 없는 표현은 idle/neutral로 fallback, 모델 변조나 기본 파라미터 명칭 강제 금지.
-- 저장 가능한 매핑: `idle, thinking, listening, talking, working, success, error` → 모델에서 실제 존재하는 motions/expressions.
+- 현재 저장 가능한 매핑은 emotion/gesture → 모델 자산 또는 허용된 로컬 연기다. idle은 모델의 Idle 그룹, thinking/working/error는 결정적 상태로 구동한다. listening/talking/TTS 상태 매핑은 후속 설계다.
 
 ## Character Director
 
@@ -17,6 +17,8 @@
 **2026-10-31 구현 범위:** 사용자 요청으로 초기 통합에 Jev를 포함했다. 결정적 기본 상태와 별개로 TypeSafe Choice 질문 3개(emotion/gesture/attitude)를 한 번에 보내며 최대 800자 구간·판단 제한 시간·확신 임계값·최신 구간 검사로 제어한다. attitude는 `neutral/explain/tease/shy/reassure`이며 문장의 주제 대신 말하는 태도를 판단한다. 기존 attitude 없는 응답도 지원한다. confidence는 불확실성이지 움직임의 강도가 아니다. 텍스트 UI는 판단을 기다리지 않는다. 실패/낮은 확신은 neutral/none이며 중단·전환·복구 snapshot은 지연 판단/재판단을 차단한다. 이는 아래 TTS 구현을 뜻하지 않는다.
 
 DeepSeek-chan은 `.model3.json`에 표정/모션 참조가 없어 `Exp3/`, `Animation/`을 안전하게 수집해 로컬 manifest에 보충한다. 사용자 모델 원본은 수정하지 않는다. Jev 기본 매핑에는 옷/체형/소품 토글을 넣지 않으며 사용자 설정으로 실제 존재하는 표정/모션을 매핑한다. idle만 loop로 설정하고 제스처는 one-shot이며 매 프레임 기준 파라미터를 복원해 영구 토글을 피한다.
+
+기본 매핑의 누락을 막기 위해 `thinking → @companion/thinking`, `surprised → @companion/surprised`를 제공한다. 이는 모델 파일 이름이 아닌 앱 로컬 연기 ID다. 생각은 기존 시선·고개 연기를 재사용하며, 놀람은 지원되는 눈·눈썹·입 파라미터의 실제 중립값/범위 안에서 합성하고 physics 출력·없는 채널은 생략한다. 저장된 사용자 자산 매핑과 명시적인 빈 값은 보존한다. 생각 미리보기·응답 대기 진입·답변의 gesture 판단은 같은 thinking 매핑을 참조한다.
 
 로컬 `ActingController`는 비주기 blink/시선과 눈→고개→몸 지연, thinking/working 및 짧은 감정·태도 반응을 생성한다. `Avatar`는 runtime 범위/중립값과 physics 출력 목록을 검사해 `Angle*`, `Position*`, `LeanInput` 같은 upstream을 구동한다. physics 출력에 해당하는 표준 채널밖에 없으면 그 채널을 생략한다. 표정은 기존/새 레이어를 240ms로 crossfade하고 만료/초기화 시 정리한다. DeepSeek의 알려진 손동작 쌍은 진입→1.5초 유지→복귀이며 유지 시 selector만이 아니라 자산의 모든 손/손목 endpoint를 보존한다. SDK clip은 실제 pose phase 경과 시간으로 진행하고 physics step 제한과 분리한다. 자산 쌍이 없는 사용자 매핑은 기존 단발 motion으로 fallback한다.
 

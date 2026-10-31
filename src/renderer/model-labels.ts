@@ -1,5 +1,8 @@
+import { SURPRISED_EXPRESSION, THINKING_MOTION } from '../shared/model-mappings.js';
+
 // Display aliases only. Original manifest IDs/file names remain the saved mapping values.
 const expressions: Record<string, string> = {
+  [SURPRISED_EXPRESSION]: '놀람 (기본 표정)',
   体型1: '체형 1',
   体型2: '체형 2',
   兔牙: '토끼 앞니',
@@ -25,6 +28,7 @@ const expressions: Record<string, string> = {
   '＞＜': '눈 꼭 감기 (＞＜)',
 };
 const motions: Record<string, string> = {
+  [THINKING_MOTION]: '생각 (기본 연기)',
   IDLE: '대기',
   举手切默认手: '든 손 → 기본 손',
   狗尾草切回默认手: '강아지풀 → 기본 손',

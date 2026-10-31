@@ -122,6 +122,27 @@ export function parameterValue(range: ParameterRange, amount: number): number {
   return neutral + value * (value < 0 ? neutral - range.min : range.max - neutral);
 }
 
+/** Use only supported upstream facial controls; keep the model's ranges and physics intact. */
+export function surprisedExpression(
+  parameters: ReadonlyMap<string, ParameterRange>,
+  physicsOutputs: ReadonlySet<string>,
+): ExpressionParameter[] {
+  return (
+    [
+      ['ParamBrowRY', 0.55],
+      ['ParamBrowLY', 0.55],
+      ['ParamEyeROpen', 0.75],
+      ['ParamEyeLOpen', 0.75],
+      ['ParamMouthOpenY', 0.18],
+    ] as const
+  ).flatMap(([id, amount]) => {
+    const range = parameters.get(id);
+    return range && !physicsOutputs.has(id)
+      ? [{ index: range.index, value: parameterValue(range, amount), blend: 'Overwrite' as const }]
+      : [];
+  });
+}
+
 export interface PoseDefinition {
   enter: string;
   exit: string;

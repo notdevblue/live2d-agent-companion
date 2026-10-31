@@ -36,6 +36,11 @@ import {
   transferOverlay,
 } from '../shared/overlay-placement.js';
 import { parseInputRegion } from '../shared/input-region.js';
+import {
+  applyModelMappings,
+  THINKING_MOTION,
+  SURPRISED_EXPRESSION,
+} from '../shared/model-mappings.js';
 import { X11InputShape } from './x11-input.js';
 import { characterPreviewSchema, parseSettings } from '../shared/validation.js';
 import { TurnCoordinator, bindingKey, type CoordinatorMetadata } from '../core/turn-coordinator.js';
@@ -248,16 +253,7 @@ async function bootstrap(): Promise<Bootstrap> {
 async function loadModel(): Promise<void> {
   try {
     model = await models.load(settings.modelPath);
-    for (const [key, value] of Object.entries(settings.expressionMap ?? {})) {
-      const emotion = key as keyof typeof model.expressionMap;
-      if (!value) delete model.expressionMap[emotion];
-      else if (model.expressions.includes(value)) model.expressionMap[emotion] = value;
-    }
-    for (const [key, value] of Object.entries(settings.gestureMap ?? {})) {
-      const gesture = key as keyof typeof model.gestureMap;
-      if (!value) delete model.gestureMap[gesture];
-      else if (model.motions.includes(value)) model.gestureMap[gesture] = value;
-    }
+    applyModelMappings(model, settings);
     modelError = undefined;
   } catch {
     model = undefined;
@@ -840,6 +836,8 @@ async function runSmoke(): Promise<void> {
   let previewSafety = true;
   let presentationControls = true;
   let pendingSelection = true;
+  let mappingCoverage = true;
+  const mappingChecks: Record<string, boolean> = {};
   if (!smokeHermes) {
     const beforeSelection = selectionId;
     const beforeRequest = coordinator?.current?.requestId;
@@ -874,6 +872,68 @@ async function runSmoke(): Promise<void> {
       coordinator?.current?.requestId === beforeRequest &&
       !lastJudgeMs,
     );
+    const selectedDefaults = await chat?.webContents.executeJavaScript(`
+      document.querySelector('#gesture-maps [data-map="thinking"]').value === '${THINKING_MOTION}' &&
+      document.querySelector('#expression-maps [data-map="surprised"]').value === '${SURPRISED_EXPRESSION}'
+    `);
+    mappingChecks.selectedDefaults = Boolean(selectedDefaults);
+    for (const motion of ['竖手指切出来动画', THINKING_MOTION]) {
+      const reloaded = new Promise<void>((resolve) =>
+        overlay?.webContents.once('did-finish-load', () => resolve()),
+      );
+      await chat?.webContents.executeJavaScript(`(async()=>{
+        const b = await window.companion.bootstrap();
+        await window.companion.saveSettings({...b.settings,
+          gestureMap:{...b.settings.gestureMap,thinking:'${motion}'},
+          expressionMap:{...b.settings.expressionMap,surprised:'${SURPRISED_EXPRESSION}'}});
+      })()`);
+      await reloaded;
+      for (let i = 0; i < 100; i++) {
+        if (
+          await overlay?.webContents.executeJavaScript(
+            'window.__avatarStatus?.loaded && window.__avatarStatus.frames > 3',
+          )
+        )
+          break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      await chat?.webContents.executeJavaScript("window.companion.previewCharacter('thinking')");
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      mappingChecks[`preview:${motion}`] = Boolean(
+        await overlay?.webContents.executeJavaScript(`
+        window.__avatarStatus?.lastMotion === '${motion}' && window.__avatarStatus.motionActive
+      `),
+      );
+      await chat?.webContents.executeJavaScript("window.companion.previewCharacter('reset')");
+      emit({ type: 'character', state: 'thinking' });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      mappingChecks[`state:${motion}`] = Boolean(
+        await overlay?.webContents.executeJavaScript(`
+        window.__avatarStatus?.lastMotion === '${motion}' && window.__avatarStatus.motionActive
+      `),
+      );
+      emit({ type: 'character', state: 'idle' });
+      await chat?.webContents.executeJavaScript("window.companion.previewCharacter('reset')");
+    }
+    const savedMappings = (await settingsFile.readStrict()) as { settings: AppSettings };
+    mappingCoverage = Boolean(
+      Object.values(mappingChecks).every(Boolean) &&
+      savedMappings.settings.gestureMap?.thinking === THINKING_MOTION &&
+      savedMappings.settings.expressionMap?.surprised === SURPRISED_EXPRESSION &&
+      selectionId === beforeSelection &&
+      coordinator?.current?.requestId === beforeRequest,
+    );
+  }
+  if (!smokeHermes) {
+    const chatLoaded = new Promise<void>((resolve) =>
+      chat?.webContents.once('did-finish-load', () => resolve()),
+    );
+    chat?.reload();
+    await chatLoaded;
+    for (let i = 0; i < 100; i++) {
+      if (await chat?.webContents.executeJavaScript('window.__uiReady === true')) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
   }
   await chat?.webContents.executeJavaScript(
     "document.getElementById('message').value='연결 테스트입니다. 도구를 사용하지 말고, 정말 반갑고 기쁜 마음을 담은 한국어 인사 한 문장만 답해 주세요.';document.getElementById('composer').requestSubmit()",
@@ -928,6 +988,8 @@ async function runSmoke(): Promise<void> {
   );
   const result = {
     localizedMaps,
+    mappingCoverage,
+    mappingChecks,
     renderer,
     alpha,
     provider: settings.provider.provider,
@@ -947,6 +1009,31 @@ async function runSmoke(): Promise<void> {
   let uiRouting = true;
   let monitorSelection = true;
   if (!smokeHermes) {
+    await chat?.webContents.executeJavaScript("window.companion.previewCharacter('reset')");
+    emit({
+      type: 'cue',
+      cue: {
+        requestId: coordinator!.current!.requestId,
+        segmentId: 2,
+        emotion: 'surprised',
+        gesture: 'none',
+        confidence: 1,
+        source: 'fallback',
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    mappingChecks.surprised = Boolean(
+      await overlay?.webContents.executeJavaScript(`
+      window.__avatarStatus?.lastExpression === '${SURPRISED_EXPRESSION}' &&
+      window.__avatarStatus.expressionWeight > .8 && window.__avatarStatus.actingPreset === 'surprised'
+    `),
+    );
+    mappingCoverage = Boolean(mappingCoverage && mappingChecks.surprised);
+    const surprisedShot = await overlay?.webContents.capturePage();
+    if (surprisedShot)
+      await writeFile(join(root, 'artifacts/surprised-smoke.png'), surprisedShot.toPNG());
+    Object.assign(result, { mappingCoverage });
+    await chat?.webContents.executeJavaScript("window.companion.previewCharacter('reset')");
     const beforeDisplaySelection = selectionId;
     const beforeDisplayRequest = coordinator?.current?.requestId;
     await chat?.webContents.executeJavaScript("document.getElementById('settings-toggle').click()");
@@ -1226,6 +1313,7 @@ async function runSmoke(): Promise<void> {
       uiRouting &&
       monitorSelection &&
       localizedMaps &&
+      mappingCoverage &&
       presentationControls &&
       previewSafety &&
       pendingSelection &&
@@ -1274,6 +1362,7 @@ app
           sessionId: `smoke-${Date.now()}`,
         },
         jevEnabled: false,
+        ...(!smokeHermes ? { expressionMap: undefined, gestureMap: undefined } : {}),
         presentation: { ...DEFAULT_PRESENTATION },
       };
     if (smoke && smokeHermes) {

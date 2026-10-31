@@ -12,11 +12,13 @@ import {
   type PresentationSettings,
 } from '../shared/contracts.js';
 import { ActingController, type ActingState } from './acting.js';
+import { SURPRISED_EXPRESSION, THINKING_MOTION } from '../shared/model-mappings.js';
 import {
   actingChannels,
   expressionValues,
   ExpressionMixer,
   parameterValue,
+  surprisedExpression,
   motionEndpoints,
   PoseSequence,
   type ActingChannel,
@@ -167,6 +169,7 @@ export class Avatar {
       this.runtime.loadPhysics(buffer, buffer.byteLength);
     }
     this.channels = actingChannels(this.ranges, physicsOutputs);
+    this.expressions.set(SURPRISED_EXPRESSION, surprisedExpression(this.ranges, physicsOutputs));
     this.blinkIds = manifest.Groups?.find((group) => group.Name === 'EyeBlink')?.Ids ?? [];
     this.resize();
     this.runtime.getModelMatrix().setHeight(1.82);
@@ -303,13 +306,15 @@ export class Avatar {
     const next: ActingState = ['thinking', 'working', 'error', 'blocked'].includes(state)
       ? (state as ActingState)
       : 'idle';
-    if (next !== this.state && next !== 'idle') {
+    const changed = next !== this.state;
+    if (changed && next !== 'idle') {
       this.mixer.clear(now, next === 'blocked');
       this.clearPose();
     }
     this.state = next;
     this.errorUntil = next === 'error' ? now + 3000 : 0;
     this.actor.setState(next, now);
+    if (changed && next === 'thinking') this.startGesture(this.inventory.gestureMap.thinking, now);
   }
   reset(): void {
     const now = performance.now();
@@ -331,7 +336,9 @@ export class Avatar {
           ? '屑屑眼'
           : this.inventory.expressionMap[emotion];
       this.setExpression(name, now);
-      if (preset === 'explain') this.startGesture(this.inventory.gestureMap.explain, now);
+      const gesture =
+        preset === 'thinking' ? 'thinking' : preset === 'explain' ? 'explain' : 'none';
+      this.startGesture(this.inventory.gestureMap[gesture], now);
     }
     if (window.__avatarStatus) window.__avatarStatus.lastPreview = preset;
   }
@@ -365,6 +372,8 @@ export class Avatar {
     this.poseTime = 0;
   }
   private startGesture(name: string | undefined, now: number): void {
+    if (window.__avatarStatus) window.__avatarStatus.lastMotion = name ?? 'none';
+    if (name === THINKING_MOTION) return; // Thinking gaze/head motion is driven by the local actor.
     if (!name || this.presentation.reducedMotion || now - this.lastGesture < 1600) return;
     const motion = this.motions.get(name);
     if (!motion) return;
@@ -501,7 +510,10 @@ export class Avatar {
         window.__avatarStatus.expressionWeight = Math.max(0, weight);
         window.__avatarStatus.actingPreset = acting.preset;
         window.__avatarStatus.posePhase = pose.phase;
-        window.__avatarStatus.motionActive = pose.phase !== 'none' || !!this.activeGesture;
+        window.__avatarStatus.motionActive =
+          pose.phase !== 'none' ||
+          !!this.activeGesture ||
+          (acting.preset === 'thinking' && this.inventory.gestureMap.thinking === THINKING_MOTION);
       }
       gl.viewport(0, 0, this.canvas.width, this.canvas.height);
       gl.clearColor(0, 0, 0, 0);

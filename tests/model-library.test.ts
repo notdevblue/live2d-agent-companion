@@ -3,6 +3,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ModelLibrary } from '../src/main/model-library.js';
+import {
+  applyModelMappings,
+  SURPRISED_EXPRESSION,
+  THINKING_MOTION,
+} from '../src/shared/model-mappings.js';
 
 const directories: string[] = [];
 async function fixture(references: Record<string, unknown> = {}) {
@@ -44,12 +49,17 @@ describe('ModelLibrary selected directory capability (FR-L2D-001/002)', () => {
     const library = new ModelLibrary();
     const inventory = await library.load(manifest);
     expect(inventory.expressionMap).toEqual({
+      surprised: SURPRISED_EXPRESSION,
       happy: '＞＜',
       sad: '流泪',
       embarrassed: '脸红',
       concerned: '流冷汗',
     });
-    expect(inventory.gestureMap).toEqual({ wave: '默认手切举手', explain: '竖手指切出来动画' });
+    expect(inventory.gestureMap).toEqual({
+      wave: '默认手切举手',
+      explain: '竖手指切出来动画',
+      thinking: THINKING_MOTION,
+    });
     expect(inventory.parameters).toEqual([{ id: 'ParamFace', name: 'Face' }]);
     expect(inventory.expressions).toContain('胸口衣服');
     expect(Object.values(inventory.expressionMap)).not.toContain('胸口衣服');
@@ -76,13 +86,50 @@ describe('ModelLibrary selected directory capability (FR-L2D-001/002)', () => {
     const first = await library.load(manifest);
     expect(first.expressions).toEqual([]);
     expect(first.motions).toEqual([]);
-    expect(first.expressionMap).toEqual({});
-    expect(first.gestureMap).toEqual({});
+    expect(first.expressionMap).toEqual({ surprised: SURPRISED_EXPRESSION });
+    expect(first.gestureMap).toEqual({ thinking: THINKING_MOTION });
     const second = await library.load(manifest);
     expect(first.url).not.toEqual(second.url);
     expect((await library.handle(new URL(first.url))).status).toBe(404);
     expect((await library.handle(new URL('texture.png', second.url))).status).toBe(200);
     expect((await library.handle(new URL(second.url))).status).toBe(200);
+  });
+
+  it('restores local choices and custom assets without replacing deliberate empty mappings', async () => {
+    const { root, manifest } = await fixture({
+      Expressions: [{ Name: 'custom', File: 'custom.exp3.json' }],
+      Motions: { Gesture: [{ File: 'custom.motion3.json' }] },
+    });
+    await json(path.join(root, 'custom.exp3.json'));
+    await json(path.join(root, 'custom.motion3.json'));
+    const model = await new ModelLibrary().load(manifest);
+    applyModelMappings(model, {
+      expressionMap: { surprised: 'custom' },
+      gestureMap: { thinking: 'custom' },
+    });
+    expect(model.expressionMap.surprised).toBe('custom');
+    expect(model.gestureMap.thinking).toBe('custom');
+    const saved = JSON.parse(
+      JSON.stringify({
+        expressionMap: { surprised: SURPRISED_EXPRESSION },
+        gestureMap: { thinking: THINKING_MOTION },
+      }),
+    );
+    applyModelMappings(model, saved);
+    expect(model.expressionMap.surprised).toBe(SURPRISED_EXPRESSION);
+    expect(model.gestureMap.thinking).toBe(THINKING_MOTION);
+    applyModelMappings(model, {
+      expressionMap: { happy: THINKING_MOTION },
+      gestureMap: { wave: SURPRISED_EXPRESSION, thinking: 'missing' },
+    });
+    expect(model.expressionMap.happy).toBeUndefined();
+    expect(model.gestureMap.wave).toBeUndefined();
+    expect(model.gestureMap.thinking).toBe(THINKING_MOTION);
+    applyModelMappings(model, { expressionMap: { surprised: '' }, gestureMap: { thinking: '' } });
+    expect(model.expressionMap.surprised).toBeUndefined();
+    expect(model.gestureMap.thinking).toBeUndefined();
+    expect(model.motions).toEqual(['custom']);
+    expect(model.expressions).toEqual(['custom']);
   });
 
   it('does not expose unreferenced files, wrong tokens, query strings or arbitrary schemes', async () => {

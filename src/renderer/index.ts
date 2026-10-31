@@ -12,6 +12,7 @@ import {
 } from '../shared/contracts.js';
 import type { Avatar } from './avatar.js';
 import { modelAssetLabel } from './model-labels.js';
+import { localMapping } from '../shared/model-mappings.js';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const bridge = window.companion;
@@ -226,16 +227,20 @@ function populateMaps(): void {
       select.dataset.map = key;
       const empty = document.createElement('option');
       empty.value = '';
-      empty.textContent = '기본 / 없음';
+      empty.textContent =
+        key === 'neutral'
+          ? '중립 (기본 표정)'
+          : key === 'none'
+            ? '없음 (제스처 생략)'
+            : '기본 연기만 (추가 자산 없음)';
       select.append(empty);
-      for (const option of options) {
+      const kind = id === 'expression-maps' ? 'expression' : 'motion';
+      const local = localMapping(kind, key);
+      for (const option of [...(local ? [local] : []), ...options]) {
         const entry = document.createElement('option');
         entry.value = option;
-        entry.textContent = modelAssetLabel(
-          option,
-          id === 'expression-maps' ? 'expression' : 'motion',
-        );
-        entry.title = option;
+        entry.textContent = modelAssetLabel(option, kind);
+        if (option !== local) entry.title = option;
         select.append(entry);
       }
       select.value = (mapping as Record<string, string>)[key] ?? '';
