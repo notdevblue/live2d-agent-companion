@@ -14,6 +14,7 @@
     "build": "node scripts/build.mjs",
     "start": "electron .",
     "dev": "npm run build && npm run start",
+    "install:desktop": "node scripts/install-desktop.mjs",
     "setup:live2d": "node scripts/setup-live2d.mjs",
     "setup:model": "python3 scripts/setup-model.py",
     "setup:electron": "install-electron",

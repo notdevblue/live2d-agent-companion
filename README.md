@@ -39,6 +39,10 @@ Hermes SSH는 선택한 같은 세션의 이전 채팅을 다시 불러옵니다
 
 모델만 보이는 투명 Overlay와 별도 채팅/설정 창, 요청 상태 관리, Hermes SSH/HTTP 어댑터, 비동기 Jev Character Director가 있습니다. Grok은 실험적 Webhook 제출만 구현했으며 응답 callback은 지원하지 않습니다. 기존 Bot Chat의 동일성은 별도 검증 대상입니다.
 
+### Linux 앱 목록에서 실행
+
+빌드와 모델 준비 후 `npm run install:desktop`을 실행하면 rofi의 앱 목록에 **Live2D Companion**이 등록됩니다. 터미널 없이 실행하며 다시 선택하면 기존 채팅창을 엽니다. 실행 파일은 `~/.local/bin/live2d-companion`, 항목은 `$XDG_DATA_HOME/applications/live2d-agent-companion.desktop`(기본 `~/.local/share`)에 설치합니다. 프로젝트를 옮긴 뒤에는 같은 명령으로 경로를 갱신하세요. 시작 오류는 `~/.local/state/live2d-agent-companion/launcher.log`에서 확인합니다. 설치는 자동 시작을 등록하지 않습니다. 제거는 설치된 wrapper·desktop 항목과 `$XDG_DATA_HOME/icons/hicolor/scalable/apps/live2d-agent-companion.svg` 세 파일만 삭제합니다.
+
 ### 로컬 실행
 
 Node.js 22.12 이상, npm, Git, Python 3, SSH 키 인증 가능한 OpenSSH 클라이언트가 필요합니다. 모델과 Cubism SDK는 저장소에 포함하지 않습니다.

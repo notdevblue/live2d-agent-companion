@@ -255,3 +255,7 @@ VTube Studio 공식 [모델 설정](https://github.com/DenchiSoft/VTubeStudio/wi
 ### 입력창 명령 (2026-11-01)
 
 `/`에서 짧은 명령명/라벨만 목록으로 표시한다. `/new`는 현재 연결/프로필의 일반 새 대화, `/settings`는 별도 설정 창, `/stop`은 현재 요청 중단, `/status`는 상태 조회, `/help`는 목록이다. 목록은 ↑/↓·Home/End·Tab·Enter·Esc로 조작하며 한글 조합/Shift+Enter는 기존 입력을 유지한다. 명령은 에이전트의 자연어 답변이나 실행 권한으로 해석하지 않고 사용자가 composer에서 제출했을 때만 기존 IPC를 호출한다. 생성 대기 중 입력을 새로 쓰면 완료 후 그 초안을 보존한다. 다른 창의 미저장 설정을 밀어내거나 세션 ID를 되돌리지 않도록 선택 메타데이터만 동기화한다.
+
+### 앱 식별과 실행·세션 전환 (2026-11-01)
+
+앱·런처·창 제목·트레이는 Live2D Companion, assistant 라벨은 COMPANION으로 표시한다. 제공된 Live2D 모델의 파일/제작자 이름과 연결한 모델 공급자는 설정/기술 문서에서 별도로 다룬다. rofi의 drun 항목은 개발 checkout의 로컬 Electron을 직접 실행하고 같은 userData의 재실행은 기존 채팅을 표시한다. 새 세션 생성은 대화 binding만 바꾸며 renderer reload로 캐릭터를 잠깐 숨기지 않는다. 새 binding은 이전 반응을 reset하고 같은 모델/캔버스·physics/runtime을 유지한다.

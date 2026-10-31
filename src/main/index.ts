@@ -66,6 +66,7 @@ const smokeStdinJev = process.argv.includes('--jev-key-fd=3');
 const smokeEnv = process.argv.includes('--smoke-env');
 const smokeJev = smokeStdinJev || smokeEnv;
 app.setName('Live2D Agent Companion');
+if (process.platform === 'linux') app.setDesktopName('live2d-agent-companion.desktop');
 // Linux mouse forwarding and global cursor queries are unavailable on native
 // Wayland. Prefer Xwayland when present, while respecting an explicit backend.
 if (
@@ -93,6 +94,9 @@ if (smoke) {
   app.commandLine.appendSwitch('use-angle', 'swiftshader');
   app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 }
+// A desktop launcher can be selected repeatedly. Keep one owner per userData,
+// including while its first window is still being initialized.
+if (!smoke && !app.requestSingleInstanceLock()) app.exit(0);
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'app',
@@ -102,6 +106,13 @@ protocol.registerSchemesAsPrivileged([
 let overlay: BrowserWindow | undefined;
 let chat: BrowserWindow | undefined;
 let settingsWindow: BrowserWindow | undefined;
+let uiInitialized = false;
+let openChatWhenReady = false;
+if (!smoke)
+  app.on('second-instance', () => {
+    if (uiInitialized) openChat();
+    else openChatWhenReady = true;
+  });
 let tray: Tray | undefined;
 let coordinator: TurnCoordinator | undefined;
 let adapter: AgentAdapter | undefined;
@@ -400,6 +411,7 @@ function trusted(
 function openPanel(view: 'chat' | 'settings'): void {
   const existing = view === 'chat' ? chat : settingsWindow;
   if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
     existing.show();
     existing.focus();
     return;
@@ -640,7 +652,6 @@ function registerIpc(): void {
       settings.provider.sessionId = created.id;
       await settingsFile.write({ settings, position });
       await configure(true);
-      overlay?.reload();
       emit({ type: 'configuration' });
       return await bootstrap(event.sender === chat?.webContents);
     } finally {
@@ -666,8 +677,7 @@ function registerIpc(): void {
     const mappingsChanged =
       JSON.stringify(next.expressionMap ?? {}) !== JSON.stringify(settings.expressionMap ?? {}) ||
       JSON.stringify(next.gestureMap ?? {}) !== JSON.stringify(settings.gestureMap ?? {});
-    const reloadOverlay =
-      runtimeChanged || mappingsChanged || next.clickThrough !== settings.clickThrough;
+    const reloadOverlay = mappingsChanged || next.clickThrough !== settings.clickThrough;
     const placementChanged =
       next.scale !== settings.scale || next.alwaysOnTop !== settings.alwaysOnTop;
     switching = true;
@@ -1035,6 +1045,7 @@ async function runSmoke(): Promise<void> {
   let pendingSelection = true;
   let mappingCoverage = true;
   const mappingChecks: Record<string, boolean> = {};
+  const mappingSnapshots: Record<string, unknown> = {};
   if (!smokeHermes) {
     const beforeSelection = selectionId;
     const beforeRequest = coordinator?.current?.requestId;
@@ -1101,6 +1112,8 @@ async function runSmoke(): Promise<void> {
         window.__avatarStatus?.lastMotion === '${motion}' && window.__avatarStatus.motionActive
       `),
       );
+      mappingSnapshots[motion] =
+        await overlay?.webContents.executeJavaScript('window.__avatarStatus');
       await chat?.webContents.executeJavaScript("window.companion.previewCharacter('reset')");
       emit({ type: 'character', state: 'thinking' });
       await new Promise((resolve) => setTimeout(resolve, 300));
@@ -1189,6 +1202,7 @@ async function runSmoke(): Promise<void> {
     localizedMaps,
     mappingCoverage,
     mappingChecks,
+    mappingSnapshots,
     renderer,
     alpha,
     provider: settings.provider.provider,
@@ -1208,6 +1222,7 @@ async function runSmoke(): Promise<void> {
   let uiRouting = true;
   let monitorSelection = true;
   let historyRestored = true;
+  let sessionKeepsModel = true;
   const firstProvider = { ...settings.provider };
   if (!smokeHermes) {
     const transcript = await chat?.webContents.executeJavaScript(
@@ -1450,6 +1465,11 @@ async function runSmoke(): Promise<void> {
     }
     Object.assign(result, { presentationControls, previewSafety });
     const previousSession = settings.provider.sessionId;
+    const modelWindow = overlay?.id;
+    const modelProcess = overlay?.webContents.getOSProcessId();
+    await overlay?.webContents.executeJavaScript(
+      "window.__newSessionCanvas=document.getElementById('avatar');window.__newSessionFrames=window.__avatarStatus.frames",
+    );
     await chat?.webContents.executeJavaScript(
       "document.getElementById('message').value='/new';document.getElementById('message').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('composer').requestSubmit()",
     );
@@ -1468,6 +1488,14 @@ async function runSmoke(): Promise<void> {
       )),
     );
     Object.assign(result, { slashNewSession });
+    sessionKeepsModel = Boolean(
+      overlay?.id === modelWindow &&
+      overlay?.webContents.getOSProcessId() === modelProcess &&
+      (await overlay?.webContents.executeJavaScript(
+        "window.__newSessionCanvas===document.getElementById('avatar')&&window.__avatarStatus.loaded&&window.__avatarStatus.frames>window.__newSessionFrames&&window.__avatarStatus.actingPreset==='neutral'&&window.__avatarStatus.posePhase==='none'",
+      )),
+    );
+    Object.assign(result, { sessionKeepsModel });
     // Delayed connects are selection-scoped: switching targets may submit immediately,
     // and the old handler's finally must not erase the new target's pending guard.
     const oldAdapter = adapter!;
@@ -1597,6 +1625,7 @@ async function runSmoke(): Promise<void> {
       previewSafety &&
       pendingSelection &&
       historyRestored &&
+      sessionKeepsModel &&
       (!smokeJev || (lastCue?.cue.source === 'jev' && renderer.lastCue))
       ? 0
       : 1,
@@ -1688,6 +1717,8 @@ app
     registerIpc();
     await configure();
     await createOverlay();
+    uiInitialized = true;
+    if (openChatWhenReady) openChat();
     const iconPixels = Buffer.alloc(24 * 24 * 4);
     for (let y = 0; y < 24; y++)
       for (let x = 0; x < 24; x++) {
@@ -1700,7 +1731,7 @@ app
     const icon = nativeImage.createFromBitmap(iconPixels, { width: 24, height: 24 });
     if (!smoke) {
       tray = new Tray(icon);
-      tray.setToolTip('DeepSeek Companion');
+      tray.setToolTip('Live2D Companion');
       tray.setContextMenu(
         Menu.buildFromTemplate([
           { label: '채팅', click: openChat },

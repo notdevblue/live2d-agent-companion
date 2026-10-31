@@ -132,7 +132,7 @@ function addMessage(role: 'user' | 'assistant', text: string): HTMLElement {
   item.className = `message ${role}`;
   const label = document.createElement('p');
   label.className = 'message-label';
-  label.textContent = role === 'user' ? 'YOU' : 'DEEPSEEK-CHAN';
+  label.textContent = role === 'user' ? 'YOU' : 'COMPANION';
   const content = document.createElement('div');
   content.className = 'message-text';
   renderMessageText(content, role, text);
@@ -474,7 +474,8 @@ function adoptBootstrap(next: Bootstrap, configuration = false): void {
     assistantMessages.clear();
     view = undefined;
     lastCharacterState = 'idle';
-    appliedCharacterState = undefined;
+    avatar?.reset();
+    appliedCharacterState = 'idle';
     element('session-list').hidden = true;
   }
   currentRevision = sameSelection ? Math.max(currentRevision, next.revision) : next.revision;
@@ -638,7 +639,7 @@ async function main(): Promise<void> {
   }
   element('chat').hidden = isSettings;
   element('settings').hidden = !isSettings;
-  if (isSettings) document.title = 'DeepSeek Companion · 설정';
+  if (isSettings) document.title = 'Live2D Companion · 설정';
   populate();
   if (!boot.currentTurn && !isSettings) notice(boot.historyError ?? boot.connectionError ?? '');
   finish();
