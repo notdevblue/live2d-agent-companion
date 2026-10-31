@@ -9,13 +9,14 @@
 | 항목 | 구현/실증 | 한계 |
 |---|---|---|
 | Electron | typed IPC, sender/mainFrame 검사, sandbox/contextIsolation, renderer 외부 네트워크 차단 | Windows 실제 창/입력 미검증 |
+| Chat | 직접 전송 시 하단 이동, 응답 하단 추적/과거 위치 유지, 실시간·복원 답변의 Markdown 문단/강조/목록/코드/표 | 링크는 이동 없는 표시, 이미지는 alt text. 코드 문법 강조 없음 |
 | UI/Live2D | 투명 Overlay, 모니터 이동·부분 표시·휠 배율, 로컬 actor의 시선/고개/몸 연기·표정 crossfade·paired 손 포즈, 강도/구도/배치 잠금/움직임 줄이기/미리보기 | Windows·실제 고 DPI·성능 수락 전. 마우스 시선 추적/쓰다듬기/TTS 없음 |
 | Linux/Sway | Xwayland의 non-focusable Overlay, 입력 전용 XShape로 빈 영역 통과·모델 재진입, 실패 시 전체 입력 복구 | 현재 SwayFX 환경에서 실증. native Wayland 클릭 통과는 미지원 |
 | Core | binding/turn/request 검사, dedupe, lease, reconciling, 승인/취소, 원문 없는 복원 | 원문 히스토리 영구 저장 안 함 |
 | Hermes SSH | 기존 owner의 native control/ticket/WebSocket, 명시적 세션 선택, 동일 세션 표시용 history 복원, 전용 테스트 세션 실제 왕복·새 연결 receipt 복구 | canonical Bot Chat 미검증, 실제 진행 중 취소/승인은 계약 테스트만 |
 | Hermes HTTP | Runs/SSE/상태/중단/승인/복구와 테스트 서버 왕복 | 원격 실증 전. API 소유 세션 전용 |
 | Grok Bot | Webhook 인증 제출, 200→accepted/awaiting_result | 실계정 미실증, callback 미구현, 양방향 채팅 미지원 |
-| Jev | 한 요청의 Choice emotion/gesture/선택적 attitude, 최대 800자 구간, 비동기 판단·deadline·confidence·stale gating | 한국어 인사 실증은 전체 품질 평가가 아님. attitude 품질과 transport 검증은 구분 |
+| Jev | Choice emotion/gesture/선택적 attitude, 800자 구간의 제한된 순서 큐와 최소 유지·호출/나이 상한, 비동기 판단·deadline·confidence·stale gating | 한국어 인사·합성 3구간 실증은 전체 의미 품질 평가가 아님 |
 | 인증키 | async safeStorage, 서버별 credential scope, 사용자 `.env` 시작 시 입력 | 현재 headless 환경은 보호 저장소 불가. 앱 보관은 메모리 전용이며 사용자 `.env`는 별도 유지 |
 
 ## 실행·복원 구조
@@ -65,11 +66,14 @@ npm audit
 
 ## 확인 결과 (2026-10-31)
 
+- `FR-UI-002/FR-CHAT-002`: user bubble 추가 때 scrollTop을 바꾸지 않아 전송 후 아래로 내려가지 않던 원인을 수정했다. 전송은 하단으로 이동하고 assistant 갱신 전 하단 32px 이내였을 때만 계속 따라간다. Markdown은 `markdown-it` 15.0.3 token을 allowlist DOM으로 구성하며 사용자 입력·history 원본은 바꾸지 않는다. 굵게/목록/fence/table·부분 fence 교체, HTML/위험 URL·이미지 미실행과 스크롤 정책 6개 검사를 추가했다. 실제 Electron fixture의 470×810·400×600·640×900·125% 확대에서 전송/응답 추적, 과거 읽기 위치 유지, 긴 코드의 내부 가로 스크롤, footer 표시와 외부 HTTP 요청 0회를 확인했다. 실제 Sway 새 앱 프로세스의 기존 default 기록 14개(user 7/assistant 7)가 창 reload/재생성 뒤 같은 순서·역할로 복원되고 표 3개/strong 17개가 렌더링되며 활성 링크/이미지/script/iframe 0개임을 확인했다. 실제 대화 원문은 증거 파일에 저장하지 않는다. 근거는 ignored `.tmp/chat-layout/markdown-*`다.
+- `FR-DIR-005`: 새 sentence가 모든 이전 판단을 abort해 burst 답변의 마지막 표정만 남는 원인을 수정했다. 동시 판단 1개·대기 최대 4구간(첫 구간/최신 맥락 보존)·답변당 최대 8회·최대 800자·10초 나이 한도와 cue 최소 1.8초 유지로 순서대로 적용한다. 새 request/취소/승인/snapshot·최종 본문 교체의 낡은 큐와 지연 결과는 폐기한다. renderer는 request/segment 중복을 구분하고 같은 감정의 새 구간에도 제한된 눈웃음/시선/고개 변주를 허용하며 같은 손 포즈는 6.2초 동안 재시작하지 않는다. 합성 답변 3문장을 실제 Jev에 보내 happy/wave → surprised/none → embarrassed/shy가 약 1.96~1.97초 간격으로 적용되고 실제 DeepSeek의 세 segment·표정 활성과 이미지를 확인했다. 관찰한 첫 판단은 213ms이며 일반 지연/의미 품질 보장은 아니다. 기존 `.env`의 보호된 입력 함수를 main에서만 사용했고 키/대화 이력/도구 데이터는 fixture에 넣지 않았다. 실제 Hermes 대화에 테스트 prompt를 넣지 않았다. 근거는 ignored `.tmp/reaction-timeline/result.json`, `beat-*.png`다.
+
 - `FR-UI-002`: textarea의 바깥 focus outline이 간격 없는 전송 버튼과 5px 겹치는 원인을 재현했다. composer의 focus-within 경계와 10px gap·축소 가능한 textarea/고정 40px 버튼으로 변경하고, conversation의 flex 최소 높이·독립 스크롤과 답변 오른쪽/마지막 메시지 아래 이중 여백을 조정했다. 실제 Electron의 로컬 긴 대화 fixture를 470×810·400×600·640×900 및 125% 확대에 렌더해 포커스/버튼 분리·body/대화 가로 overflow 없음·footer 표시·스크롤 하단 도달을 확인했다. 실제 Sway 앱 새 프로세스·창 재생성에서도 10px 간격·40px 버튼·mint composer 포커스·가로 잘림 없음과 기존 history/session·배율/표현 설정 보존을 확인했다. 확인 중 위치 저장값이 바뀌어 이전 값으로 되돌리지 않고 최신 저장 위치로 일반 앱을 다시 실행했다. 이미지를 육안 확인했고 수치/이미지 근거는 ignored `.tmp/chat-layout/`에 둔다. 기존 TypeScript/Prettier·build·Mock desktop 검사도 통과했다. OS 재부팅/재로그인은 수행하지 않았다.
 
 - `FR-CHAT-001`: 동일 default SSH 세션에서 실제 기록 8개(user 4/assistant 4)를 read-only로 읽고 native 채팅 DOM과 순서/본문이 일치함을 확인했다. renderer reload·창 닫기/재열기에서도 8개가 중복 없이 복원됐다. 원문은 출력/증거 파일/로컬 대화 파일에 저장하지 않고 역할 수·일치 여부만 ignored `.tmp/history-check/`에 기록했다. Mock desktop의 창 reload/재열기·세션 전환 후 복귀와 history/adapter/host 필터 회귀 검사를 추가했다. 별도 앱 프로세스를 다시 실행해 같은 기록의 본문/순서·default session과 기존 위치/배율/표현 설정도 복원됨을 확인했다. 새 prompt·도구·Jev 호출과 OS 재부팅/재로그인은 수행하지 않았다.
 
-- TypeScript strict, Prettier 및 production build 통과. Unit/Contract 137개: 기존 전송/SSE·SSH receipt/replay·복구/lease·승인·저장·지연 판단·모델 경로·인증 입력·렌더 용량·입력 영역·모니터 배치에 더해 actor의 30/60/120fps 일관성, 감정/태도·반복/만료/blocked, idle 호흡 주기·위상/강도·몸 반응, expression crossfade, upstream/range 선택, 전체 손 pose endpoint와 진입/유지/복귀, 표현 설정 마이그레이션/저장 검사를 포함한다.
+- TypeScript strict, Prettier 및 production build 통과. Unit/Contract 151개: 기존 전송/SSE·SSH receipt/replay·복구/lease·승인·저장·지연 판단·모델 경로·인증 입력·렌더 용량·입력 영역·모니터 배치에 더해 actor의 30/60/120fps 일관성, 감정/태도·반복/만료/blocked, idle 호흡 주기·위상/강도·몸 반응, expression crossfade, upstream/range 선택, 전체 손 pose endpoint와 진입/유지/복귀, 표현 설정 마이그레이션/저장 검사를 포함한다.
 - 사용자 지시로 default의 테스트 연결을 프로필 설정 기반 일반 대화로 전환했다. 기존 생성 코드가 `toolsets: []`를 넣어 파일/터미널이 누락됐고, 기존 세션에는 실제로 x_search 3개만 있었다. 일반 `session.create`에서 toolsets override를 제거하고 제목/버튼을 일반 대화로 변경했다. 원격 메타데이터에서 file/terminal/memory 등을 포함한 최초 tool_count 20을 확인했으며 실제 앱을 통한 `read_file`의 `/etc/os-release` 조회→최종 답변을 확인했다. 도구 이름·완료 상태만 로컬 `.tmp/hermes-session-check/connect-result.json`에 기록하고 키/주소/세션 ID·원문은 공개하지 않는다. 기존 Discord 세션이나 canonical Bot Chat에 이어 붙였다는 의미는 아니다. 일반 대화 ID를 앱 설정과 ignored bootstrap에 저장하고 프로필/배치 설정을 보존했다. 관련 계약 테스트는 toolsets 미지정과 profile 추종을 검사하고 공급자 smoke에는 일반 대화 제출 방지 guard를 추가했다. 별도 앱 프로세스 재실행에서 default/동일 일반 session ID·연결 오류 없음과 bootstrap 일치, 기존 배치·배율·표현 설정 보존을 확인했다. 일반 연결의 공급자 smoke가 제출 전에 exit 1로 거절되는 것도 확인했다. OS 재부팅/재로그인은 수행하지 않았다.
 - 팝업을 현재 사용자 Yuru rice와 같은 배경/면·크림 글자·민트 강조·버건디 경계/직각 컨트롤로 변경했다. 실제 palette/설치 GTK/Sway 설정과 대조했고 한영은 현재 브라우저와 같은 Sarasa Mono K를 사용한다(미설치 fallback 포함). renderer `style.css`의 변수와 main의 chat `backgroundColor`로 첫 paint까지 적용하며 다른 OS 설정이나 모델 자산은 변경하지 않는다. dark scheme은 chat에만 한정한다. 기본 Mock desktop·빌드·Prettier/TypeScript 검사를 통과했고 대화/설정/캐릭터 화면 이미지, 470×810 및 400×600의 수평 overflow 없음·직각/색/폰트 계산값을 확인했다. 근거는 ignored `.tmp/yuru-popup/`의 화면/`styles.json` 및 `artifacts/desktop-smoke.json`이다. 실제 Sway 새 앱 프로세스·팝업 재열기에서 색/폰트/직각·floating과 Overlay root/배경 투명 유지, 사용자 배치 보존을 확인했다. 일반 앱으로 재실행했으며 OS 재부팅/재로그인은 수행하지 않았다. 테마는 저장된 앱 CSS로 복원되고 rice 팔레트 자동 동기화는 아니다.
 - 제작자 Cobalt/Laimu/Usagi 공개 영상의 연속 프레임을 조사해 얼굴·시선·고개·손의 조합을 우선했다. 상세 타임스탬프·관찰과 추론·후속 항목은 [상호작용 설계](../ux/INTERACTION_DESIGN.md#추가-조사-얼굴시선고개손을-겹치는-버튜버-연기)에 정리했다. 단안 윙크는 자료에서 확정한 관찰이 아니라 제품 연출 제안이다.

@@ -116,6 +116,12 @@ export interface CharacterCue extends ExpressionDecision {
   segmentId: number;
   source: 'jev' | 'fallback';
 }
+export const EXPRESSION_PACING = {
+  holdMs: 1800,
+  maxQueued: 4,
+  maxJudgements: 8,
+  maxAgeMs: 10_000,
+} as const;
 export interface TurnView extends RequestRef {
   state: TurnState;
   text: string;

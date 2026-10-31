@@ -13,6 +13,8 @@ import {
 import type { Avatar } from './avatar.js';
 import { modelAssetLabel } from './model-labels.js';
 import { localMapping } from '../shared/model-mappings.js';
+import { renderMessageText } from './chat-markdown.js';
+import { isConversationAtBottom, scrollConversationToBottom } from './chat-scroll.js';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const bridge = window.companion;
@@ -72,7 +74,7 @@ function addMessage(role: 'user' | 'assistant', text: string): HTMLElement {
   label.textContent = role === 'user' ? 'YOU' : 'DEEPSEEK-CHAN';
   const content = document.createElement('div');
   content.className = 'message-text';
-  content.textContent = text;
+  renderMessageText(content, role, text);
   item.append(label, content);
   element('conversation').append(item);
   return content;
@@ -87,7 +89,7 @@ function restoreHistory(): void {
     if (message.role === 'assistant' && message.requestId)
       assistantMessages.set(message.requestId, content);
   }
-  element('conversation').scrollTop = element('conversation').scrollHeight;
+  scrollConversationToBottom(element('conversation'));
   // Only apply each snapshot once. Later settings responses may omit history.
   boot.history = undefined;
 }
@@ -191,6 +193,7 @@ function renderEvent(event: CompanionEvent): void {
       `표현: ${emotionLabels[event.cue.emotion]}${event.cue.attitude && event.cue.attitude !== 'neutral' ? ` · ${{ explain: '설명', tease: '장난', shy: '쑥스러움', reassure: '안심' }[event.cue.attitude]}` : ''} · ${event.cue.source === 'jev' ? 'Jev' : '기본'}`;
     return;
   }
+  const followReply = isConversationAtBottom(element('conversation'));
   if (event.turn.requestId !== view?.requestId) lastCharacterState = 'thinking';
   view = event.turn;
   applyCharacterState();
@@ -202,8 +205,7 @@ function renderEvent(event: CompanionEvent): void {
     if (!content) {
       content = addMessage('assistant', view.text);
       assistantMessages.set(view.requestId, content);
-    } else content.textContent = view.text;
-    element('conversation').scrollTop = element('conversation').scrollHeight;
+    } else renderMessageText(content, 'assistant', view.text);
   }
   updatePreviewAvailability();
   element('turn-status').textContent = labels[view.state] ?? view.state;
@@ -215,6 +217,7 @@ function renderEvent(event: CompanionEvent): void {
   if (view.approval) element('approval-summary').textContent = view.approval.summary;
   if (view.error) notice(view.error);
   else notice(boot.historyError ?? '');
+  if (followReply) scrollConversationToBottom(element('conversation'));
 }
 function receive(event: CompanionEvent): void {
   if (!ready) {
@@ -635,6 +638,7 @@ async function main(): Promise<void> {
     const text = element<HTMLTextAreaElement>('message').value.trim();
     if (!text || element<HTMLButtonElement>('send').disabled) return;
     addMessage('user', text);
+    scrollConversationToBottom(element('conversation'));
     element<HTMLTextAreaElement>('message').value = '';
     element<HTMLButtonElement>('send').disabled = true;
     safe(async () => {

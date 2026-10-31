@@ -49,6 +49,8 @@ E-012~018은 [ADR-0003](../planning/adrs/0003-request-recovery-and-approvals.md)
 
 ## 릴리스 품질 문턱
 
+`FR-CHAT-002/FR-UI-002`: `tests/chat-rendering.test.ts`는 Markdown 구조, 부분 fence의 교체, user 원문, HTML/URL/image 속성 미생성, 전송 강제 하단/응답 하단 추적 정책을 검사한다. Electron fixture에서 실제 레이아웃 변경 전/후 스크롤과 가로 overflow·외부 요청 0회를 따로 검사한다. `FR-DIR-005`: `tests/director.test.ts`, `core.test.ts`, `acting.test.ts`는 burst·순서·최소 유지·호출/큐/나이 상한·generation/승인/최종 본문 교체 취소와 같은 감정의 새 segment 변주·중복 억제를 검사한다. 실제 Jev 합성 3구간→실제 DeepSeek 적용은 통합 증거이며 모델 전반의 의미 품질 보장은 아니다.
+
 `FR-CHAT-001`: `tests/history.test.ts`는 동시 로드·실패 후 재조회·답변 교체·동일 본문인 다른 요청 구분·snapshot 격리·복원 요청의 provider 기록 사용·원격 sidecar 제거를 검사한다. `tests/adapters-ssh.test.ts`는 정확한 binding/세션 검사와 prompt 없는 history 조회를 고정한다. Mock desktop은 실제 창 reload/닫기·재열기·다른 세션으로 전환 후 복귀를 검사하며 앱 프로세스 재실행은 실제 SSH에서 원문 없는 결과만 기록한다.
 
 1. `docs/specs/ACCEPTANCE_CRITERIA.md`의 해당 Phase 수락 조건 통과.

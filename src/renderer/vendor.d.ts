@@ -11,6 +11,7 @@ interface Window {
     maskGroups?: number;
     maskBuffers?: number;
     lastCue?: string;
+    lastSegmentId?: number;
     lastAttitude?: string;
     lastExpression?: string;
     lastMotion?: string;

@@ -37,6 +37,7 @@
 | TypeSafe Jev | https://docs.typesafe.ai/api/system-one | state와 typed questions의 API, Choice 기반 표현 판단 |
 | TypeSafe Choice | https://docs.typesafe.ai/primitives/choice | choice/probabilities/confidence의 구조. 한국어 표현 품질은 앱 실증과 별도 |
 | Hermes 소스 | https://github.com/NousResearch/hermes-agent | native control/interactive ticket/session authority 프로토콜. 앱 SSH 실증 버전 `6b5df79671` |
+| markdown-it | https://markdown-it.github.io/markdown-it/ | 2026-10-31 `html: false`/token parser 확인. 앱은 HTML renderer 대신 허용 태그/textContent DOM을 사용하고 URL/리소스 속성을 전달하지 않음 |
 
 ## 증거 등급
 

@@ -116,6 +116,7 @@ export class Avatar {
   private framing = { scale: 1, y: 0 };
   private errorUntil = 0;
   private lastGesture = -Infinity;
+  private lastGestureName = '';
   private previous = 0;
   private frame = 0;
   private disposed = false;
@@ -323,6 +324,7 @@ export class Avatar {
     const now = performance.now();
     this.actor.reset(now);
     this.lastGesture = -Infinity;
+    this.lastGestureName = '';
     this.state = 'idle';
     this.mixer.clear(now, true);
     this.clearPose();
@@ -376,6 +378,7 @@ export class Avatar {
     this.startGesture(motionName, now);
     if (window.__avatarStatus) {
       window.__avatarStatus.lastCue = `${cue.emotion}/${cue.gesture}`;
+      window.__avatarStatus.lastSegmentId = cue.segmentId;
       window.__avatarStatus.lastAttitude = cue.attitude ?? 'neutral';
       window.__avatarStatus.lastExpression = name ?? 'neutral';
       window.__avatarStatus.lastMotion = motionName ?? 'none';
@@ -400,6 +403,7 @@ export class Avatar {
     if (window.__avatarStatus) window.__avatarStatus.lastMotion = name ?? 'none';
     if (name === THINKING_MOTION) return; // Thinking gaze/head motion is driven by the local actor.
     if (!name || this.presentation.reducedMotion || now - this.lastGesture < 1600) return;
+    if (name === this.lastGestureName && now - this.lastGesture < 6200) return;
     const motion = this.motions.get(name);
     if (!motion) return;
     const definition = this.poseDefinitions.get(name);
@@ -414,6 +418,7 @@ export class Avatar {
       this.activeGesture = name;
     }
     this.lastGesture = now;
+    this.lastGestureName = name;
   }
   private write(index: number, value: number): void {
     const min = this.model.getParameterMinimumValue(index);

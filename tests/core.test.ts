@@ -13,7 +13,7 @@ import type {
   RequestRef,
   UserTurn,
 } from '../src/shared/contracts.js';
-import { unsupportedCapabilities } from '../src/shared/contracts.js';
+import { EXPRESSION_PACING, unsupportedCapabilities } from '../src/shared/contracts.js';
 import { TurnCoordinator } from '../src/core/turn-coordinator.js';
 import { MockAdapter } from '../src/adapters/mock.js';
 
@@ -161,7 +161,7 @@ describe('TurnCoordinator request boundary (FR-AG-003/004/010/012)', () => {
 
   it('Mock disconnect/reconnect replaces response snapshot without extra judge calls', async () => {
     const events: CompanionEvent[] = [];
-    const judge = { judge: vi.fn(async () => happy) };
+    const judge = { judge: vi.fn(async (_text: string, _signal: AbortSignal) => happy) };
     const core = new TurnCoordinator({
       adapter: new MockAdapter({ mode: 'disconnect' }),
       binding: binding(),
@@ -459,7 +459,7 @@ describe('provider approvals (FR-AG-013, E-015/016)', () => {
 });
 
 describe('asynchronous CharacterDirector (FR-DIR-001/002)', () => {
-  it('publishes text immediately, batches segments and discards an older late decision', async () => {
+  it('publishes text immediately and presents multiple sentence decisions in order with a hold', async () => {
     const first = deferred<ExpressionDecision>();
     const second = deferred<ExpressionDecision>();
     const judge = {
@@ -475,14 +475,79 @@ describe('asynchronous CharacterDirector (FR-DIR-001/002)', () => {
     expect(judge.judge.mock.calls[0]?.[0]).toBe('첫 문장.');
     adapter.emit('message.delta', { text: '두 번째 문장. ', messageId: 'm' });
     await flush();
-    second.resolve({ ...sad, attitude: 'shy' });
-    await flush();
+    expect(judge.judge).toHaveBeenCalledTimes(1);
+    expect(core.current?.text).toBe('첫 문장. 두 번째 문장. ');
+    expect(judge.judge.mock.calls[0]?.[1].aborted).toBe(false);
     first.resolve({ ...happy, attitude: 'tease' });
     await flush();
     expect(cueEvents(events)).toHaveLength(1);
-    expect(cueEvents(events)[0]).toMatchObject({
+    expect(cueEvents(events)[0]).toMatchObject({ cue: { emotion: 'happy', segmentId: 1 } });
+    await vi.advanceTimersByTimeAsync(EXPRESSION_PACING.holdMs - 1);
+    expect(judge.judge).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(judge.judge).toHaveBeenCalledTimes(2);
+    second.resolve({ ...sad, attitude: 'shy' });
+    await flush();
+    expect(cueEvents(events)).toHaveLength(2);
+    expect(cueEvents(events)[1]).toMatchObject({
       cue: { emotion: 'sad', attitude: 'shy', segmentId: 2 },
     });
+    await core.dispose();
+  });
+  it('does not cancel all but the last sentence when a whole response arrives at once', async () => {
+    const judge = {
+      judge: vi.fn(async (text: string) => (text.includes('두 번째') ? sad : happy)),
+    };
+    const { core, adapter, events } = fixture({ judge });
+    await core.send('fixture');
+    adapter.emit('message.complete', {
+      text: '첫 문장. 두 번째 문장. 마지막 문장.',
+      messageId: 'm',
+    });
+    adapter.emit('turn.completed', {});
+    await flush();
+    expect(core.current?.state).toBe('completed');
+    expect(cueEvents(events).map((e) => e.cue.emotion)).toEqual(['happy']);
+    await vi.advanceTimersByTimeAsync(EXPRESSION_PACING.holdMs * 2);
+    expect(judge.judge).toHaveBeenCalledTimes(3);
+    expect(cueEvents(events).map((e) => e.cue.emotion)).toEqual(['happy', 'sad', 'happy']);
+    await core.dispose();
+  });
+  it('drops queued expressions on approval and only judges fresh text after it closes', async () => {
+    const judge = { judge: vi.fn(async (_text: string, _signal: AbortSignal) => happy) };
+    const { core, adapter, events } = fixture({ judge });
+    await core.send('fixture');
+    adapter.emit('message.delta', { text: '첫 문장. 다음 문장. 마지막 문장.', messageId: 'm' });
+    await flush();
+    adapter.emit('approval.requested', {
+      approvalId: 'a',
+      summary: 'fixture',
+      expiresAt: Date.now() + 10000,
+    });
+    adapter.emit('message.delta', { text: '승인 대기 문장.', messageId: 'm' });
+    await vi.advanceTimersByTimeAsync(EXPRESSION_PACING.holdMs * 3);
+    expect(judge.judge).toHaveBeenCalledTimes(1);
+    expect(cueEvents(events)).toHaveLength(1);
+    adapter.emit('approval.closed', { approvalId: 'a', reason: 'withdrawn' });
+    adapter.emit('message.delta', { text: '새 문장.', messageId: 'm' });
+    await flush();
+    expect(judge.judge).toHaveBeenCalledTimes(2);
+    expect(judge.judge.mock.calls[1]?.[0]).toBe('새 문장.');
+    await core.dispose();
+  });
+  it('discards an outdated queued draft when the final response replaces its text', async () => {
+    const judge = { judge: vi.fn(async (_text: string, _signal: AbortSignal) => happy) };
+    const { core, adapter } = fixture({ judge });
+    await core.send('fixture');
+    adapter.emit('message.delta', { text: '초안 첫 문장. 폐기할 초안 문장.', messageId: 'm' });
+    await flush();
+    adapter.emit('message.complete', { text: '수정된 최종 문장.', messageId: 'm' });
+    await vi.advanceTimersByTimeAsync(EXPRESSION_PACING.holdMs);
+    expect(judge.judge.mock.calls.map((row) => row[0])).toEqual([
+      '초안 첫 문장.',
+      '수정된 최종 문장.',
+    ]);
+    expect(core.current?.text).toBe('수정된 최종 문장.');
     await core.dispose();
   });
   it('deadlines/low confidence/invalid decisions fall back neutral and bound input length', async () => {

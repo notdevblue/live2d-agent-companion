@@ -77,6 +77,8 @@ submitting, accepted, streaming, awaiting_result, cancel_requested, reconciling 
 
 ## 캐릭터 이벤트
 
+현재 `cue.requestId/segmentId`는 응답 내 연기 구간의 순서와 중복 제거에 사용한다. 최신 segment가 들어왔다는 이유만으로 유효한 이전 판단을 전부 취소하지 않고, 제한된 큐에서 최소 유지 시간을 두고 전달한다. 이전 generation/복구 전/취소·승인·만료 구간은 폐기한다. renderer는 새 segment의 같은 감정에도 제한된 변주를 허용하지만 같은 segment를 다시 적용하지 않는다. 큐와 보존/호출 한도는 shared `EXPRESSION_PACING`을 따른다.
+
 `character.state` = `idle | thinking | talking | listening | working | success | error`; `expression` / `motion`은 모델 호환성 검사 후 유효한 매핑으로 축소된다. Audio playback 상태가 실제 입 움직임 시간의 기준이며 text delta 도착 자체가 lip-sync를 켜지 않는다.
 
 ## 승인 데이터

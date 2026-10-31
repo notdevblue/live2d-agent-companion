@@ -493,3 +493,88 @@ select option {
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
 }
+
+/* Assistant Markdown stays within the independently scrolling conversation. */
+#conversation {
+  overflow-anchor: none;
+}
+.message.assistant .message-text {
+  white-space: normal;
+}
+.message-text > :first-child {
+  margin-top: 0;
+}
+.message-text > :last-child {
+  margin-bottom: 0;
+}
+.message-text p,
+.message-text ul,
+.message-text ol,
+.message-text blockquote,
+.message-text pre,
+.message-text table,
+.message-text hr,
+.message-text h1,
+.message-text h2,
+.message-text h3,
+.message-text h4,
+.message-text h5,
+.message-text h6 {
+  margin: 0.8em 0;
+}
+.message-text ul,
+.message-text ol {
+  padding-left: 1.8em;
+}
+.message-text li > p {
+  margin: 0.2em 0;
+}
+.message-text h1,
+.message-text h2,
+.message-text h3,
+.message-text h4,
+.message-text h5,
+.message-text h6 {
+  font-size: 1.1em;
+  line-height: 1.5;
+}
+.message-text blockquote {
+  padding-left: 1em;
+  margin-left: 0;
+  border-left: 2px solid var(--accent);
+  color: var(--muted);
+}
+.message-text code {
+  font: inherit;
+  background: var(--bg);
+  padding: 0.1em 0.3em;
+}
+.message-text pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+  background: var(--bg);
+  padding: 0.8em;
+  border: 1px solid var(--border);
+  line-height: 1.5;
+}
+.message-text pre code {
+  padding: 0;
+}
+.message-text table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+.message-text th,
+.message-text td {
+  border: 1px solid var(--border);
+  padding: 0.4em 0.7em;
+  min-width: 5em;
+}
+.message-text th {
+  background: var(--bg);
+  text-align: left;
+}

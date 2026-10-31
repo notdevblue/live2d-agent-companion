@@ -13,6 +13,21 @@ function magnitude(frame: ActingFrame): number {
 }
 
 describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
+  it('varies successive semantic beats while rejecting duplicate segments and resetting to neutral', () => {
+    const actor = new ActingController();
+    const cue = { emotion: 'happy', gesture: 'none', requestId: 'reply', segmentId: 1 } as const;
+    expect(actor.cue(cue, 0)).toBe(true);
+    const first = advance(actor, 1000);
+    expect(actor.cue({ ...cue, segmentId: 2 }, 1800)).toBe(true);
+    const second = advance(actor, 2800, 60, 1800);
+    expect(second.variant).not.toBe(first.variant);
+    expect(second.eyeSmile).toBeGreaterThan(first.eyeSmile);
+    expect(second.smile).toBeLessThan(first.smile);
+    expect(actor.cue({ ...cue, segmentId: 2 }, 8000)).toBe(false);
+    expect(actor.cue({ ...cue, emotion: 'neutral', segmentId: 3 }, 8000)).toBe(true);
+    expect(advance(actor, 9000, 60, 8000).preset).toBe('neutral');
+    expect(actor.cue({ ...cue, requestId: 'new-reply' }, 9100)).toBe(true);
+  });
   it('winks one eye, then releases both eyes without starting a repeated wink', () => {
     const actor = new ActingController();
     actor.preview('wink', 0);

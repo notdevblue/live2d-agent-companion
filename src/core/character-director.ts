@@ -2,6 +2,7 @@ import {
   ATTITUDES,
   EMOTIONS,
   GESTURES,
+  EXPRESSION_PACING,
   type CharacterCue,
   type CompanionEvent,
   type ExpressionDecision,
@@ -16,6 +17,13 @@ export interface DirectorOptions {
   confidenceThreshold?: number;
 }
 
+// A short presentation timeline, not an unbounded replay of every sentence.
+interface Segment {
+  id: number;
+  text: string;
+  createdAt: number;
+}
+
 /** Presentation-only. No tool, audio, provider or OS execution surface. */
 export class CharacterDirector {
   private generation = 0;
@@ -23,7 +31,12 @@ export class CharacterDirector {
   private requestId = '';
   private pending = '';
   private enabled = false;
-  private controllers = new Set<AbortController>();
+  private controller?: AbortController;
+  private queue: Segment[] = [];
+  private busy = false;
+  private wake?: ReturnType<typeof setTimeout>;
+  private nextAt = 0;
+  private judgements = 0;
   private state: 'idle' | 'thinking' | 'working' | 'error' = 'idle';
   private readonly timeout: number;
   private readonly threshold: number;
@@ -41,6 +54,7 @@ export class CharacterDirector {
     this.invalidate();
     this.requestId = requestId;
     this.segmentId = 0;
+    this.judgements = 0;
     this.enabled = true;
   }
 
@@ -72,8 +86,13 @@ export class CharacterDirector {
       length = Math.min(length, 800);
       const segment = this.pending.slice(0, length).trim();
       this.pending = this.pending.slice(length);
-      if (segment) this.schedule(segment);
+      if (segment && this.judgements < EXPRESSION_PACING.maxJudgements) {
+        this.queue.push({ id: ++this.segmentId, text: segment, createdAt: Date.now() });
+        // Keep the opening beat and the latest context when a whole reply arrives at once.
+        if (this.queue.length > EXPRESSION_PACING.maxQueued) this.queue.splice(1, 1);
+      }
     }
+    this.pump();
   }
 
   /** Snapshot/recovery text is displayed without replaying expression inference. */
@@ -81,26 +100,50 @@ export class CharacterDirector {
     this.generation++;
     this.enabled = false;
     this.pending = '';
-    for (const controller of this.controllers) controller.abort();
-    this.controllers.clear();
+    this.queue = [];
+    this.controller?.abort();
+    this.controller = undefined;
+    this.busy = false;
+    clearTimeout(this.wake);
+    this.wake = undefined;
+    this.nextAt = 0;
   }
 
   replaceSnapshot(): void {
     const enabled = this.enabled;
+    const nextAt = this.nextAt;
     this.invalidate();
     this.enabled = enabled;
+    this.nextAt = nextAt;
   }
 
-  private schedule(text: string): void {
+  private pump(): void {
+    if (!this.enabled || this.busy || this.wake || !this.queue.length) return;
+    if (this.judgements >= EXPRESSION_PACING.maxJudgements) {
+      this.queue = [];
+      return;
+    }
+    if (Date.now() < this.nextAt) {
+      this.wake = setTimeout(() => {
+        this.wake = undefined;
+        this.pump();
+      }, this.nextAt - Date.now());
+      return;
+    }
+    const segment = this.queue.shift()!;
+    if (Date.now() - segment.createdAt > EXPRESSION_PACING.maxAgeMs) {
+      this.pump();
+      return;
+    }
     const judge = this.options.judge;
     if (!judge) return;
     const generation = this.generation;
-    const segmentId = ++this.segmentId;
+    const segmentId = segment.id;
     const requestId = this.requestId;
     const controller = new AbortController();
-    this.controllers.add(controller);
-    // Newer text supersedes previous inference even when that provider ignores abort.
-    for (const prior of this.controllers) if (prior !== controller) prior.abort();
+    this.controller = controller;
+    this.busy = true;
+    this.judgements++;
     let timer: ReturnType<typeof setTimeout>;
     const deadline = new Promise<undefined>((resolve) => {
       timer = setTimeout(() => {
@@ -117,12 +160,19 @@ export class CharacterDirector {
       );
     });
     const inference = Promise.resolve()
-      .then(() => (controller.signal.aborted ? undefined : judge.judge(text, controller.signal)))
+      .then(() =>
+        controller.signal.aborted ? undefined : judge.judge(segment.text, controller.signal),
+      )
       .catch(() => undefined);
     void Promise.race([inference, deadline]).then((result) => {
       clearTimeout(timer);
-      this.controllers.delete(controller);
-      if (!this.enabled || generation !== this.generation || segmentId !== this.segmentId) return;
+      if (!this.enabled || generation !== this.generation) return;
+      this.controller = undefined;
+      this.busy = false;
+      if (Date.now() - segment.createdAt > EXPRESSION_PACING.maxAgeMs) {
+        this.pump();
+        return;
+      }
       const valid = this.validDecision(result);
       const cue: CharacterCue = {
         ...(valid
@@ -138,6 +188,9 @@ export class CharacterDirector {
         source: valid ? 'jev' : 'fallback',
       };
       this.options.onEvent({ type: 'cue', cue });
+      if (!this.enabled || generation !== this.generation) return;
+      this.nextAt = Date.now() + EXPRESSION_PACING.holdMs;
+      this.pump();
     });
   }
 

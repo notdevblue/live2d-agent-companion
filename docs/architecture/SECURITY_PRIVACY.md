@@ -42,6 +42,10 @@ Linux X11 Overlay의 입력 영역 helper는 main이 가진 자기 창의 native
 - **Cross-agent leak**: 공급자·봇·세션 경계와 별도 저장/토큰/이벤트 라우팅.
 - **Replay/duplicate run**: webhook 반복 실행·재요청 위험을 사용자에게 고지, 자동 재시도 제한.
 
+## 표시용 Markdown
+
+assistant 원문은 `markdown-it`에서 HTML 비활성화로 token화한 뒤 허용된 태그와 `textContent`로 DOM을 만든다. 공급자 HTML을 `innerHTML`에 넣거나 token의 URL/style/event 속성을 복사하지 않는다. 링크는 이동 없는 표시, 이미지는 alt text이며 외부 fetch가 없다. user 입력은 원문이다. 이 처리는 원격 history 원본/Jev 입력/공급자 문맥을 바꾸지 않는다. 코드·표의 스크롤도 메시지 내부에 한정한다.
+
 ## 화면 캡처 정책
 
 기본 OFF. 사용자 액션 → 캡처 범위/창 선택 → 로컬 미리보기 → 한 번만 전송 확인 → 해당 공급자 전달. 비밀번호 매니저/금융 등 민감한 창을 자동 인식해 완벽 차단한다고 주장하지 않음; 사용자의 시각적 검토가 필수. 자동 재캡처/백그라운드 모니터링은 별도 제품 설계 및 명시적 설정 없이는 금지.

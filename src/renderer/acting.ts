@@ -1,9 +1,10 @@
-import type {
-  Attitude,
-  CharacterCue,
-  CharacterPreview,
-  Emotion,
-  Gesture,
+import {
+  EXPRESSION_PACING,
+  type Attitude,
+  type CharacterCue,
+  type CharacterPreview,
+  type Emotion,
+  type Gesture,
 } from '../shared/contracts.js';
 import type { FaceFrame } from './performance.js';
 
@@ -139,6 +140,7 @@ export class ActingController {
   private reaction?: Reaction;
   private lastKey = '';
   private lastCue = -Infinity;
+  private lastBeat?: { requestId: string; segmentId: number };
   private epoch?: number;
   private gazeAt = 0;
   private gazeIndex = 0;
@@ -174,16 +176,26 @@ export class ActingController {
     }
   }
 
-  cue(cue: Pick<CharacterCue, 'emotion' | 'gesture' | 'attitude'>, nowMs: number): boolean {
+  cue(
+    cue: Pick<CharacterCue, 'emotion' | 'gesture' | 'attitude'> &
+      Partial<Pick<CharacterCue, 'requestId' | 'segmentId'>>,
+    nowMs: number,
+  ): boolean {
     this.initialize(nowMs);
     const hasAttitude = cue.attitude !== undefined && cue.attitude !== 'neutral';
+    const scoped = !!cue.requestId && Number.isSafeInteger(cue.segmentId) && cue.segmentId! > 0;
+    const newRequest = scoped && cue.requestId !== this.lastBeat?.requestId;
+    const newBeat = scoped && (newRequest || cue.segmentId! > this.lastBeat!.segmentId);
     if (
       this.state === 'blocked' ||
-      (cue.emotion === 'neutral' && cue.gesture === 'none' && !hasAttitude)
+      (scoped && !newBeat) ||
+      (!scoped && cue.emotion === 'neutral' && cue.gesture === 'none' && !hasAttitude)
     )
       return false;
     const key = `${cue.emotion}/${cue.gesture}/${cue.attitude ?? 'neutral'}`;
-    if (nowMs - this.lastCue < (key === this.lastKey ? 6200 : 900)) return false;
+    // Main's paced events cross process/frame clocks; allow a small delivery jitter margin.
+    const interval = newBeat ? EXPRESSION_PACING.holdMs - 100 : key === this.lastKey ? 6200 : 900;
+    if (!newRequest && nowMs - this.lastCue < interval) return false;
     const preset: ActingPreset = hasAttitude
       ? (cue.attitude as Exclude<Attitude, 'neutral'>)
       : cue.emotion === 'embarrassed'
@@ -194,12 +206,15 @@ export class ActingController {
             ? 'explain'
             : cue.gesture === 'thinking'
               ? 'thinking'
-              : 'happy';
+              : cue.gesture === 'wave'
+                ? 'happy'
+                : 'neutral';
     const variant = this.variants.get(preset) ?? 0;
     this.variants.set(preset, (variant + 1) % 2);
     this.reaction = { preset, ...cue, started: nowMs, variant };
     this.lastKey = key;
     this.lastCue = nowMs;
+    if (scoped) this.lastBeat = { requestId: cue.requestId!, segmentId: cue.segmentId! };
     return true;
   }
 
@@ -221,6 +236,7 @@ export class ActingController {
     this.pose = neutral();
     this.lastKey = '';
     this.lastCue = -Infinity;
+    this.lastBeat = undefined;
     this.epoch = undefined;
     this.initialize(nowMs);
   }
@@ -371,11 +387,15 @@ export class ActingController {
     if (preset === 'happy') {
       p.headZ = Math.sin(t * 3.1) * 0.18 * (variant ? -1 : 1);
       p.headY = nod * 0.15;
-      p.eyeSmile = 0.65;
+      p.eyeSmile = variant ? 0.85 : 0.65;
+      if (variant) p.smile = 0.72;
       p.browY = 0.12;
     }
     // Look away first, then cautiously return the eyes while retaining the shy tilt.
-    if (preset === 'shy') p.gazeX *= 1 - smooth((t - 1.6) / 1.3);
+    if (preset === 'shy') {
+      p.gazeX *= (variant ? -1 : 1) * (1 - smooth((t - 1.6) / 1.3));
+      if (variant) p.headZ *= -0.75;
+    }
     if (preset === 'shy') {
       p.eyeL = p.eyeR = 0.82;
       p.browInner = 0.22;
@@ -418,7 +438,8 @@ export class ActingController {
     if (preset === 'sad' || preset === 'concerned') p.browInner = 0.38;
     if (preset === 'explain') {
       p.browY = 0.14;
-      p.eyeSmile = 0.2;
+      p.eyeSmile = variant ? 0.35 : 0.2;
+      if (variant) p.gazeX = 0.12;
     }
     if (preset === 'neutral') {
       p.headZ = Math.sin(t * 0.79) * 0.025;

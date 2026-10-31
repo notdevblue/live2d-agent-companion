@@ -391,7 +391,7 @@ export class TurnCoordinator {
         if (view.state !== 'cancel_requested') view.state = 'streaming';
         this.syncText();
         this.publish();
-        this.director.append(event.payload.text);
+        if (!view.approval) this.director.append(event.payload.text);
         this.armTimeout();
         return;
       }
@@ -402,15 +402,17 @@ export class TurnCoordinator {
         break;
       case 'message.complete': {
         const old = this.messages.get(event.payload.messageId) ?? '';
+        if (old && !event.payload.text.startsWith(old)) this.director.replaceSnapshot();
         this.messages.set(event.payload.messageId, event.payload.text);
         this.syncText();
         this.publish();
-        this.director.append(
-          event.payload.text.startsWith(old)
-            ? event.payload.text.slice(old.length)
-            : event.payload.text,
-          true,
-        );
+        if (!view.approval)
+          this.director.append(
+            event.payload.text.startsWith(old)
+              ? event.payload.text.slice(old.length)
+              : event.payload.text,
+            true,
+          );
         this.armTimeout();
         return;
       }
@@ -434,6 +436,7 @@ export class TurnCoordinator {
         this.approvalRefreshAllowed = false;
         this.approval = { ...event.payload, status: 'pending' };
         view.approval = { ...event.payload };
+        this.director.replaceSnapshot();
         this.armApprovalExpiry();
         break;
       case 'approval.resolved':
@@ -441,7 +444,7 @@ export class TurnCoordinator {
         this.closeApproval(event.payload.approvalId);
         return;
       case 'turn.completed':
-        this.director.append('', true);
+        if (!view.approval) this.director.append('', true);
         this.finish('completed');
         return;
       case 'turn.failed':
