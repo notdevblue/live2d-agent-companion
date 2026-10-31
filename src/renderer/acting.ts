@@ -372,8 +372,15 @@ export class ActingController {
     };
     follow('gazeX', (this.gaze.x + blend(base.gazeX, target.gazeX)) * scale, 17);
     follow('gazeY', (this.gaze.y + blend(base.gazeY, target.gazeY)) * scale, 17);
-    follow('headX', this.pose.gazeX * 0.65 + blend(base.headX, target.headX) * scale, 4.5);
-    follow('headY', this.pose.gazeY * 0.45 + blend(base.headY, target.headY) * scale, 4.5);
+    // Short directional beats need a firmer follow than the slow idle/gaze drift.
+    const headFollow =
+      reaction?.preset === 'nod' || reaction?.preset === 'shake'
+        ? 8.5
+        : reaction?.preset === 'acknowledge' || reaction?.preset === 'reassure'
+          ? 6.5
+          : 4.5;
+    follow('headX', this.pose.gazeX * 0.65 + blend(base.headX, target.headX) * scale, headFollow);
+    follow('headY', this.pose.gazeY * 0.45 + blend(base.headY, target.headY) * scale, headFollow);
     follow('headZ', blend(base.headZ, target.headZ) * scale, 4);
     follow('bodyX', this.pose.headX * 0.3, 2.1);
     follow('bodyY', this.pose.headY * 0.2 + this.breathWave(now) * 0.13 * scale, 2.1);
@@ -403,11 +410,11 @@ export class ActingController {
     const p = { ...neutral(), ...PROFILES[preset] };
     const nod = Math.sin(t * 4.8) * Math.exp(-Math.max(0, t - 1) * 0.8);
     if (preset === 'acknowledge') {
-      // "No deliberate gesture" still gets a small, one-shot delivery beat.
+      // "No deliberate gesture" still gets a visible, one-shot delivery beat.
       // It remains emotionally neutral and never requests an authored hand pose.
       const accent = beat(t, 0.08, 0.18, 0.12, 0.65);
-      p.headY = -0.22 * accent;
-      p.headZ = (variant ? -1 : 1) * 0.08 * accent;
+      p.headY = -0.48 * accent;
+      p.headZ = (variant ? -1 : 1) * 0.12 * accent;
       p.lean = 0.04 * accent;
       p.browY = 0.08 * accent;
     }
@@ -444,9 +451,12 @@ export class ActingController {
     }
     if (preset === 'wink') p[variant ? 'eyeR' : 'eyeL'] = 1 - beat(t, 0.45, 0.12, 0.3, 0.25);
     if (preset === 'nod' || preset === 'reassure')
-      p.headY += Math.sin(Math.max(0, t - 0.25) * 6.4) * 0.24 * beat(t, 0.15, 0.2, 0.6, 1);
+      p.headY +=
+        Math.sin(Math.max(0, t - 0.25) * 6.4) *
+        (preset === 'nod' ? 0.6 : 0.36) *
+        beat(t, 0.15, 0.2, 0.6, 1);
     if (preset === 'shake')
-      p.headX = Math.sin(Math.max(0, t - 0.25) * 9) * 0.3 * beat(t, 0.15, 0.2, 0.6, 1);
+      p.headX = Math.sin(Math.max(0, t - 0.25) * 9) * 0.52 * beat(t, 0.15, 0.2, 0.6, 1);
     if (preset === 'pout') {
       p.headX = -0.16 * beat(t, 0.35, 0.3, 1, 1);
       p.eyeL = p.eyeR = 0.7;

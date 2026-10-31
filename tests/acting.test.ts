@@ -159,6 +159,36 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     }
   });
 
+  it('makes short head beats visible at normal intensity without increasing model translation', () => {
+    for (const preset of ['acknowledge', 'nod', 'shake', 'reassure'] as const) {
+      const actor = new ActingController(),
+        idle = new ActingController();
+      if (preset === 'acknowledge')
+        actor.cue(
+          { emotion: 'neutral', gesture: 'none', requestId: 'r', messageId: 'm', segmentId: 1 },
+          0,
+        );
+      else if (preset === 'reassure')
+        actor.cue({ emotion: 'neutral', gesture: 'none', attitude: 'reassure' }, 0);
+      else actor.preview(preset, 0);
+      const values: number[] = [];
+      for (let i = 1; i <= 156; i++) {
+        const time = (i * 1000) / 60;
+        const frame = actor.sample(time, 1 / 60),
+          baseline = idle.sample(time, 1 / 60);
+        const axis = preset === 'shake' ? 'headX' : 'headY';
+        values.push(frame[axis] - baseline[axis]);
+        expect(frame.offsetY).toBe(baseline.offsetY);
+      }
+      // At a +/-30 degree rig, a clear nod must travel at least 6 degrees
+      // below neutral; explicit nod/shake must also return above neutral.
+      expect(Math.min(...values)).toBeLessThan(preset === 'shake' ? -0.16 : -0.2);
+      if (preset === 'nod' || preset === 'shake') expect(Math.max(...values)).toBeGreaterThan(0.25);
+      actor.setState('blocked', 2600);
+      expect(actor.sample(2600, 0)).toMatchObject({ headX: 0, headY: 0, active: false });
+    }
+  });
+
   it('alternates a restrained teasing variant without spending variants on local previews', () => {
     const actor = new ActingController();
     actor.preview('tease', 0);
