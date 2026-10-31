@@ -32,10 +32,12 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     const actor = new ActingController();
     const low = actor.sample(0, 0).breath;
     expect(low).toBeCloseTo(0.188);
-    expect(actor.sample(0, 0).offsetY).toBeCloseTo(-0.0117);
+    expect(actor.sample(0, 0).offsetY).toBeCloseTo(-0.002925);
     const inhaled = advance(actor, 2016);
     expect(inhaled.breath).toBeCloseTo(0.812);
-    expect(inhaled.offsetY).toBeCloseTo(0.0117);
+    expect(inhaled.offsetY).toBeCloseTo(0.002925);
+    // Even the largest 4x window should only move about four CSS pixels from center.
+    expect((Math.abs(inhaled.offsetY) * 2720) / 2).toBeLessThanOrEqual(4);
     expect(advance(actor, 4800, 60, 2016).breath).toBeCloseTo(low);
     actor.preview('happy', 4800);
     const beforeReset = actor.sample(5000, 0).breath;

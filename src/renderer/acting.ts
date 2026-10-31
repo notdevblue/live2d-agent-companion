@@ -205,7 +205,7 @@ export class ActingController {
     return {
       ...this.pose,
       breath: this.state === 'blocked' ? 0.5 : 0.5 + this.breathWave(now) * 0.48 * this.scale(),
-      offsetY: this.state === 'blocked' ? 0 : this.breathWave(now) * 0.018 * this.scale(),
+      offsetY: this.state === 'blocked' ? 0 : this.breathWave(now) * 0.0045 * this.scale(),
       preset: reaction?.preset ?? this.base(),
       active: !!reaction,
       expressionWeight: weight,
