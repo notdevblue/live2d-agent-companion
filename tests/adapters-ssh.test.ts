@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import {
   HERMES_PROGRESS_GUIDANCE,
   HermesSshAdapter,
@@ -82,7 +83,172 @@ const create = (bridge = new FakeBridge()) => ({
 });
 const until = async (predicate: () => boolean) => vi.waitFor(() => expect(predicate()).toBe(true));
 
+function uploadBridge() {
+  const bridge = new FakeBridge();
+  const original = bridge.request.getMockImplementation()!;
+  const uploads: Array<{ id: string; mime: unknown; bytes: Buffer[] }> = [];
+  bridge.request.mockImplementation(async (method, params) => {
+    if (method === 'attachment.capabilities') return { images: true, files: true };
+    if (method === 'attachment.begin') {
+      const id = 'upload-' + uploads.length;
+      uploads.push({ id, mime: params.mime, bytes: [] });
+      return { upload_id: id };
+    }
+    if (method === 'attachment.chunk') {
+      const upload = uploads.find((row) => row.id === params.upload_id)!;
+      const bytes = Buffer.from(String(params.data_base64), 'base64');
+      upload.bytes.push(bytes);
+      return { written: Number(params.offset) + bytes.length };
+    }
+    if (method === 'attachment.finish') {
+      const upload = uploads.find((row) => row.id === params.upload_id)!;
+      return upload.mime === 'image/png'
+        ? { path: '/home/test/.hermes/cache/images/owned.png', mime: 'image/png' }
+        : { attached: true, ref_text: '@file:"attachments/report one.txt"' };
+    }
+    if (method === 'attachment.release') return {};
+    return original(method, params);
+  });
+  return { bridge, uploads, adapter: create(bridge).adapter };
+}
+const imageFile = () => ({
+  name: 'picture.png',
+  mime: 'image/png',
+  data: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2]),
+});
+
 describe('Hermes SSH native adapter', () => {
+  it('discovers only probed attachment support and keeps older bridges unsupported', async () => {
+    const { adapter } = uploadBridge();
+    expect(await adapter.discover()).toMatchObject({
+      'attachments.image': 'supported',
+      'attachments.file': 'supported',
+    });
+    expect(await create().adapter.discover()).toMatchObject({
+      'attachments.image': 'unsupported',
+      'attachments.file': 'unsupported',
+    });
+  });
+  it('uploads bounded chunks and submits immutable image references plus actual file refs', async () => {
+    const { adapter, bridge, uploads } = uploadBridge();
+    const file = {
+      name: 'report one.txt',
+      mime: 'text/plain',
+      data: new Uint8Array(115_000).fill(65),
+    };
+    const events: AgentEvent[] = [];
+    await adapter.send({ ...turn, attachments: [imageFile(), file] }, (event) =>
+      events.push(event),
+    );
+    expect(Buffer.concat(uploads[0]!.bytes)).toEqual(Buffer.from(imageFile().data));
+    expect(Buffer.concat(uploads[1]!.bytes)).toEqual(Buffer.from(file.data));
+    const begin = bridge.request.mock.calls.filter(([method]) => method === 'attachment.begin');
+    expect(begin[1]![1]).toMatchObject({
+      session_id: 'existing-session',
+      size: file.data.length,
+      mime: 'application/octet-stream',
+      sha256: createHash('sha256').update(file.data).digest('hex'),
+    });
+    for (const [method, params] of bridge.request.mock.calls)
+      if (method === 'attachment.chunk')
+        expect(String(params.data_base64).length).toBeLessThanOrEqual(65536);
+    const submitted = bridge.request.mock.calls.find(([method]) => method === 'prompt.submit')![1];
+    expect(submitted).toMatchObject({
+      text: '@file:"attachments/report one.txt"\n\nhello',
+      api_text: `@file:"attachments/report one.txt"\n\nhello\n\n${HERMES_PROGRESS_GUIDANCE}`,
+      attachments: [{ path: '/home/test/.hermes/cache/images/owned.png', mime: 'image/png' }],
+    });
+    expect(bridge.request.mock.calls.at(-1)).toEqual([
+      'attachment.release',
+      { upload_ids: ['upload-0', 'upload-1'] },
+    ]);
+    expect(events[0]!.type).toBe('turn.accepted');
+  });
+  it('fails unsupported or broken uploads before prompt submission and cleans owned staging', async () => {
+    for (const mode of ['unsupported', 'broken'] as const) {
+      const { adapter, bridge } = uploadBridge(),
+        original = bridge.request.getMockImplementation()!;
+      bridge.request.mockImplementation(async (method, params) => {
+        if (mode === 'unsupported' && method === 'attachment.capabilities')
+          return { images: false, files: false };
+        if (mode === 'broken' && method === 'attachment.chunk')
+          throw new Error('private byte failure');
+        return original(method, params);
+      });
+      const events: AgentEvent[] = [];
+      await adapter.send({ ...turn, attachments: [imageFile()] }, (event) => events.push(event));
+      expect(events).toMatchObject([{ type: 'turn.failed' }]);
+      expect(JSON.stringify(events)).not.toContain('private byte failure');
+      expect(bridge.request.mock.calls.some(([method]) => method === 'prompt.submit')).toBe(false);
+      if (mode === 'broken')
+        expect(bridge.request.mock.calls.at(-1)![0]).toBe('attachment.release');
+    }
+  });
+  it('confirms cancellation during chunk upload and never submits later', async () => {
+    const { adapter, bridge } = uploadBridge(),
+      original = bridge.request.getMockImplementation()!;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    bridge.request.mockImplementation(async (method, params) => {
+      if (method === 'attachment.chunk') await gate;
+      return original(method, params);
+    });
+    const events: AgentEvent[] = [];
+    const sending = adapter.send({ ...turn, attachments: [imageFile()] }, (event) =>
+      events.push(event),
+    );
+    await until(() => bridge.request.mock.calls.some(([method]) => method === 'attachment.chunk'));
+    expect(await adapter.cancel(turn.requestId)).toBe('confirmed');
+    release();
+    await sending;
+    expect(events).toMatchObject([{ type: 'turn.cancelled', payload: { remoteConfirmed: true } }]);
+    expect(bridge.request.mock.calls.some(([method]) => method === 'prompt.submit')).toBe(false);
+    expect(bridge.request.mock.calls.at(-1)![0]).toBe('attachment.release');
+  });
+  it('stops staged work on disconnect without reopening a connection for cleanup', async () => {
+    const { adapter, bridge } = uploadBridge(),
+      original = bridge.request.getMockImplementation()!;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    bridge.request.mockImplementation(async (method, params) => {
+      if (method === 'attachment.chunk') await gate;
+      return original(method, params);
+    });
+    const events: AgentEvent[] = [];
+    const sending = adapter.send({ ...turn, attachments: [imageFile()] }, (e) => events.push(e));
+    await until(() => bridge.request.mock.calls.some(([method]) => method === 'attachment.chunk'));
+    await adapter.disconnect();
+    release();
+    await sending;
+    expect(
+      bridge.request.mock.calls.some(
+        ([method]) => method === 'prompt.submit' || method === 'attachment.release',
+      ),
+    ).toBe(false);
+    expect(events.at(-1)!.type).toBe('turn.failed');
+  });
+  it('keeps an uncertain attachment admission reconciling without uploading or submitting again', async () => {
+    const { adapter, bridge } = uploadBridge(),
+      original = bridge.request.getMockImplementation()!;
+    bridge.request.mockImplementation(async (method, params) => {
+      if (method === 'prompt.submit') throw new TransportError('native_timeout', 'timeout');
+      return original(method, params);
+    });
+    const events: AgentEvent[] = [];
+    await adapter.send({ ...turn, attachments: [imageFile()] }, (e) => events.push(e));
+    expect(events).toMatchObject([{ type: 'turn.reconciling' }]);
+    await adapter.reconcile(turn, (e) => events.push(e));
+    expect(bridge.request.mock.calls.filter(([method]) => method === 'prompt.submit')).toHaveLength(
+      1,
+    );
+    expect(
+      bridge.request.mock.calls.filter(([method]) => method === 'attachment.begin'),
+    ).toHaveLength(1);
+  });
   it('strictly parses host/user and rejects shell/URL injection', () => {
     expect(sshTarget('ssh://tester@example.test')).toBe('tester@example.test');
     expect(sshTarget('ssh://other@127.0.0.1')).toBe('other@127.0.0.1');

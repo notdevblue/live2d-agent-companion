@@ -10,6 +10,7 @@
 |---|---|---|
 | Electron | typed IPC, sender/mainFrame 검사, sandbox/contextIsolation, renderer 외부 네트워크 차단 | Windows 실제 창/입력 미검증 |
 | Chat | 직접 전송 시 하단 이동, 응답 하단 추적/과거 위치 유지, 실시간·복원 답변의 Markdown 문단/강조/목록/코드/표 | 링크는 이동 없는 표시, 이미지는 alt text. 코드 문법 강조 없음 |
+| 첨부 | 이미지/일반 파일 선택·드롭·paste·초안 미리보기/삭제, Hermes SSH 실제 이미지/파일 전달 | 10개·파일당 10 MiB·전체 25 MiB. HTTP/Grok 미지원, 첨부-only의 로컬 history 복원은 기본 텍스트 표시이며 첨부 thumbnail/파일명 이력 보존은 미구현 |
 | UI/Live2D | 투명 Overlay, 모니터 이동·부분 표시·휠 배율, 로컬 actor의 시선/고개/몸 연기·표정 crossfade·paired 손 포즈, 강도/구도/배치 잠금/움직임 줄이기/미리보기 | Windows·실제 고 DPI·성능 수락 전. 마우스 시선 추적/쓰다듬기/TTS 없음 |
 | Linux/Sway | Xwayland의 non-focusable Overlay, 입력 전용 XShape로 빈 영역 통과·모델 재진입, 실패 시 전체 입력 복구 | 현재 SwayFX 환경에서 실증. native Wayland 클릭 통과는 미지원 |
 | Core | binding/turn/request 검사, dedupe, lease, reconciling, 승인/취소, 원문 없는 복원 | 원문 히스토리 영구 저장 안 함 |
@@ -65,6 +66,10 @@ npm audit
 사용자 `.env` 경로의 실제 시작 검사는 `node scripts/smoke-desktop.mjs --smoke-hermes --smoke-env`다. 기본 `test:desktop`은 `.env`를 읽거나 유료 Jev 호출을 하지 않는다.
 
 ## 확인 결과 (2026-11-01)
+
+- `FR-CHAT-003`: 기존 요청은 text만 받았고 첨부 선택 UI·바이트 transport가 없었다. File 선택/채팅 drop/명시 paste, 파일명·크기·raster blob preview/삭제와 attachment-only 전송을 추가했다. main→Core→SSH는 제한된 바이트 snapshot만 전달하고 renderer 경로를 읽지 않는다. source probe로 지원을 확인한 뒤 이미지 immutable admission·일반 파일의 canonical file.attach ref를 사용한다. 새 UI가 시작 시 비활성화되던 원인은 configure에서 capability를 조회하지 않던 경로였고, 선택별 자동 discovery·이전 조회 무시·chat bootstrap 대기로 해결했다. 전체 230개 검사·typecheck·format·build를 통과했다. Mock Electron의 `attachmentComposer`는 실제 input/drop→blob preview→adapter 바이트·빈 텍스트 전송·제거와 Overlay/설정의 전송 거절을 검사한다. 초기에 테스트가 image read 완료 전에 확인하던 문제를 고쳐 실제 준비 완료까지 기다리며 `.message.user:last-of-type` 대신 전달한 파일명으로 bubble을 확인한다. 이미지 근거는 ignored `artifacts/attachments-smoke.png`, 수치 근거는 `artifacts/desktop-smoke.json`이다.
+- 실제 default 전용 검증 세션에서 합성 PNG 숫자와 텍스트 파일의 임의 verification 값을 정확히 읽은 최종 응답을 확인했다(ignored `.tmp/attachment-check/live-result.json`). 실사용 session binding을 바꾸거나 기존 대화에 테스트 메시지를 넣지 않았고 Jev 호출은 0회다. 실제 Sway 기본 설정의 앱 재실행에서 지원 자동 조회·버튼 활성·이미지 paste/실제 preview load·초안 전송 준비·삭제·수평 잘림 없음·요청 미생성을 확인했다(`.tmp/attachment-check/native-result.json`). 이 UI 검사는 전송 버튼을 누르지 않았다. 검증한 build를 설치된 rofi 기본 항목으로 재실행해 실제 production 경로·동일 build·기존 설정/위치 보존·Overlay 한 개 mapped를 확인했다(`.tmp/attachment-check/production-result.json`). 파일 원문은 로컬 pending/log/Jev에 저장·전송하지 않는다. 이미 접수한 첨부는 자동 재송신하지 않으며 ACK 전 유실의 접수 여부 미확정은 기존 Hermes 계약의 한계다. 일반 첨부는 원격 후속 참조를 위해 보관되고 불확실한 이미지 stage는 remote cache에 남을 수 있다.
+
 
 - `FR-DIR-005/FR-L2D-007`: 고개 반응이 잘 보이지 않던 원인은 작은 회전 target에 기본 강도 .65와 느린 4.5/s 추종이 겹치던 것이었다. 중립 전달의 headY target을 -.22→-.48, 명시적 끄덕임을 ±.24→±.60, 안심 끄덕임을 ±.24→±.36, 도리도리를 ±.30→±.52로 조정했다. 고개 추종은 명시적 끄덕/도리도리 8.5/s·전달/안심 6.5/s이며 idle·다른 표정의 추종은 유지한다. 전체 상하 offset/호흡·창 배치·반응 수명·Jev 판단/호출 수는 바꾸지 않았다. 기본 강도의 실제 회전 하한·idle과 같은 offset·승인 차단을 회귀 검사하고 기존 30/60/120fps·움직임 줄이기 검사를 포함한 전체 206개·typecheck·format·build·Mock desktop을 통과했다. 실제 DeepSeek/SDK의 idle 대비 physics 이후 각도 비교에서 중립 전달의 아래 끄덕임은 약 3.56°→8.60°, 명시적 끄덕임의 peak-to-peak는 약 6.55°→20.53°였다. 도리도리·안심도 증가했고 전체 offset 동일·손 포즈 없음·자연 종료를 확인했다(ignored `.tmp/nod-check/before.json`, `after.json`). headless의 기본 강도 로컬 모델 검증이며 화면 거리별 가시성/실사용 성능 보장은 아니다. 설치된 rofi 항목으로 기본 앱을 재실행해 Overlay 한 개·mapped·기존 설정/위치 보존을 확인했다(ignored `.tmp/nod-check/restart.json`). 적용은 build 후 기존 앱 종료·Live2D Companion 런처 재실행, 복원은 변경 커밋 revert 후 같은 절차다. OS 재부팅/재로그인은 하지 않았다.
 
@@ -138,5 +143,7 @@ npm audit
 근거는 같은 변경의 `tests/`, `scripts/smoke-desktop.mjs`, main의 smoke 결과 생성 코드와 실행 결과다. 모델/SDK·키·개인 대화는 증거 fixture로 커밋하지 않는다.
 
 ## 남은 작업
+
+첨부의 창 재생성/재실행 뒤 thumbnail·파일명 이력 복원, HTTP/Grok 첨부, native 파일 chooser/물리 클립보드 전체 수락은 별도 범위다. 현재 검증은 브라우저 File/ClipboardEvent를 통한 자기 앱 입력과 실제 SSH 왕복이다. 첨부 적용은 build 후 기존 앱 종료·설치된 Live2D Companion 런처 재실행이며, 복원은 변경 커밋 revert 후 같은 절차다. 별도 Linux 설정/서비스는 추가하지 않았고 OS 재부팅·재로그인은 수행하지 않았다.
 
 Windows 실제 Overlay/포커스/드래그/클릭 통과·고 DPI·보호 저장소, canonical Bot Chat 동일성, Grok callback 가능성, TTS/립싱크, 실서비스 취소/승인, 릴리스 패키징/라이선스 확인이 남아 있다.

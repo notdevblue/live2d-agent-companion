@@ -71,3 +71,11 @@ Cubism SDK/Core, MotionSync, 개별 Live2D 모델·음성 모델/보이스마다
 ## 독립 설정 창 IPC
 
 채팅/설정은 parent·modal 없는 별도 managed dialog이며 동일한 sandbox/contextIsolation/CSP/외부 navigation·새 창 차단을 적용한다. main의 `trusted`는 현재 소유한 mainFrame·app origin·window identity를 검사한다. 설정 조작은 chat/settings에 허용하지만 메시지 전송·원격 승인·취소·상태 조회는 chat에만 허용한다. Overlay의 파일 선택 fallback은 좁은 `openSettings`만 호출한다. 설정의 bootstrap·작업 응답에는 대화 history를 넣지 않는다. 설정 열기/재열기는 세션을 만들거나 prompt를 보내지 않는다.
+
+## 사용자 선택 파일 첨부
+
+`FR-CHAT-003`은 사용자가 File 입력·드롭·paste로 제공한 바이트만 전송한다. OS 화면 캡처·클립보드 상시 조회·로컬 경로 읽기 API를 추가하지 않는다. 전송 버튼 이전에는 외부 업로드하지 않는다. main의 chat sender/selection 검사 뒤 최대 10개·파일당 10 MiB·합계 25 MiB를 확인하고 경로/제어문자가 든 이름·빈 파일·추가 필드를 거절한다. raster 바이트 signature로 이미지 경로를 선택하고 SVG 등 일반 파일은 실행/미리보기하지 않는다. 이미지 미리보기는 그 파일의 blob URL뿐이며 제거/전환/pagehide에서 폐기한다.
+
+SSH에는 고정 업로드 명령과 48 KiB chunk만 보내고 경로를 입력받지 않는다. 원격 bridge는 이미 확인한 profile의 고정 cache 아래 O_EXCL/O_NOFOLLOW·0600 파일을 만들고 크기/순서/SHA-256을 확인한다. 이미지는 `prompt.submit.attachments`에서 immutable admission으로 캡처하고 성공/명시 거절 응답 후 stage를 정리한다. 접수 결과가 불명확하면 아직 캡처하지 않은 이미지를 지우지 않으며 원격 cache에 남을 수 있다. 일반 파일은 Hermes `file.attach`가 선택 세션의 파일 공간에 보관하므로 후속 대화에서 참조할 수 있다. 전송한 파일의 보존은 해당 Hermes 호스트의 저장 정책을 따른다.
+
+원문 파일/이미지 바이트·base64·원격 첨부 경로를 Jev나 로컬 pending/log에 넣지 않는다. Jev는 기존의 제한된 요청/답변 텍스트만 판단한다. 준비 중 취소/연결 종료는 이후 prompt 제출을 막는다. 이미 접수된 요청의 복구는 기존 receipt를 사용하며 파일을 자동 재업로드/재제출하지 않는다. admission ACK 이전에 프로세스가 유실되어 ID를 모르면 원래 계약대로 접수 여부를 확정할 수 없다.

@@ -321,3 +321,122 @@ describe('FR-UI-002 chat slash actions', () => {
     expect(document.getElementById('notice')!.textContent).toBe('');
   });
 });
+
+function localFile(name = 'notes.txt', bytes = [65], type = 'text/plain'): File {
+  const data = Uint8Array.from(bytes);
+  const selected = new File([data], name, { type });
+  Object.defineProperty(selected, 'arrayBuffer', { value: async () => data.buffer });
+  return selected;
+}
+function pasteFiles(files: File[]): void {
+  const event = new Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', { value: { files } });
+  document.getElementById('message')!.dispatchEvent(event);
+}
+function attachmentSnapshot(): Bootstrap {
+  const initial = snapshot();
+  initial.capabilities['attachments.image'] = 'supported';
+  initial.capabilities['attachments.file'] = 'supported';
+  return initial;
+}
+
+describe('FR-CHAT-003 chat file inputs', () => {
+  it('sends selected file bytes with an empty message and preserves the next draft during submission', async () => {
+    const bridge = await start('chat', attachmentSnapshot());
+    const pending = deferred<void>();
+    bridge.send.mockImplementationOnce(() => pending.promise);
+    const picker = document.getElementById('attachment-input') as HTMLInputElement;
+    Object.defineProperty(picker, 'files', { value: [localFile()], configurable: true });
+    picker.dispatchEvent(new Event('change'));
+    await vi.waitFor(() =>
+      expect(document.querySelector('.attachment')?.textContent).not.toContain('읽는 중'),
+    );
+    submitMessage('');
+    expect(bridge.send).toHaveBeenCalledExactlyOnceWith('', 'one', [
+      { name: 'notes.txt', mime: 'application/octet-stream', data: Uint8Array.from([65]) },
+    ]);
+    expect(document.getElementById('conversation')!.textContent).toContain('첨부: notes.txt');
+    typeMessage('다음 메시지');
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      value: { files: [localFile('next.txt', [66])] },
+    });
+    document.getElementById('chat')!.dispatchEvent(drop);
+    await vi.waitFor(() => expect(document.querySelectorAll('.attachment')).toHaveLength(2));
+    pending.resolve();
+    await vi.waitFor(() => expect(document.querySelectorAll('.attachment')).toHaveLength(1));
+    expect(document.querySelector('.attachment')?.textContent).toContain('next.txt');
+    expect((document.getElementById('message') as HTMLTextAreaElement).value).toBe('다음 메시지');
+  });
+  it('keeps failed text and attachments, reports the error, and blocks local commands with files', async () => {
+    const bridge = await start('chat', attachmentSnapshot());
+    pasteFiles([localFile()]);
+    await vi.waitFor(() =>
+      expect(document.querySelector('.attachment')?.textContent).not.toContain('읽는 중'),
+    );
+    submitMessage('/new');
+    expect(bridge.createSession).not.toHaveBeenCalled();
+    expect(document.getElementById('notice')!.textContent).toContain('첨부 파일을 먼저 제거');
+    bridge.send.mockRejectedValueOnce(
+      new Error(
+        "Error invoking remote method 'companion:send': Error: 파일 전송이 중단되었습니다.",
+      ),
+    );
+    submitMessage('이 파일 확인해');
+    await vi.waitFor(() =>
+      expect(document.getElementById('notice')!.textContent).toBe('파일 전송이 중단되었습니다.'),
+    );
+    expect((document.getElementById('message') as HTMLTextAreaElement).value).toBe(
+      '이 파일 확인해',
+    );
+    expect(document.querySelectorAll('.attachment')).toHaveLength(1);
+    expect(document.querySelectorAll('.message.user')).toHaveLength(0);
+  });
+  it('retains files on a known failed admission even when the send IPC itself resolves', async () => {
+    const bridge = await start('chat', attachmentSnapshot());
+    pasteFiles([localFile()]);
+    await vi.waitFor(() =>
+      expect(document.querySelector('.attachment')?.textContent).not.toContain('읽는 중'),
+    );
+    bridge.send.mockImplementationOnce(async () => {
+      emit({
+        type: 'turn',
+        selectionId: 'one',
+        revision: 2,
+        turn: {
+          binding: {
+            provider: 'mock',
+            connectionId: 'local',
+            agentId: 'default',
+            sessionId: 'one',
+            continuity: 'unverified',
+          },
+          requestId: 'failed',
+          turnId: 'turn',
+          state: 'failed',
+          text: '',
+          error: '파일 전송 실패',
+        },
+      });
+    });
+    submitMessage('첨부 확인');
+    await vi.waitFor(() =>
+      expect((document.getElementById('send') as HTMLButtonElement).disabled).toBe(false),
+    );
+    expect(document.querySelectorAll('.attachment')).toHaveLength(1);
+    expect((document.getElementById('message') as HTMLTextAreaElement).value).toBe('첨부 확인');
+    expect(document.getElementById('notice')!.textContent).toBe('파일 전송 실패');
+    expect(bridge.send).toHaveBeenCalledOnce();
+  });
+
+  it('isolates attachment drafts when the conversation selection changes', async () => {
+    const initial = attachmentSnapshot();
+    const bridge = await start('chat', initial);
+    pasteFiles([localFile()]);
+    await vi.waitFor(() => expect(document.querySelectorAll('.attachment')).toHaveLength(1));
+    bridge.bootstrap.mockResolvedValueOnce({ ...initial, selectionId: 'two', revision: 3 });
+    emit({ type: 'configuration', selectionId: 'two', revision: 3 });
+    await vi.waitFor(() => expect(document.querySelectorAll('.attachment')).toHaveLength(0));
+    expect(bridge.send).not.toHaveBeenCalled();
+  });
+});

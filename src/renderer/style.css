@@ -594,3 +594,55 @@ select option {
   background: var(--bg);
   text-align: left;
 }
+
+/* Explicit local file drafts; only blob URLs created from selected images are previewed. */
+#attach {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 40px;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 24px;
+}
+#attachment-list {
+  display: grid;
+  gap: 5px;
+  max-height: min(160px, 24vh);
+  overflow-y: auto;
+  margin-bottom: 8px;
+}
+#attachment-list[hidden] {
+  display: none;
+}
+.attachment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  min-width: 0;
+  font-size: 11px;
+}
+.attachment img {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+}
+.attachment span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.attachment button {
+  flex: 0 0 26px;
+  padding: 1px;
+  color: var(--muted);
+  background: transparent;
+}
+#chat.file-dragging #composer {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}

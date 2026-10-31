@@ -49,6 +49,7 @@ import {
 import { X11InputShape } from './x11-input.js';
 import { characterPreviewSchema, parseSettings } from '../shared/validation.js';
 import { TurnCoordinator, bindingKey, type CoordinatorMetadata } from '../core/turn-coordinator.js';
+import { normalizeAttachments, assertAttachmentSupport } from '../shared/attachments.js';
 import { ConversationHistory } from '../core/conversation-history.js';
 import { MockAdapter } from '../adapters/mock.js';
 import { HermesAdapter } from '../adapters/hermes.js';
@@ -192,6 +193,33 @@ function currentBinding(): AgentBinding {
     continuity: p.provider === 'mock' ? 'new-session' : 'unverified',
   };
 }
+let capabilityDiscoveryRevision = 0;
+let capabilityDiscovery: { selectionId: string; promise: Promise<void> } | undefined;
+function discoverCapabilities(active: AgentAdapter, selected: string): Promise<void> {
+  const discovery = ++capabilityDiscoveryRevision;
+  const current = () =>
+    !quitting &&
+    discovery === capabilityDiscoveryRevision &&
+    selectionId === selected &&
+    adapter === active;
+  return active
+    .discover()
+    .then(
+      (discovered) => {
+        if (!current()) return;
+        capabilities = discovered;
+        connectionError = undefined;
+      },
+      () => {
+        if (!current()) return;
+        capabilities = unsupportedCapabilities();
+        connectionError = '공급자 연결을 확인할 수 없습니다. 주소와 인증 정보를 확인하세요.';
+      },
+    )
+    .then(() => {
+      if (current()) emit({ type: 'configuration' });
+    });
+}
 async function configure(alreadyLocked = false): Promise<void> {
   if (switching && !alreadyLocked)
     throw new Error('연결을 변경 중입니다. 잠시 후 다시 시도하세요.');
@@ -299,6 +327,10 @@ async function configure(alreadyLocked = false): Promise<void> {
         );
       coordinator.restore(saved);
     }
+    capabilityDiscovery = {
+      selectionId: ownSelection,
+      promise: discoverCapabilities(ownAdapter!, ownSelection),
+    };
   } finally {
     if (!alreadyLocked) switching = false;
   }
@@ -308,6 +340,7 @@ async function bootstrap(includeHistory = true): Promise<Bootstrap> {
   const selected = selectionId;
   if (includeHistory) {
     try {
+      if (capabilityDiscovery?.selectionId === selected) await capabilityDiscovery.promise;
       await loadHistory();
     } catch {
       historyError = '이전 대화를 불러오지 못했습니다. 연결을 확인하고 채팅창을 다시 열어 주세요.';
@@ -655,17 +688,11 @@ function registerIpc(): void {
     const selected = selectionId;
     const active = adapter;
     if (switching || !active) throw new Error('연결 변경 중입니다.');
-    try {
-      const discovered = await active.discover();
-      if (selectionId === selected) {
-        capabilities = discovered;
-        connectionError = undefined;
-      }
-    } catch {
-      if (selectionId === selected)
-        connectionError = '공급자 연결을 확인할 수 없습니다. 주소와 인증 정보를 확인하세요.';
-    }
-    if (selectionId === selected) emit({ type: 'configuration' });
+    capabilityDiscovery = {
+      selectionId: selected,
+      promise: discoverCapabilities(active, selected),
+    };
+    await capabilityDiscovery.promise;
     return bootstrap(event.sender === chat?.webContents);
   });
   ipcMain.handle('companion:sessions', async (event) => {
@@ -778,30 +805,38 @@ function registerIpc(): void {
       throw new Error('요청이나 승인 처리가 끝난 뒤 캐릭터를 미리 볼 수 있습니다.');
     emit({ type: 'character.preview', preset });
   });
-  ipcMain.handle('companion:send', async (event, text: unknown, expectedSelection: unknown) => {
-    trusted(event, 'chat');
-    if (quitting || switching || storageFault || !coordinator || !adapter)
-      throw new Error('연결 또는 저장소 준비 상태를 확인하세요.');
-    if (settings.provider.sessionId === '__select_session__')
-      throw new Error('기존 세션을 선택하거나 새 대화를 만드세요.');
-    if (expectedSelection !== selectionId)
-      throw new Error('대화 대상이 변경되었습니다. 다시 확인하세요.');
-    const activeAdapter = adapter;
-    const activeCoordinator = coordinator;
-    const selected = selectionId;
-    if (submissionPending?.selectionId === selected) throw new Error('요청 전송을 준비 중입니다.');
-    const submissionToken = Symbol();
-    submissionPending = { selectionId: selected, token: submissionToken };
-    try {
-      await activeAdapter.connect();
-      await loadHistory();
-      if (switching || selectionId !== selected || coordinator !== activeCoordinator)
-        throw new Error('대화 대상이 변경되어 전송하지 않았습니다.');
-      await activeCoordinator.send(z.string().trim().min(1).max(32000).parse(text));
-    } finally {
-      if (submissionPending?.token === submissionToken) submissionPending = undefined;
-    }
-  });
+  ipcMain.handle(
+    'companion:send',
+    async (event, text: unknown, expectedSelection: unknown, files: unknown) => {
+      trusted(event, 'chat');
+      if (quitting || switching || storageFault || !coordinator || !adapter)
+        throw new Error('연결 또는 저장소 준비 상태를 확인하세요.');
+      if (settings.provider.sessionId === '__select_session__')
+        throw new Error('기존 세션을 선택하거나 새 대화를 만드세요.');
+      if (expectedSelection !== selectionId)
+        throw new Error('대화 대상이 변경되었습니다. 다시 확인하세요.');
+      const attachments = normalizeAttachments(files);
+      const message = z.string().trim().max(32000).parse(text);
+      if (!message && !attachments.length) throw new Error('메시지나 첨부 파일을 추가해 주세요.');
+      assertAttachmentSupport(attachments, capabilities);
+      const activeAdapter = adapter;
+      const activeCoordinator = coordinator;
+      const selected = selectionId;
+      if (submissionPending?.selectionId === selected)
+        throw new Error('요청 전송을 준비 중입니다.');
+      const submissionToken = Symbol();
+      submissionPending = { selectionId: selected, token: submissionToken };
+      try {
+        await activeAdapter.connect();
+        await loadHistory();
+        if (switching || selectionId !== selected || coordinator !== activeCoordinator)
+          throw new Error('대화 대상이 변경되어 전송하지 않았습니다.');
+        await activeCoordinator.send(message, attachments);
+      } finally {
+        if (submissionPending?.token === submissionToken) submissionPending = undefined;
+      }
+    },
+  );
   const activeRequest = (id: unknown) => {
     if (quitting || switching || !coordinator || id !== coordinator.current?.requestId)
       throw new Error('현재 요청과 일치하지 않습니다.');
@@ -1261,6 +1296,7 @@ async function runSmoke(): Promise<void> {
   let historyRestored = true;
   let sessionKeepsModel = true;
   let overlayContextMenu = true;
+  let attachmentComposer = true;
   const firstProvider = { ...settings.provider };
   if (!smokeHermes) {
     const transcript = await chat?.webContents.executeJavaScript(
@@ -1681,6 +1717,72 @@ async function runSmoke(): Promise<void> {
     );
     historyRestored = Boolean(historyRestored && sessionHistoryRestored);
     Object.assign(result, { historyRestored, sessionHistoryRestored });
+    const fixtureAdapter = adapter!;
+    const originalSend = fixtureAdapter.send.bind(fixtureAdapter);
+    let receivedAttachments = false;
+    fixtureAdapter.send = async (turn, sink) => {
+      receivedAttachments = Boolean(
+        turn.text === '첨부한 파일을 확인해 주세요.' &&
+        turn.attachments?.length === 2 &&
+        turn.attachments[0]?.name === 'fixture.txt' &&
+        new TextDecoder().decode(turn.attachments[0].data) === 'attachment-fixture' &&
+        turn.attachments[1]?.mime === 'image/png',
+      );
+      await originalSend(turn, sink);
+    };
+    const attachmentsPrepared = await chat?.webContents.executeJavaScript(`(async()=>{
+      const field=document.getElementById('attachment-input');
+      const selection=new DataTransfer();
+      selection.items.add(new File(['attachment-fixture'],'fixture.txt',{type:'text/plain'}));
+      field.files=selection.files;field.dispatchEvent(new Event('change',{bubbles:true}));
+      for(let i=0;i<100&&document.querySelectorAll('#attachment-list .attachment').length!==1;i++)await new Promise(r=>setTimeout(r,10));
+      const image=new DataTransfer();
+      image.items.add(new File([Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9ioAAAAASUVORK5CYII='),c=>c.charCodeAt(0))],'fixture.png',{type:'image/png'}));
+      document.getElementById('chat').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:image}));
+      for(let i=0;i<100;i++){if(document.querySelectorAll('#attachment-list .attachment').length===2&&document.querySelector('#attachment-list img')?.src.startsWith('blob:')&&!document.getElementById('send').disabled)break;await new Promise(r=>setTimeout(r,10));}
+      return document.querySelectorAll('#attachment-list .attachment').length===2 && document.querySelector('#attachment-list img')?.src.startsWith('blob:') && !document.getElementById('send').disabled;
+    })()`);
+    const attachmentShot = await chat?.webContents.capturePage();
+    if (attachmentShot)
+      await writeFile(join(root, 'artifacts/attachments-smoke.png'), attachmentShot.toPNG());
+    const rejectedSettingsAttachments = await settingsWindow?.webContents
+      .executeJavaScript(`(async()=>{
+      const b=await window.companion.bootstrap();
+      return window.companion.send('',b.selectionId,[{name:'fixture.txt',mime:'text/plain',data:new Uint8Array([65])}]).then(()=>false,()=>true);
+    })()`);
+    const rejectedOverlayAttachments = await overlay?.webContents.executeJavaScript(`(async()=>{
+      const b=await window.companion.bootstrap();
+      return window.companion.send('',b.selectionId,[{name:'fixture.txt',mime:'text/plain',data:new Uint8Array([65])}]).then(()=>false,()=>true);
+    })()`);
+    await chat?.webContents.executeJavaScript(
+      "document.getElementById('message').value='';document.getElementById('composer').requestSubmit()",
+    );
+    for (let i = 0; i < 100; i++) {
+      if (receivedAttachments && coordinator?.current?.state === 'completed') break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    attachmentComposer = Boolean(
+      attachmentsPrepared &&
+      receivedAttachments &&
+      rejectedSettingsAttachments &&
+      rejectedOverlayAttachments &&
+      (await chat?.webContents.executeJavaScript(
+        "document.querySelectorAll('#attachment-list .attachment').length===0 && Array.from(document.querySelectorAll('.message.user')).some(row=>row.textContent.includes('fixture.txt')&&row.textContent.includes('fixture.png'))",
+      )),
+    );
+    fixtureAdapter.send = originalSend;
+    Object.assign(result, {
+      attachmentComposer,
+      attachmentChecks: {
+        prepared: attachmentsPrepared,
+        received: receivedAttachments,
+        settingsRejected: rejectedSettingsAttachments,
+        overlayRejected: rejectedOverlayAttachments,
+        cleared: await chat?.webContents.executeJavaScript(
+          "document.querySelectorAll('#attachment-list .attachment').length===0",
+        ),
+      },
+    });
   }
   await writeFile(join(root, 'artifacts/desktop-smoke.json'), JSON.stringify(result, null, 2));
   if (smokeHermes && smokeJev)
@@ -1706,6 +1808,7 @@ async function runSmoke(): Promise<void> {
       historyRestored &&
       sessionKeepsModel &&
       overlayContextMenu &&
+      attachmentComposer &&
       (!smokeJev || (lastCue?.cue.source === 'jev' && renderer.lastCue))
       ? 0
       : 1,

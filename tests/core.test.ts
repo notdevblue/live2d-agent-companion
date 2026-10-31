@@ -290,6 +290,45 @@ describe('TurnCoordinator request boundary (FR-AG-003/004/010/012)', () => {
 });
 
 describe('durable pre-submit barrier', () => {
+  it('snapshots attachments before durability and keeps file bytes out of metadata and Jev', async () => {
+    const persisted = deferred<void>(),
+      adapter = new ControlledAdapter();
+    const judge = { judge: vi.fn(async () => happy) };
+    const core = new TurnCoordinator({
+      adapter,
+      binding: binding(),
+      judge,
+      onEvent: () => {},
+      beforeSubmit: () => persisted.promise,
+    });
+    const data = new TextEncoder().encode('PRIVATE FILE CONTENT');
+    const pending = core.send('Read my attachment', [
+      { name: 'private.txt', mime: 'text/plain', data },
+    ]);
+    data.fill(0);
+    expect(JSON.stringify(core.snapshot())).not.toMatch(
+      /PRIVATE FILE|private.txt|attachments|data/,
+    );
+    persisted.resolve();
+    await pending;
+    expect(new TextDecoder().decode(adapter.sent[0]!.attachments![0]!.data)).toBe(
+      'PRIVATE FILE CONTENT',
+    );
+    adapter.emit('message.complete', { text: 'I read it.', messageId: 'answer' });
+    await flush();
+    expect(judge.judge).toHaveBeenCalledWith('I read it.', expect.any(AbortSignal), {
+      userRequest: 'Read my attachment',
+    });
+    await core.dispose();
+  });
+  it('accepts attachment-only turns while rejecting an empty text-only turn before a lease', async () => {
+    const { core, adapter } = fixture();
+    await expect(core.send('')).rejects.toThrow();
+    await core.send('', [{ name: 'note.txt', mime: 'text/plain', data: new Uint8Array([65]) }]);
+    expect(adapter.sent[0]!.text).toBe('첨부한 파일을 확인해 주세요.');
+    await core.dispose();
+  });
+
   it('waits for metadata durability before submitting and exports no transcript', async () => {
     const persisted = deferred<void>();
     const adapter = new ControlledAdapter();

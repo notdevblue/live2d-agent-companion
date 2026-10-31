@@ -7,7 +7,7 @@
 ~~~ts
 type ProviderId = "hermes" | "grok_bot" | "mock";
 type Capability =
-  | "text" | "streaming" | "attachments.image"
+  | "text" | "streaming" | "attachments.image" | "attachments.file"
   | "session.list" | "session.resume" | "session.history" | "request.reconcile" | "cancel"
   | "tool.events" | "tool.approvals" | "pc.tools";
 
@@ -26,7 +26,7 @@ type RequestRef = {
 };
 type UserTurn = RequestRef & {
   text: string;
-  attachments?: Array<{kind: "image"; localRef: string}>;
+  attachments?: Array<{name: string; mime: string; data: Uint8Array}>; // 메모리의 선택 파일 바이트
 };
 type ProviderApprovalResponse = RequestRef & {
   approvalId: string;
@@ -50,7 +50,7 @@ interface AgentAdapter {
 
 `NormalizedAgentEvent`는 `EVENT_SCHEMA.md`의 이벤트 정의를 따른다. 선택적 메서드와 capability 값은 서로 일치해야 한다. 타입은 추후 런타임 유효성 검사 스키마와 함께 결정한다.
 
-**현재 구현:** 위 코드는 논리적 초안이며 실제 TypeScript 이름은 `src/shared/contracts.ts`의 `AgentEvent`/`ApprovalResponse`다. `src/shared/validation.ts`가 런타임 검사 기준이다. 실제 어댑터에는 명시적 `listSessions`와 `createSession` 선택 메서드가 있으며 새 세션 생성은 UI 동작으로만 수행한다. HTTP와 SSH는 서로 다른 연결 방식으로 유지한다. 미구현 첨부/listAgents를 지원한다고 선언하지 않는다.
+**현재 구현:** 위 코드는 논리적 초안이며 실제 TypeScript 이름은 `src/shared/contracts.ts`의 `AgentEvent`/`ApprovalResponse`다. `src/shared/validation.ts`가 런타임 검사 기준이다. 실제 어댑터에는 명시적 `listSessions`와 `createSession` 선택 메서드가 있으며 새 세션 생성은 UI 동작으로만 수행한다. HTTP와 SSH는 서로 다른 연결 방식으로 유지한다. 이미지/파일 첨부는 실제 source probe와 전용 세션 왕복을 확인한 SSH 연결에서만 지원한다. HTTP/Grok 첨부와 listAgents를 지원한다고 선언하지 않는다.
 
 `mock`은 개발·테스트 전용 공급자이며 실제 Hermes/Grok 연결로 표시하지 않는다. `request.reconcile`은 기존 요청의 상태 조회·이벤트 재구독 능력이며 `session.resume`과 별개다. `send`의 Promise는 제출 처리 종료를 뜻하고 답변 완료를 뜻하지 않는다. sink는 해당 요청의 종결 또는 재구독 교체까지 유지한다. 복구 시 누적 텍스트는 기존 메시지를 교체하는 snapshot으로 전달하며 delta처럼 덧붙이지 않는다(`EVENT_SCHEMA.md`).
 
@@ -120,3 +120,5 @@ Core는 30초 무이벤트/연결 끊김/재시작 복원 때 조회를 자동 �
 ## 실패·보안 규칙
 
 Adapter는 raw HTML, model-suggested shell command, 임의 외부 URL을 실행하지 않는다. 외부 호출은 main 프로세스에서만, HTTPS/WSS 인증을 사용하고 표준 오류로 매핑한다. 로그는 공급자의 비밀 토큰이나 사용자 대화 원문을 포함하지 않는다.
+
+첨부는 `UserTurn`에만 존재하며 `RequestRef`/`TurnView`/pending metadata/Director에는 포함하지 않는다. main과 Core는 첫 await 전 바이트를 복사한다. 설정·세션 전환마다 capability를 자동 갱신하고 느린 이전 연결의 결과는 무시한다. 이미지/파일 지원은 각각 독립적인 capability다.

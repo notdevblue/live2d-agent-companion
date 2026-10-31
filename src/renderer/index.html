@@ -31,7 +31,17 @@
       </aside>
       <div id="notice" role="status"></div>
       <footer>
+        <div id="attachment-list" aria-label="첨부 파일" aria-live="polite" hidden></div>
+        <input id="attachment-input" type="file" multiple hidden aria-label="첨부할 파일 선택" />
         <form id="composer">
+          <button
+            id="attach"
+            type="button"
+            aria-label="이미지와 파일 첨부"
+            title="이미지와 파일 첨부"
+          >
+            ＋
+          </button>
           <div id="slash-menu" role="listbox" aria-label="명령" hidden></div>
           <textarea
             id="message"

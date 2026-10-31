@@ -4,6 +4,7 @@ export type Capability =
   | 'text'
   | 'streaming'
   | 'attachments.image'
+  | 'attachments.file'
   | 'session.list'
   | 'session.resume'
   | 'session.history'
@@ -25,8 +26,19 @@ export interface RequestRef {
   requestId: string;
   binding: AgentBinding;
 }
+export interface AttachmentInput {
+  name: string;
+  mime: string;
+  data: Uint8Array;
+}
+export const ATTACHMENT_LIMITS = {
+  maxFiles: 10,
+  maxFileBytes: 10 * 1024 * 1024,
+  maxTotalBytes: 25 * 1024 * 1024,
+} as const;
 export interface UserTurn extends RequestRef {
   text: string;
+  attachments?: AttachmentInput[];
 }
 export interface ConversationMessage {
   id: string;
@@ -252,7 +264,7 @@ export interface CompanionBridge {
   storeCredential(provider: 'hermes' | 'grok_bot' | 'jev', value: string): Promise<void>;
   chooseModel(): Promise<Bootstrap>;
   previewCharacter(preset: CharacterPreview): Promise<void>;
-  send(text: string, selectionId: string): Promise<void>;
+  send(text: string, selectionId: string, attachments?: AttachmentInput[]): Promise<void>;
   cancel(requestId: string): Promise<void>;
   reconcile(requestId: string): Promise<void>;
   approve(approvalId: string, decision: 'allow_once' | 'deny', requestId: string): Promise<void>;
@@ -274,6 +286,7 @@ export const unsupportedCapabilities = (): Capabilities =>
       'text',
       'streaming',
       'attachments.image',
+      'attachments.file',
       'session.list',
       'session.resume',
       'session.history',

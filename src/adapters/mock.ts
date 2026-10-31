@@ -41,6 +41,8 @@ export class MockAdapter implements AgentAdapter {
       ...unsupportedCapabilities(),
       text: 'supported',
       streaming: 'supported',
+      'attachments.image': 'supported',
+      'attachments.file': 'supported',
       cancel: 'supported',
       'request.reconcile': 'supported',
       'tool.approvals': 'supported',

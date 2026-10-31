@@ -16,6 +16,7 @@ import { localMapping } from '../shared/model-mappings.js';
 import { renderMessageText } from './chat-markdown.js';
 import { isConversationAtBottom, scrollConversationToBottom } from './chat-scroll.js';
 import { AssistantMessageBubbles } from './assistant-messages.js';
+import { ChatAttachments } from './chat-attachments.js';
 import { parseChatCommand, SlashCommandMenu, type ChatCommandId } from './slash-commands.js';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -36,6 +37,7 @@ let cancelOverlayGesture: (() => void) | undefined;
 let presentationSaves: Promise<void> = Promise.resolve();
 let slashMenu: SlashCommandMenu | undefined;
 let commandPending = false;
+let attachments: ChatAttachments | undefined;
 let submission: { selectionId: string } | undefined;
 const assistantMessages = new AssistantMessageBubbles();
 const input = (id: string) => element<HTMLInputElement>(id);
@@ -81,13 +83,25 @@ function requestActive(): boolean {
   return !!view && !['completed', 'failed', 'cancelled', 'interrupted'].includes(view.state);
 }
 function updateComposer(): void {
-  const local = parseChatCommand(element<HTMLTextAreaElement>('message').value).type !== 'text';
+  const local =
+    !attachments?.count &&
+    parseChatCommand(element<HTMLTextAreaElement>('message').value).type !== 'text';
   element<HTMLButtonElement>('send').disabled =
-    commandPending || (!local && (requestActive() || submission?.selectionId === boot.selectionId));
+    commandPending ||
+    !!attachments?.reading ||
+    (!local && (requestActive() || submission?.selectionId === boot.selectionId));
+  element<HTMLButtonElement>('attach').disabled = !attachments?.supported;
+  element<HTMLButtonElement>('attach').title = attachments?.supported
+    ? '이미지와 파일 첨부'
+    : '현재 연결은 파일 첨부를 지원하지 않습니다.';
   slashMenu?.setBusy(commandPending);
 }
 async function executeCommand(command: ChatCommandId): Promise<void> {
   if (commandPending) return;
+  if (attachments?.count) {
+    notice('명령을 실행하려면 첨부 파일을 먼저 제거해 주세요.');
+    return;
+  }
   const message = element<HTMLTextAreaElement>('message');
   const original = message.value;
   commandPending = true;
@@ -470,6 +484,7 @@ function adoptBootstrap(next: Bootstrap, configuration = false): void {
     next.history = undefined;
   }
   if (switched) {
+    attachments?.reset();
     for (const message of element('conversation').querySelectorAll('.message')) message.remove();
     assistantMessages.clear();
     view = undefined;
@@ -482,6 +497,7 @@ function adoptBootstrap(next: Bootstrap, configuration = false): void {
   boot = next;
   const readingPosition = element('conversation').scrollTop;
   populate();
+  updateComposer();
   if (configuration && sameSelection) element('conversation').scrollTop = readingPosition;
 }
 function collectSettings(): AppSettings {
@@ -654,6 +670,54 @@ async function main(): Promise<void> {
       element('slash-menu'),
       (command) => void executeCommand(command),
     );
+    attachments = new ChatAttachments(element('attachment-list'), {
+      capabilities: () => boot.capabilities,
+      changed: updateComposer,
+      error: notice,
+    });
+    const fileInput = input('attachment-input');
+    element('attach').onclick = () => fileInput.click();
+    fileInput.onchange = () => {
+      const files = Array.from(fileInput.files ?? []);
+      fileInput.value = '';
+      void attachments?.add(files);
+    };
+    element('message').addEventListener('paste', (event) => {
+      const files = Array.from(event.clipboardData?.files ?? []);
+      if (!files.length) return;
+      event.preventDefault();
+      void attachments?.add(files);
+    });
+    const chat = element('chat');
+    let dragDepth = 0;
+    chat.addEventListener('dragenter', (event) => {
+      if (!event.dataTransfer?.types.includes('Files')) return;
+      event.preventDefault();
+      dragDepth++;
+      chat.classList.add('file-dragging');
+    });
+    chat.addEventListener('dragover', (event) => {
+      if (!event.dataTransfer?.types.includes('Files')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = attachments?.supported ? 'copy' : 'none';
+    });
+    chat.addEventListener('dragleave', (event) => {
+      if (!event.dataTransfer?.types.includes('Files')) return;
+      if (--dragDepth <= 0) {
+        dragDepth = 0;
+        chat.classList.remove('file-dragging');
+      }
+    });
+    chat.addEventListener('drop', (event) => {
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      if (!files.length) return;
+      event.preventDefault();
+      dragDepth = 0;
+      chat.classList.remove('file-dragging');
+      void attachments?.add(files);
+    });
+    window.addEventListener('pagehide', () => attachments?.reset());
+    updateComposer();
     element('message').addEventListener('input', updateComposer);
   }
   element('settings-toggle').onclick = () => safe(() => bridge.openSettings());
@@ -747,10 +811,16 @@ async function main(): Promise<void> {
     });
   element('composer').addEventListener('submit', (event) => {
     event.preventDefault();
-    const text = element<HTMLTextAreaElement>('message').value.trim();
-    if (!text) return;
+    const message = element<HTMLTextAreaElement>('message');
+    const originalDraft = message.value;
+    const text = originalDraft.trim();
+    if (!text && !attachments?.count) return;
     slashMenu?.update();
     const parsed = parseChatCommand(text);
+    if (attachments?.count && (parsed.type !== 'text' || slashMenu?.selectedCommand)) {
+      notice('명령을 실행하려면 첨부 파일을 먼저 제거해 주세요.');
+      return;
+    }
     if (parsed.type === 'command') {
       void executeCommand(parsed.command);
       return;
@@ -767,20 +837,36 @@ async function main(): Promise<void> {
       );
       return;
     }
-    if (!text || element<HTMLButtonElement>('send').disabled) return;
-    addMessage('user', text);
+    if (element<HTMLButtonElement>('send').disabled || attachments?.reading) return;
+    const files = attachments?.snapshot();
+    const content = addMessage('user', [text, files?.label].filter(Boolean).join('\n\n'));
     scrollConversationToBottom(element('conversation'));
-    element<HTMLTextAreaElement>('message').value = '';
-    element<HTMLButtonElement>('send').disabled = true;
-    slashMenu?.update();
-    const ownSubmission = { selectionId: boot.selectionId };
+    const ownSubmission = { selectionId: boot.selectionId, previousRequestId: view?.requestId };
     submission = ownSubmission;
+    updateComposer();
+    notice('');
     safe(async () => {
       try {
-        await bridge.send(text, ownSubmission.selectionId);
-      } catch {
-        if (boot.selectionId === ownSubmission.selectionId)
-          notice('전송하지 못했습니다. 공급자 주소·인증 정보와 연결 상태를 확인하세요.');
+        if (files?.inputs.length) await bridge.send(text, ownSubmission.selectionId, files.inputs);
+        else await bridge.send(text, ownSubmission.selectionId);
+        if (boot.selectionId === ownSubmission.selectionId) {
+          // A known failed admission can be retried explicitly with its original files.
+          // Uncertain/accepted requests stay under the coordinator's lease; never resend here.
+          if (view?.requestId !== ownSubmission.previousRequestId && view?.state === 'failed')
+            return;
+          if (message.value === originalDraft) message.value = '';
+          if (files) attachments?.consume(files.ids);
+          slashMenu?.update();
+        }
+      } catch (error) {
+        if (boot.selectionId === ownSubmission.selectionId) {
+          content.closest('.message')?.remove();
+          const reason =
+            error instanceof Error
+              ? error.message.replace(/^Error invoking remote method '[^']+': Error: /, '')
+              : '';
+          notice(reason || '전송하지 못했습니다. 연결 상태를 확인한 뒤 다시 보내 주세요.');
+        }
       } finally {
         if (submission === ownSubmission) submission = undefined;
         updateComposer();

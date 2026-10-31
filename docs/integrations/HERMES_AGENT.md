@@ -110,3 +110,11 @@ Gateway/API 주소·인증 정보는 main에서만. HTTPS/WSS 또는 보호된 l
 - 특정 경로로 처리된 승인과 로컬 PC 승인의 UX가 충돌하지 않는가?
 
 실증 전에는 '기존 Bot Chat 완전 연결'을 제공 기능으로 표기하지 않는다.
+
+## 이미지·일반 파일 첨부 (2026-11-01)
+
+현재 SSH 경로는 `attachment.capabilities/begin/chunk/finish/release`라는 앱 bridge 전용 명령을 제공한다. 이 이름들은 Hermes native API가 아니다. native 요청은 기존 `prompt.submit`과 `file.attach`만 사용한다. bridge는 로컬에 설치된 Hermes source AST에서 관련 handler/이미지 admission 지원을 확인한다. 확인 경로는 `~/.hermes/hermes-agent`, `~/hermes-agent`이며 다른 배치는 확인되지 않으면 미지원으로 남긴다. 앱 HTTP Runs 경로와 Grok webhook의 첨부는 지원하지 않는다.
+
+이미지는 profile의 `cache/images/` 바로 아래에 전송하고 `prompt.submit.attachments:[{path,mime}]`에 넣는다. admission은 SHA256을 확인한 immutable input으로 캡처하므로 접수 후 cache stage를 정리해도 실행의 이미지가 바뀌지 않는다. legacy `image.attach`의 세션 전역 대기 큐는 쓰지 않는다. 일반 파일은 remote bridge 내부에서 `file.attach`에 `session_id/name/data_url`로 전달하고 반환 `ref_text`를 user text와 model-facing `api_text` 모두에 붙인다. 각 요청의 원래 텍스트와 첨부 파일 바이트를 로컬에서 임의 변환·요약하지 않는다. 이미지의 native vision/설명 라우팅과 문서 해석 범위는 선택한 Hermes 모델·도구 구성에 따른다.
+
+근거는 실제 설치 코드의 `gateway/session_controls.py`, `session_ingress_media.py`, `session_ancillary.py`, `session_context_refs.py`와 [공식 Gateway 첨부 계약](https://raw.githubusercontent.com/NousResearch/hermes-agent/main/website/docs/developer-guide/gateway-internals.md), [공식 Vision 안내](https://hermes-agent.nousresearch.com/docs/user-guide/features/vision)다. 전용 default 검증 세션에서 합성 PNG의 숫자와 텍스트 파일의 임의 verification 값을 실제 응답에서 확인했다. 실사용 session binding/서비스·프로필 설정은 변경하지 않았다.

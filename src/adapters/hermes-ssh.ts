@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   unsupportedCapabilities,
   type AgentAdapter,
@@ -13,7 +13,9 @@ import {
   type UserTurn,
   type AgentBinding,
   type ConversationMessage,
+  type AttachmentInput,
 } from '../shared/contracts.js';
+import { normalizeAttachments } from '../shared/attachments.js';
 import { boundedString, object, TransportError } from './transport.js';
 import { parseSshTarget } from '../shared/validation.js';
 
@@ -234,6 +236,8 @@ interface NativeRun {
   verifying?: boolean;
   beforeAck: Record<string, unknown>[];
   approvals: Map<string, { generation: number; expiresAt: number; responding: boolean }>;
+  preparing?: boolean;
+  preparationStopped?: boolean;
 }
 /** Attaches a selected existing session to its running Hermes owner; never creates a new Bot. */
 export class HermesSshAdapter implements AgentAdapter {
@@ -241,30 +245,38 @@ export class HermesSshAdapter implements AgentAdapter {
   private bridge: NativeBridge;
   private runs = new Map<string, NativeRun>();
   private profile: string;
+  private cleanupConnected = true;
   constructor(options: HermesSshOptions) {
     sshTarget(options.endpoint);
     this.profile = options.profile ?? 'default';
     this.bridge = options.bridge ?? new SshNativeBridge(options);
     this.bridge.onEvent = (frame) => this.event(frame);
     this.bridge.onDisconnect = () => {
-      for (const run of this.runs.values())
+      this.cleanupConnected = false;
+      for (const run of this.runs.values()) {
+        if (run.preparing) run.preparationStopped = true;
         if (!run.terminal)
           this.emit(run, 'turn.reconciling', {
             reason: 'SSH 연결이 끊겼습니다. 원격 실행 상태를 복구하세요.',
           });
+      }
     };
   }
   async connect(): Promise<void> {
     await this.bridge.start();
+    this.cleanupConnected = true;
     const capabilities = await this.bridge.request('gateway.capabilities', {});
     if (capabilities.per_session_exclusive_submit !== true)
       throw new Error('요청 격리를 지원하는 Hermes 게이트웨이가 필요합니다.');
   }
   async disconnect(): Promise<void> {
+    this.cleanupConnected = false;
+    for (const run of this.runs.values()) if (run.preparing) run.preparationStopped = true;
     await this.bridge.close();
   }
   async discover(): Promise<Capabilities> {
     await this.connect();
+    const attachments = await this.attachmentCapabilities();
     return {
       ...unsupportedCapabilities(),
       text: 'supported',
@@ -276,6 +288,8 @@ export class HermesSshAdapter implements AgentAdapter {
       cancel: 'supported',
       'tool.events': 'supported',
       'tool.approvals': 'supported',
+      'attachments.image': attachments.images ? 'supported' : 'unsupported',
+      'attachments.file': attachments.files ? 'supported' : 'unsupported',
     };
   }
   async listSessions(agentId: string): Promise<Array<{ id: string; label: string }>> {
@@ -346,6 +360,7 @@ export class HermesSshAdapter implements AgentAdapter {
   async send(turn: UserTurn, sink: EventSink): Promise<void> {
     this.validate(turn);
     boundedString(turn.text, 32_000);
+    const attachments = normalizeAttachments(turn.attachments);
     if (this.runs.has(turn.requestId))
       throw new Error('이미 제출한 요청입니다. 상태 복구를 사용하세요.');
     if (this.runs.size >= 256) {
@@ -373,11 +388,14 @@ export class HermesSshAdapter implements AgentAdapter {
       messages: new Map(),
       beforeAck: [],
       approvals: new Map(),
+      preparing: true,
     };
     this.runs.set(turn.requestId, run);
     let submitting = false;
+    const uploads: string[] = [];
     try {
       const snapshot = await this.attach(run);
+      this.assertPreparing(run);
       if (Array.isArray(snapshot.pending) && snapshot.pending.length > 0) {
         this.emit(run, 'turn.failed', {
           code: 'session_busy',
@@ -385,13 +403,20 @@ export class HermesSshAdapter implements AgentAdapter {
         });
         return;
       }
+      const prepared = attachments.length
+        ? await this.uploadAttachments(run, attachments, uploads)
+        : { images: [], refs: [] };
+      this.assertPreparing(run);
+      const text = [...prepared.refs, turn.text].filter(Boolean).join('\n\n');
+      run.preparing = false;
       submitting = true;
       const receipt = await this.bridge.request('prompt.submit', {
         session_id: turn.binding.sessionId,
         submission_id: turn.requestId,
-        text: turn.text,
+        text,
         // Per-admission model-facing guidance; keep the actual user transcript unchanged.
-        api_text: `${turn.text}\n\n${HERMES_PROGRESS_GUIDANCE}`,
+        api_text: `${text}\n\n${HERMES_PROGRESS_GUIDANCE}`,
+        ...(prepared.images.length ? { attachments: prepared.images } : {}),
       });
       this.receiptBinding(run, receipt);
       run.admissionId = boundedString(receipt.admission_id, 256);
@@ -404,6 +429,7 @@ export class HermesSshAdapter implements AgentAdapter {
       else if (receipt.status === 'unknown')
         this.emit(run, 'turn.reconciling', { reason: 'Hermes 원격 실행 결과가 불명확합니다.' });
     } catch (error) {
+      if (run.terminal) return;
       if (!submitting || (error instanceof TransportError && error.code === 'native_rejected'))
         this.emit(run, 'turn.failed', {
           code: 'native_rejected',
@@ -413,7 +439,71 @@ export class HermesSshAdapter implements AgentAdapter {
         this.emit(run, 'turn.reconciling', {
           reason: '제출 결과를 확인할 수 없습니다. 자동 재전송하지 않습니다.',
         });
+    } finally {
+      run.preparing = false;
+      if (uploads.length && this.cleanupConnected)
+        await this.bridge.request('attachment.release', { upload_ids: uploads }).catch(() => {});
     }
+  }
+  private async attachmentCapabilities(): Promise<{ images: boolean; files: boolean }> {
+    try {
+      const value = await this.bridge.request('attachment.capabilities', {});
+      return { images: value.images === true, files: value.files === true };
+    } catch {
+      return { images: false, files: false };
+    }
+  }
+  private assertPreparing(run: NativeRun): void {
+    if (run.terminal || run.preparationStopped) throw new Error('첨부 전송 준비가 중단되었습니다.');
+  }
+  private async uploadAttachments(
+    run: NativeRun,
+    attachments: AttachmentInput[],
+    uploads: string[],
+  ): Promise<{ images: Array<{ path: string; mime: string }>; refs: string[] }> {
+    const support = await this.attachmentCapabilities();
+    const images: Array<{ path: string; mime: string }> = [],
+      refs: string[] = [];
+    for (const file of attachments) {
+      this.assertPreparing(run);
+      const image = file.mime.startsWith('image/');
+      if (!(image ? support.images : support.files))
+        throw new Error('이 Hermes 연결은 첨부를 지원하지 않습니다.');
+      const upload = await this.bridge.request('attachment.begin', {
+        session_id: run.ref.binding.sessionId,
+        name: file.name,
+        mime: file.mime,
+        size: file.data.byteLength,
+        sha256: createHash('sha256').update(file.data).digest('hex'),
+      });
+      const id = boundedString(upload.upload_id, 128);
+      if (!id) throw new Error('첨부 전송 식별자가 없습니다.');
+      uploads.push(id);
+      for (let offset = 0; offset < file.data.byteLength; offset += 48 * 1024) {
+        this.assertPreparing(run);
+        await this.bridge.request('attachment.chunk', {
+          upload_id: id,
+          offset,
+          data_base64: Buffer.from(file.data.subarray(offset, offset + 48 * 1024)).toString(
+            'base64',
+          ),
+        });
+      }
+      this.assertPreparing(run);
+      const result = await this.bridge.request('attachment.finish', { upload_id: id });
+      this.assertPreparing(run);
+      if (image) {
+        const path = boundedString(result.path, 4096);
+        if (!path || result.mime !== file.mime)
+          throw new Error('첨부 이미지 응답이 올바르지 않습니다.');
+        images.push({ path, mime: file.mime });
+      } else {
+        const ref = boundedString(result.ref_text, 4096);
+        if (!ref.startsWith('@file:')) throw new Error('첨부 파일 응답이 올바르지 않습니다.');
+        refs.push(ref);
+      }
+    }
+    return { images, refs };
   }
   restore(ref: RequestRef, admissionId: string, sink: EventSink): void {
     this.validate(ref);
@@ -496,6 +586,11 @@ export class HermesSshAdapter implements AgentAdapter {
   }
   async cancel(requestId: string): Promise<'confirmed' | 'requested' | 'unsupported'> {
     const run = this.runs.get(requestId);
+    if (run?.preparing && !run.admissionId) {
+      run.preparationStopped = true;
+      this.emit(run, 'turn.cancelled', { remoteConfirmed: true });
+      return 'confirmed';
+    }
     if (!run?.admissionId) return 'unsupported';
     try {
       const receipt = await this.settleReceipt(run);

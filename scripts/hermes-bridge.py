@@ -2,6 +2,8 @@
 """Same-user Hermes native connection over SSH. Standard library only; no service management.
 stdin/out are bounded JSON lines. Ephemeral tickets never leave this remote process.
 """
+import atexit
+import ast
 import base64
 import hashlib
 import json
@@ -13,6 +15,8 @@ import socket
 import struct
 import sys
 import urllib.parse
+import uuid
+import stat
 
 MAX_FRAME = 1_000_000
 MAX_NATIVE_FRAME = 16_000_000  # History sidecars are discarded on-host before the smaller SSH boundary.
@@ -54,9 +58,9 @@ def control(home, verb, params=None):
         sock.close()
 
 
-def masked_frame(payload, opcode=1):
+def masked_frame(payload, opcode=1, max_bytes=MAX_FRAME):
     data = payload.encode() if isinstance(payload, str) else payload
-    if len(data) > MAX_FRAME:
+    if len(data) > max_bytes:
         raise ValueError('request_size')
     mask = os.urandom(4)
     n = len(data)
@@ -64,6 +68,141 @@ def masked_frame(payload, opcode=1):
         bytes([128 | opcode, 254]) + struct.pack('!H', n) if n < 65536 else
         bytes([128 | opcode, 255]) + struct.pack('!Q', n))
     return header + mask + bytes(value ^ mask[index % 4] for index, value in enumerate(data))
+
+
+
+# This transport's private upload commands never accept paths. They stage only user-selected
+# bytes under the already-identified profile, then use the owner's existing admission APIs.
+UPLOAD_METHODS = {'attachment.capabilities', 'attachment.begin', 'attachment.chunk',
+                  'attachment.finish', 'attachment.release'}
+UPLOAD_FILE_LIMIT = 10 * 1024 * 1024
+UPLOAD_TOTAL_LIMIT = 25 * 1024 * 1024
+UPLOAD_CHUNK_LIMIT = 48 * 1024
+IMAGE_EXTENSIONS = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp'}
+
+
+def attachment_features():
+    # No imports from Hermes: loading its modules may initialize profile state. Gate this
+    # version-specific contract using the actual installed source's AST, not a guessed API.
+    for root in (pathlib.Path.home() / '.hermes' / 'hermes-agent', pathlib.Path.home() / 'hermes-agent'):
+        try:
+            def source(name):
+                path = root / name
+                if path.stat().st_size > 3_000_000:
+                    raise ValueError('source_size')
+                return ast.parse(path.read_text())
+            controls = source('gateway/session_controls.py')
+            ingress = source('gateway/session_ingress_media.py')
+            ancillary = source('gateway/session_ancillary.py')
+            has = lambda tree, name: any(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
+                                         for n in ast.walk(tree))
+            allowed = any(isinstance(n, ast.Constant) and n.value == 'attachments' for n in ast.walk(controls))
+            return {'images': allowed and has(ingress, 'admit_attachments'),
+                    'files': has(ancillary, 'attach_file')}
+        except (OSError, SyntaxError, ValueError):
+            continue
+    return {'images': False, 'files': False}
+
+
+class AttachmentUploads:
+    def __init__(self, home, features=None):
+        self.home = pathlib.Path(home)
+        self.features = attachment_features() if features is None else features
+        self.uploads = {}
+
+    def close(self):
+        self.release(list(self.uploads))
+
+    def release(self, ids):
+        if not isinstance(ids, list) or len(ids) > 10 or any(not isinstance(i, str) for i in ids):
+            raise ValueError('invalid_upload')
+        for ident in ids:
+            row = self.uploads.get(ident)
+            # A lost admission ACK is not proof that the owner has captured these bytes yet.
+            # Leave handed-off images in Hermes' normal image cache on uncertain disconnect.
+            if row is not None and not row.get('handed_off'):
+                self.uploads.pop(ident)
+                row['file'].close()
+                row['path'].unlink(missing_ok=True)
+
+    def settled(self, ids):
+        for ident in ids:
+            row = self.uploads.get(ident)
+            if row is not None:
+                row['handed_off'] = False
+        self.release(ids)
+
+    def image_ids(self, params):
+        paths = {item.get('path') for item in params.get('attachments', []) if isinstance(item, dict)}
+        ids = [ident for ident, row in self.uploads.items() if str(row['path']) in paths]
+        for ident in ids:
+            self.uploads[ident]['handed_off'] = True
+        return ids
+
+    def begin(self, params):
+        if set(params) != {'session_id', 'name', 'mime', 'size', 'sha256'}:
+            raise ValueError('invalid_upload')
+        size, name, mime, digest, session = (params[k] for k in ('size', 'name', 'mime', 'sha256', 'session_id'))
+        if (not isinstance(size, int) or isinstance(size, bool) or not 0 < size <= UPLOAD_FILE_LIMIT
+                or not isinstance(name, str) or not name.strip() or len(name) > 255
+                or re.search(r'[\x00-\x1f\x7f/\\]', name)
+                or not isinstance(session, str) or not session or len(session) > 256
+                or mime not in {*IMAGE_EXTENSIONS, 'application/octet-stream'}
+                or not isinstance(digest, str) or not re.fullmatch('[0-9a-f]{64}', digest)
+                or len(self.uploads) >= 10 or sum(row['size'] for row in self.uploads.values()) + size > UPLOAD_TOTAL_LIMIT):
+            raise ValueError('invalid_upload')
+        image = mime in IMAGE_EXTENSIONS
+        if not self.features['images' if image else 'files']:
+            raise ValueError('unsupported_upload')
+        directory = self.home / 'cache' / ('images' if image else 'companion-uploads')
+        # Reject links in the profile's fixed staging path; never follow a planted cache link.
+        for ancestor in (self.home, self.home / 'cache', directory):
+            if ancestor.is_symlink():
+                raise ValueError('invalid_staging')
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        ident = uuid.uuid4().hex
+        path = directory / ('companion_' + ident + IMAGE_EXTENSIONS.get(mime, '.upload'))
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+        output = os.fdopen(fd, 'wb')
+        self.uploads[ident] = {'file': output, 'path': path, 'size': size, 'written': 0, 'digest': digest,
+                               'hash': hashlib.sha256(), 'session': session, 'mime': mime, 'name': name,
+                               'finished': False, 'handed_off': False}
+        return {'upload_id': ident}
+
+    def chunk(self, params):
+        if set(params) != {'upload_id', 'offset', 'data_base64'}:
+            raise ValueError('invalid_upload')
+        row = self.uploads.get(params['upload_id'])
+        encoded, offset = params['data_base64'], params['offset']
+        if (row is None or row['finished'] or not isinstance(offset, int) or isinstance(offset, bool)
+                or offset != row['written'] or not isinstance(encoded, str) or len(encoded) > 65536):
+            raise ValueError('invalid_upload')
+        data = base64.b64decode(encoded, validate=True)
+        if not data or len(data) > UPLOAD_CHUNK_LIMIT or row['written'] + len(data) > row['size']:
+            raise ValueError('invalid_upload')
+        row['file'].write(data)
+        row['hash'].update(data)
+        row['written'] += len(data)
+        return {'written': row['written']}
+
+    def finish(self, params):
+        if set(params) != {'upload_id'}:
+            raise ValueError('invalid_upload')
+        row = self.uploads.get(params['upload_id'])
+        if row is None or row['finished'] or row['written'] != row['size'] or row['hash'].hexdigest() != row['digest']:
+            raise ValueError('invalid_upload')
+        row['file'].flush()
+        os.fsync(row['file'].fileno())
+        row['file'].close()
+        row['finished'] = True
+        if row['mime'] in IMAGE_EXTENSIONS:
+            return {'path': str(row['path']), 'mime': row['mime']}, None
+        # This larger RPC never crosses SSH's bounded line protocol. The file.attach owner
+        # stages into the selected session's profile/workspace and returns the canonical ref.
+        with row['path'].open('rb') as source:
+            payload = base64.b64encode(source.read(UPLOAD_FILE_LIMIT + 1)).decode('ascii')
+        return None, {'session_id': row['session'], 'name': row['name'],
+                      'data_url': 'data:application/octet-stream;base64,' + payload}
 
 
 def safe_prompt(prompt):
@@ -87,6 +226,8 @@ def history_text(messages, ident, role, text):
 def safe_result(method, result):
     if not isinstance(result, dict):
         raise ValueError('invalid_response')
+    if method == 'file.attach':
+        return {key: result[key] for key in ('attached', 'ref_text') if key in result}
     if method == 'session.list':
         return {'sessions': [{key: row[key] for key in ('id', 'session_id', 'resolved_id', 'title',
                 'source', 'running', 'execution_state') if key in row} for row in result.get('sessions', [])]}
@@ -208,6 +349,8 @@ def main():
         raise ValueError('upgrade_refused')
     sock.settimeout(15)
     output({'kind': 'ready', 'profile': profile, 'profileId': str(home), 'instanceId': descriptor['instance_id'], 'protocol': 'hermes-gateway-v1'})
+    uploads = AttachmentUploads(home)
+    atexit.register(uploads.close)
     waiting = {}
     stdin_buffer = b''
     fragments = b''
@@ -244,13 +387,15 @@ def main():
             if frame.get('method') == 'gateway.ping':
                 sock.sendall(masked_frame(json.dumps({'jsonrpc': '2.0', 'method': 'gateway.pong', 'params': {}}))); continue
             if 'id' in frame and frame.get('id') in waiting:
-                method = waiting.pop(frame['id'])
+                entry = waiting.pop(frame['id'])
+                method = entry['method']
+                uploads.settled(entry.get('uploads', []))
                 if 'error' in frame:
                     reason = (frame['error'].get('data') or {}).get('reason')
                     safe_reason = reason if reason in ('invalid_params', 'permission_denied', 'profile_mismatch', 'not_found') else 'native_rpc_refused'
                     output({'kind': 'response', 'id': frame['id'], 'error': {'code': frame['error'].get('code'), 'reason': safe_reason}})
                 else:
-                    output({'kind': 'response', 'id': frame['id'], 'result': safe_result(method, frame.get('result'))})
+                    output({'kind': 'response', 'id': frame['id'], 'result': safe_result(entry.get('native_method', method), frame.get('result'))})
             elif frame.get('method') == 'event':
                 event = safe_event(frame)
                 if event: output({'kind': 'event', 'frame': event})
@@ -273,10 +418,30 @@ def main():
                 line, stdin_buffer = stdin_buffer.split(b'\n', 1)
                 command = json.loads(line)
                 ident, method, params = command.get('id'), command.get('method'), command.get('params')
-                if not isinstance(ident, int) or method not in METHODS or not isinstance(params, dict) or len(waiting) >= 32:
+                if not isinstance(ident, int) or method not in METHODS | UPLOAD_METHODS or not isinstance(params, dict) or len(waiting) >= 32:
                     raise ValueError('invalid_command')
-                waiting[ident] = method
-                sock.sendall(masked_frame(json.dumps({'jsonrpc':'2.0','id':ident,'method':method,'params':params})))
+                native_method, native_params, ids = method, params, []
+                if method in UPLOAD_METHODS:
+                    try:
+                        if method == 'attachment.capabilities':
+                            if params: raise ValueError('invalid_upload')
+                            result = uploads.features
+                        elif method == 'attachment.begin': result = uploads.begin(params)
+                        elif method == 'attachment.chunk': result = uploads.chunk(params)
+                        elif method == 'attachment.release':
+                            if set(params) != {'upload_ids'}: raise ValueError('invalid_upload')
+                            uploads.release(params['upload_ids']); result = {}
+                        else:
+                            result, native_params = uploads.finish(params)
+                            native_method, ids = 'file.attach', [params['upload_id']]
+                        if result is not None:
+                            output({'kind': 'response', 'id': ident, 'result': result}); continue
+                    except (ValueError, TypeError, OSError, KeyError):
+                        output({'kind': 'response', 'id': ident, 'error': {'reason': 'invalid_params'}}); continue
+                if method == 'prompt.submit': ids = uploads.image_ids(params)
+                waiting[ident] = {'method': method, 'native_method': native_method, 'uploads': ids}
+                sock.sendall(masked_frame(json.dumps({'jsonrpc':'2.0','id':ident,'method':native_method,'params':native_params}),
+                                         max_bytes=MAX_NATIVE_FRAME if native_method == 'file.attach' else MAX_FRAME))
 
 
 if __name__ == '__main__':

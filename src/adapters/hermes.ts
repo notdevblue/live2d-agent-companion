@@ -82,6 +82,8 @@ export class HermesAdapter implements AgentAdapter {
     }
   }
   async send(turn: UserTurn, sink: EventSink): Promise<void> {
+    if (turn.attachments?.length)
+      throw new Error('이 연결은 첨부를 지원하지 않습니다. Hermes SSH 연결을 사용하세요.');
     boundedString(turn.text, 32_000);
     this.validateRef(turn);
     if (this.runs.has(turn.requestId))

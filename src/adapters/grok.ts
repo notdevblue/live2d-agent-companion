@@ -33,6 +33,8 @@ export class GrokBotAdapter implements AgentAdapter {
     return { ...unsupportedCapabilities(), text: 'experimental' };
   }
   async send(turn: UserTurn, sink: EventSink): Promise<void> {
+    if (turn.attachments?.length)
+      throw new Error('이 연결은 첨부를 지원하지 않습니다. Hermes SSH 연결을 사용하세요.');
     boundedString(turn.text, 32_000);
     if (turn.binding.provider !== this.provider)
       throw new Error('공급자 바인딩이 일치하지 않습니다.');

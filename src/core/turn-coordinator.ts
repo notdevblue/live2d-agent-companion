@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type {
   AgentAdapter,
+  AttachmentInput,
   AgentBinding,
   AgentEvent,
   ApprovalResponse,
@@ -12,6 +13,7 @@ import type {
   TurnView,
 } from '../shared/contracts.js';
 import { bindingSchema, validateAgentEvent } from '../shared/validation.js';
+import { normalizeAttachments } from '../shared/attachments.js';
 import { CharacterDirector } from './character-director.js';
 
 const terminalStates = new Set<TurnState>(['completed', 'failed', 'cancelled', 'interrupted']);
@@ -121,8 +123,11 @@ export class TurnCoordinator {
     return this.view ? structuredClone(this.view) : undefined;
   }
 
-  async send(text: string): Promise<void> {
+  async send(text: string, files?: AttachmentInput[]): Promise<void> {
     this.assertActive();
+    const attachments = normalizeAttachments(files);
+    if (typeof text === 'string' && !text.trim() && attachments.length)
+      text = '첨부한 파일을 확인해 주세요.';
     if (typeof text !== 'string' || !text.trim() || text.length > 32_000)
       throw new Error('메시지는 1~32000자여야 합니다.');
     if (leases.has(bindingKey(this.binding)) || (this.view && !terminalStates.has(this.view.state)))
@@ -162,7 +167,10 @@ export class TurnCoordinator {
     this.submissionStarted = true;
     this.armTimeout();
     try {
-      await this.options.adapter.send({ ...request, text }, (event) => this.receive(event));
+      await this.options.adapter.send(
+        { ...request, text, ...(attachments.length ? { attachments } : {}) },
+        (event) => this.receive(event),
+      );
     } catch {
       // Transport failure cannot prove that a remote submission was not accepted.
       if (this.owns(request.requestId) && !this.isTerminal())
