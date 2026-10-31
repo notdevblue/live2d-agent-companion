@@ -14,7 +14,7 @@
 | `architecture/` | 컴포넌트, 어댑터, 이벤트, 상태, 데이터, 보안 | [SYSTEM_DESIGN](architecture/SYSTEM_DESIGN.md), [ADAPTER_CONTRACT](architecture/ADAPTER_CONTRACT.md), [EVENT_SCHEMA](architecture/EVENT_SCHEMA.md), [STATE_AND_STORAGE](architecture/STATE_AND_STORAGE.md), [SECURITY_PRIVACY](architecture/SECURITY_PRIVACY.md) |
 | `integrations/` | 외부 서비스별 실제 연결·제약·검증 | [GROK_BOT](integrations/GROK_BOT.md), [HERMES_AGENT](integrations/HERMES_AGENT.md), [LIVE2D_TTS](integrations/LIVE2D_TTS.md) |
 | `platform/` | Windows 창, 화면 캡처, 입력 제어 | [WINDOWS_DESKTOP](platform/WINDOWS_DESKTOP.md) |
-| `ux/` | 사용자 흐름과 캐릭터 반응 설계 | [INTERACTION_DESIGN](ux/INTERACTION_DESIGN.md) |
+| `ux/` | 사용자 흐름, 캐릭터 반응 설계, 버튜버 영상 조사와 연기 발전안 | [INTERACTION_DESIGN](ux/INTERACTION_DESIGN.md) |
 | `planning/` | 단계별 개발 순서, 리스크, 아키텍처 결정 | [ROADMAP](planning/ROADMAP.md), [RISKS_AND_SPIKES](planning/RISKS_AND_SPIKES.md), [ADR-0001](planning/adrs/0001-adapter-boundary.md), [ADR-0002](planning/adrs/0002-approval-boundary.md), [ADR-0003](planning/adrs/0003-request-recovery-and-approvals.md), [ADR-0004](planning/adrs/0004-integrated-companion-and-jev.md) |
 | `testing/` | 단위/통합/E2E 검증 계획 | [TEST_STRATEGY](testing/TEST_STRATEGY.md) |
 | `development/` | 구현 상태·검증 범위·실행 방법, 코드 구조·기여 기준 | [IMPLEMENTATION_STATUS](development/IMPLEMENTATION_STATUS.md), [REPO_CONVENTIONS](development/REPO_CONVENTIONS.md) |

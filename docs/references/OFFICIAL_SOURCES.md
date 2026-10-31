@@ -18,6 +18,12 @@
 | Electron Linux Overlay | https://www.electronjs.org/docs/latest/api/base-window | 생성 옵션 `focusable: false`는 Linux WM 관리에서 제외되어 모든 작업공간 위에 표시. 런타임 `setFocusable`는 Linux 미지원이므로 옵션 변경 시 Overlay만 재생성 |
 | X11 입력 영역 | https://xorg.freedesktop.org/archive/X11R7.7/doc/xextproto/shape.html | Shape 1.1의 Input region은 표시용 bounding/clip과 별도다. Linux 클릭 통과는 모델의 입력 영역만 지정하며 Electron `setShape`의 표시 잘림을 피함 |
 | 조작 레퍼런스 | https://store.steampowered.com/app/3339420/your_wife/?l=english | 사용자 지정 Steam `your wife`: 왼쪽 드래그, 드래그 중 휠 배율, 마우스 시선 추적. 2026-10-31 공식 설명 확인이며 직접 플레이 검증은 아님 |
+| 버튜버 방송 영상 | https://www.youtube.com/watch?v=KNxKrlHpZxo&t=900s | 白上フブキ 본인 채널의 2.0 공개 방송 15:00~15:45를 연속 프레임으로 확인. 상반신의 작은 머리/눈/입 변화. 전체 시청·음성 동기 분석 아님 |
+| Live2D 제작자 영상 | https://www.youtube.com/watch?v=UqwBaQ96iK8 | Iron Vertex 공식 쇼릴: 개요와 일부 상세 구간 프레임 비교. 모델 변형과 편집 컷/확대를 구분. 관찰 범위와 적용 제안은 [상호작용 설계](../ux/INTERACTION_DESIGN.md#버튜버-영상-조사와-표현-발전안) 참조 |
+| hololive 공식 시연 | https://www.youtube.com/watch?v=TtB0GZLum1w&t=20640s | SUPER EXPO 2022 DAY2의 Live2D 3.0 소개 구간 프레임 확인. 손 포즈·특수 표정·근접 구도는 모델 리깅/구도와 구분 |
+| VTube Studio 모델 설정 | https://github.com/DenchiSoft/VTubeStudio/wiki/VTS-Model-Settings | Movement Config, mapping/smoothing, Move Model의 위치·회전·배율·전환 시간, expression/animation hotkey. 우리 앱 구현/플러그인 연결 완료를 뜻하지 않음 |
+| VTube Studio 적용 순서 | https://github.com/DenchiSoft/VTubeStudio/wiki/Interaction-between-Animations,-Tracking,-Physics,-etc. | idle/tracking/one-shot/expression/physics가 같은 parameter를 덮는 우선순위 설명. Cubism 자체나 현재 앱의 순서와 동일시하지 않음 |
+| Cubism parameter 갱신 | https://docs.live2d.com/en/cubism-sdk-manual/parameters/ | motion/blink/expression/조작/breath/physics/lipsync의 공식 예제. DeepSeek upstream physics 매핑과 별도로 읽어야 함 |
 | Cubism 마스크 용량 | https://github.com/Live2D/CubismWebFramework/blob/5-r.5/src/rendering/cubismclippingmanager.ts | 고정 Framework의 단일 버퍼 36그룹, 다중 버퍼당 32그룹. 모델별 그룹 수로 버퍼 수 계산 |
 | Cubism 텍스처 예제 | https://github.com/Live2D/CubismWebSamples/blob/5-r.5/Samples/TypeScript/Demo/src/lapptexturemanager.ts | 축소 시 mipmap 필터 사용. WebGL 1의 POT 조건은 앱에서 검사 |
 | Cubism Web 모델 | https://docs.live2d.com/en/cubism-sdk-manual/model-web/ | `.model3.json` 참조에 따라 모델/텍스처를 로드하고 WebGL 렌더러를 구성하는 공식 흐름 |
