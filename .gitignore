@@ -1,0 +1,41 @@
+# Node / Electron / tooling
+node_modules/
+dist/
+build/
+out/
+coverage/
+.tmp/
+.cache/
+*.log
+*.log.*
+.env
+.env.*
+!.env.example
+
+# Local data and private assets
+local-assets/
+user-models/
+models/
+screenshots/
+recordings/
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+*.moc3
+
+# Secrets / identity
+*.p12
+*.pfx
+*.pem
+*.key
+secrets.json
+credentials.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
