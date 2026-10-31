@@ -512,12 +512,18 @@ function collectSettings(): AppSettings {
 }
 async function overlayMode(): Promise<void> {
   element('overlay').hidden = false;
+  let pointerId: number | undefined;
   const hitAt = (x: number, y: number): boolean => {
     if (avatar) return avatar.hit(x, y);
     const fallback = element('model-error');
     const rect = fallback.getBoundingClientRect();
     return !fallback.hidden && x >= rect.left && y >= rect.top && x < rect.right && y < rect.bottom;
   };
+  element('overlay').addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    if (pointerId !== undefined || !hitAt(event.clientX, event.clientY)) return;
+    void bridge.openOverlayMenu().catch(() => {});
+  });
   if (!boot.model) {
     element('model-error').hidden = false;
     element('model-error').onclick = () => void bridge.openSettings();
@@ -539,7 +545,6 @@ async function overlayMode(): Promise<void> {
     element('model-error').onclick = () => void bridge.openSettings();
     window.__avatarStatus = { loaded: false, frames: 0, error: '모델 로드 실패' };
   }
-  let pointerId: number | undefined;
   let moved = false;
   let startX = 0;
   let startY = 0;

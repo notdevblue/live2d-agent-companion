@@ -17,6 +17,7 @@ const bridge: CompanionBridge = {
     ipcRenderer.invoke('companion:approve', id, decision, requestId),
   openChat: () => ipcRenderer.invoke('companion:chat'),
   openSettings: () => ipcRenderer.invoke('companion:open-settings'),
+  openOverlayMenu: () => ipcRenderer.invoke('companion:overlay-menu'),
   displays: () => ipcRenderer.invoke('companion:displays'),
   moveToDisplay: (id) => ipcRenderer.invoke('companion:display', id),
   move: (dx, dy) => ipcRenderer.invoke('companion:move', dx, dy),

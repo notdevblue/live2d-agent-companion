@@ -258,6 +258,7 @@ export interface CompanionBridge {
   approve(approvalId: string, decision: 'allow_once' | 'deny', requestId: string): Promise<void>;
   openChat(): Promise<void>;
   openSettings(): Promise<void>;
+  openOverlayMenu(): Promise<void>;
   displays(): Promise<OverlayDisplay[]>;
   moveToDisplay(id: number): Promise<void>;
   move(dx: number, dy: number): Promise<void>;

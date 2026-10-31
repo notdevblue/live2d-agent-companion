@@ -114,6 +114,8 @@ if (!smoke)
     else openChatWhenReady = true;
   });
 let tray: Tray | undefined;
+let companionMenu: Menu | undefined;
+let menuShowing = false;
 let coordinator: TurnCoordinator | undefined;
 let adapter: AgentAdapter | undefined;
 let switching = false;
@@ -409,6 +411,7 @@ function trusted(
     throw new Error('허용되지 않은 페이지입니다.');
 }
 function openPanel(view: 'chat' | 'settings'): void {
+  if (quitting) return;
   const existing = view === 'chat' ? chat : settingsWindow;
   if (existing && !existing.isDestroyed()) {
     if (existing.isMinimized()) existing.restore();
@@ -453,6 +456,34 @@ function openChat(): void {
 }
 function openSettings(): void {
   openPanel('settings');
+}
+function recoverOverlayPosition(): void {
+  if (quitting || !overlay) return;
+  stopOverlayDrag();
+  position = undefined;
+  positionOverlay();
+  overlay.showInactive();
+  void settingsFile
+    .write({ settings, position })
+    .catch(() => console.error('캐릭터 위치를 저장하지 못했습니다.'));
+}
+function getCompanionMenu(): Menu {
+  if (!companionMenu) {
+    companionMenu = Menu.buildFromTemplate([
+      { id: 'chat', label: '채팅', click: openChat },
+      { id: 'settings', label: '설정', click: openSettings },
+      { id: 'recover-position', label: '캐릭터 위치 복구', click: recoverOverlayPosition },
+      { type: 'separator' },
+      { id: 'quit', label: '종료', click: () => app.quit() },
+    ]);
+    companionMenu.on('menu-will-show', () => {
+      menuShowing = true;
+    });
+    companionMenu.on('menu-will-close', () => {
+      menuShowing = false;
+    });
+  }
+  return companionMenu;
 }
 function updateOverlayInput(): void {
   if (!overlay || overlay.isDestroyed()) return;
@@ -801,6 +832,12 @@ function registerIpc(): void {
   ipcMain.handle('companion:chat', (event) => {
     trusted(event);
     openChat();
+  });
+  ipcMain.handle('companion:overlay-menu', (event) => {
+    trusted(event);
+    if (event.sender !== overlay?.webContents) throw new Error('Overlay 전용 요청입니다.');
+    if (quitting || overlayInputState.dragging || menuShowing) return;
+    getCompanionMenu().popup({ window: overlay });
   });
   ipcMain.handle('companion:displays', (event) => {
     trusted(event, 'controls');
@@ -1223,6 +1260,7 @@ async function runSmoke(): Promise<void> {
   let monitorSelection = true;
   let historyRestored = true;
   let sessionKeepsModel = true;
+  let overlayContextMenu = true;
   const firstProvider = { ...settings.provider };
   if (!smokeHermes) {
     const transcript = await chat?.webContents.executeJavaScript(
@@ -1383,6 +1421,47 @@ async function runSmoke(): Promise<void> {
         }
       }
     })()`);
+    if (hitPoint && overlay) {
+      const menu = getCompanionMenu();
+      let shown = 0;
+      const onShow = (): void => {
+        shown++;
+      };
+      menu.on('menu-will-show', onShow);
+      const rejected = await chat?.webContents.executeJavaScript(
+        'window.companion.openOverlayMenu().then(()=>false,()=>true)',
+      );
+      const rejectedSettings = await settingsWindow?.webContents.executeJavaScript(
+        'window.companion.openOverlayMenu().then(()=>false,()=>true)',
+      );
+      await overlay.webContents.executeJavaScript(
+        "document.getElementById('avatar').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2,clientX:0,clientY:0}))",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const emptyIgnored = shown === 0;
+      const oldBounds = overlay.getBounds();
+      await overlay.webContents.executeJavaScript(
+        `document.getElementById('avatar').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2,clientX:${hitPoint.x},clientY:${hitPoint.y}}))`,
+      );
+      for (let i = 0; i < 40 && shown === 0; i++)
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      menu.closePopup(overlay);
+      overlayContextMenu = Boolean(
+        rejected &&
+        rejectedSettings &&
+        emptyIgnored &&
+        shown === 1 &&
+        menu === getCompanionMenu() &&
+        menu.items
+          .filter((item) => item.type !== 'separator')
+          .map((item) => item.label)
+          .join(',') === '채팅,설정,캐릭터 위치 복구,종료' &&
+        !overlayInputState.dragging &&
+        JSON.stringify(overlay.getBounds()) === JSON.stringify(oldBounds),
+      );
+      menu.removeListener('menu-will-show', onShow);
+    } else overlayContextMenu = false;
+    Object.assign(result, { overlayContextMenu });
     let lockedGesture = false;
     if (hitPoint && overlay) {
       await overlay.webContents.executeJavaScript(`
@@ -1626,6 +1705,7 @@ async function runSmoke(): Promise<void> {
       pendingSelection &&
       historyRestored &&
       sessionKeepsModel &&
+      overlayContextMenu &&
       (!smokeJev || (lastCue?.cue.source === 'jev' && renderer.lastCue))
       ? 0
       : 1,
@@ -1732,28 +1812,10 @@ app
     if (!smoke) {
       tray = new Tray(icon);
       tray.setToolTip('Live2D Companion');
-      tray.setContextMenu(
-        Menu.buildFromTemplate([
-          { label: '채팅', click: openChat },
-          { label: '설정', click: openSettings },
-          {
-            label: '캐릭터 위치 복구',
-            click: () => {
-              position = undefined;
-              positionOverlay();
-              overlay?.showInactive();
-            },
-          },
-          { label: '종료', click: () => app.quit() },
-        ]),
-      );
+      tray.setContextMenu(getCompanionMenu());
       tray.on('click', openChat);
       globalShortcut.register('CommandOrControl+Shift+Space', openChat);
-      globalShortcut.register('CommandOrControl+Shift+Home', () => {
-        position = undefined;
-        positionOverlay();
-        overlay?.showInactive();
-      });
+      globalShortcut.register('CommandOrControl+Shift+Home', recoverOverlayPosition);
     }
     screen.on('display-removed', () => {
       stopOverlayDrag();
