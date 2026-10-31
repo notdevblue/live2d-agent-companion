@@ -33,8 +33,59 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     expect(
       actor.cue({ ...cue, emotion: 'neutral', segmentId: 3, messageId: 'neutral' }, 8000),
     ).toBe(true);
-    expect(advance(actor, 9000, 60, 8000).preset).toBe('neutral');
+    expect(advance(actor, 9000, 60, 8000).preset).toBe('acknowledge');
     expect(actor.cue({ ...cue, requestId: 'new-reply' }, 9100)).toBe(true);
+  });
+  it('gives a neutral message a short visible delivery beat without inventing emotion or a hand gesture', () => {
+    const actor = new ActingController(),
+      idle = new ActingController();
+    const cue = {
+      emotion: 'neutral',
+      gesture: 'none',
+      attitude: 'neutral',
+      requestId: 'r',
+      messageId: 'progress',
+      segmentId: 1,
+    } as const;
+    actor.cue(cue, 0);
+    const response = advance(actor, 500),
+      baseline = advance(idle, 500);
+    expect(response).toMatchObject({
+      preset: 'acknowledge',
+      active: true,
+      emotion: 'neutral',
+      gesture: 'none',
+      smile: 0,
+    });
+    expect(response.headY).toBeLessThan(baseline.headY - 0.05);
+    expect(response.headZ).toBeGreaterThan(baseline.headZ + 0.01);
+    expect(response.offsetY).toBe(baseline.offsetY);
+    expect(actor.cue(cue, 700)).toBe(false);
+    expect(advance(actor, 2000, 60, 500)).toMatchObject({ preset: 'neutral', active: false });
+    actor.cue({ ...cue, messageId: 'final', segmentId: 2 }, 2000);
+    expect(advance(actor, 2500, 60, 2000).headZ).toBeLessThan(0);
+    actor.setState('blocked', 2500);
+    expect(actor.sample(2500, 0)).toMatchObject({ active: false, headY: 0, headZ: 0 });
+    expect(actor.cue({ ...cue, segmentId: 3, messageId: 'late' }, 2600)).toBe(false);
+  });
+  it('keeps neutral delivery beats consistent across frame rates and scales them with reduced motion', () => {
+    const frames = [30, 60, 120].map((fps) => {
+      const actor = new ActingController();
+      actor.cue(
+        { emotion: 'neutral', gesture: 'none', requestId: 'r', messageId: 'm', segmentId: 1 },
+        0,
+      );
+      return advance(actor, 500, fps);
+    });
+    expect(frames[0]!.headY).toBeCloseTo(frames[2]!.headY, 6);
+    expect(frames[1]!.headY).toBeCloseTo(frames[2]!.headY, 6);
+    const reduced = new ActingController();
+    reduced.configure({ intensity: 'normal', reducedMotion: true });
+    reduced.cue(
+      { emotion: 'neutral', gesture: 'none', requestId: 'r', messageId: 'm', segmentId: 1 },
+      0,
+    );
+    expect(advance(reduced, 500).headY).toBeCloseTo(frames[1]!.headY * 0.18, 6);
   });
   it('winks one eye, then releases both eyes without starting a repeated wink', () => {
     const actor = new ActingController();

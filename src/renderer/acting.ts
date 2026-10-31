@@ -9,7 +9,13 @@ import type { FaceFrame } from './performance.js';
 
 export type ActingState = 'idle' | 'thinking' | 'working' | 'error' | 'blocked';
 export type ActingPreset =
-  Exclude<CharacterPreview, 'reset'> | 'neutral' | 'working' | 'sad' | 'concerned' | 'reassure';
+  | Exclude<CharacterPreview, 'reset'>
+  | 'neutral'
+  | 'acknowledge'
+  | 'working'
+  | 'sad'
+  | 'concerned'
+  | 'reassure';
 export type ActingPreview = CharacterPreview;
 export interface ActingOptions {
   intensity: 'quiet' | 'normal' | 'expressive';
@@ -63,6 +69,7 @@ interface Reaction {
   variant: number;
 }
 const timing = (preset: ActingPreset): { duration: number; attack: number; release: number } => {
+  if (preset === 'acknowledge') return { duration: 1800, attack: 180, release: 500 };
   if (preset === 'surprised') return { duration: 2200, attack: 100, release: 700 };
   if (preset === 'wink') return { duration: 2400, attack: 220, release: 650 };
   if (preset === 'nod' || preset === 'shake') return { duration: 2600, attack: 200, release: 750 };
@@ -111,6 +118,7 @@ const emotionFor = (preset: ActingPreset): Emotion =>
 
 const PROFILES: Record<ActingPreset, Partial<Pose>> = {
   neutral: {},
+  acknowledge: {},
   thinking: { gazeX: 0.34, gazeY: 0.3, headZ: -0.2, headY: 0.08 },
   working: { gazeX: -0.15, gazeY: -0.3, headY: -0.1, lean: 0.18 },
   explain: { gazeX: -0.08, headZ: 0.1, lean: 0.22, smile: 0.25 },
@@ -210,7 +218,9 @@ export class ActingController {
               ? 'thinking'
               : cue.gesture === 'wave'
                 ? 'happy'
-                : 'neutral';
+                : scoped
+                  ? 'acknowledge'
+                  : 'neutral';
     const variant = this.variants.get(preset) ?? 0;
     this.variants.set(preset, (variant + 1) % 2);
     this.reaction = { preset, ...cue, started: nowMs, variant };
@@ -392,6 +402,15 @@ export class ActingController {
   private target(preset: ActingPreset, t: number, variant = 0): Pose {
     const p = { ...neutral(), ...PROFILES[preset] };
     const nod = Math.sin(t * 4.8) * Math.exp(-Math.max(0, t - 1) * 0.8);
+    if (preset === 'acknowledge') {
+      // "No deliberate gesture" still gets a small, one-shot delivery beat.
+      // It remains emotionally neutral and never requests an authored hand pose.
+      const accent = beat(t, 0.08, 0.18, 0.12, 0.65);
+      p.headY = -0.22 * accent;
+      p.headZ = (variant ? -1 : 1) * 0.08 * accent;
+      p.lean = 0.04 * accent;
+      p.browY = 0.08 * accent;
+    }
     if (preset === 'explain') p.headY = nod * 0.13;
     if (preset === 'happy') {
       p.headZ = Math.sin(t * 3.1) * 0.18 * (variant ? -1 : 1);

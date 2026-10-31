@@ -66,6 +66,12 @@ afterEach(() => {
 });
 
 describe('Avatar message and background priority — FR-L2D-004/006', () => {
+  it('animates a neutral progress cue locally without starting a hand pose', () => {
+    const { avatar, runtime } = setup();
+    avatar.cue({ ...cue, emotion: 'neutral', gesture: 'none', attitude: 'neutral' });
+    expect(runtime.actor.sample(0, 0)).toMatchObject({ preset: 'acknowledge', active: true });
+    expect(runtime.poses.sample(0).phase).toBe('none');
+  });
   it('keeps an explanatory tone without inventing a hand pose when the gesture is none', () => {
     const { avatar, runtime } = setup();
     avatar.cue({ ...cue, gesture: 'none', attitude: 'explain' });
