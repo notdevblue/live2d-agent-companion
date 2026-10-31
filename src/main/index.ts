@@ -30,6 +30,11 @@ import type {
 } from '../shared/contracts.js';
 import { unsupportedCapabilities } from '../shared/contracts.js';
 import { OverlayInputState } from '../shared/overlay-input.js';
+import {
+  defaultOverlayPosition,
+  intersectsDisplay,
+  transferOverlay,
+} from '../shared/overlay-placement.js';
 import { parseInputRegion } from '../shared/input-region.js';
 import { X11InputShape } from './x11-input.js';
 import { parseSettings } from '../shared/validation.js';
@@ -364,8 +369,14 @@ function updateOverlayInput(): void {
   overlay.setIgnoreMouseEvents(ignore, overlayInput === 'forward' ? { forward: true } : undefined);
 }
 function stopOverlayDrag(): void {
+  const wasDragging = overlayInputState.dragging;
   overlayInputState.setDragging(false);
-  updateOverlayInput();
+  if (wasDragging) {
+    positionOverlay();
+    void settingsFile
+      .write({ settings, position })
+      .catch(() => console.error('캐릭터 위치를 저장하지 못했습니다.'));
+  } else updateOverlayInput();
 }
 function positionOverlay(): void {
   if (!overlay) return;
@@ -378,28 +389,19 @@ function positionOverlay(): void {
     overlay.setBounds(intendedOverlayBounds);
     return;
   }
-  const point = position ?? {
-    x:
-      screen.getPrimaryDisplay().workArea.x +
-      screen.getPrimaryDisplay().workArea.width -
-      size.width -
-      24,
-    y:
-      screen.getPrimaryDisplay().workArea.y +
-      screen.getPrimaryDisplay().workArea.height -
-      size.height,
-  };
-  const area = screen.getDisplayNearestPoint(point).workArea;
-  const bounds = {
-    width: Math.min(size.width, area.width),
-    height: Math.min(size.height, area.height),
-    x: Math.max(area.x, Math.min(point.x, area.x + area.width - Math.min(size.width, area.width))),
-    y: Math.max(
-      area.y,
-      Math.min(point.y, area.y + area.height - Math.min(size.height, area.height)),
-    ),
-  };
-  if (position) position = { x: bounds.x, y: bounds.y };
+  const fallback = defaultOverlayPosition(size, screen.getPrimaryDisplay().workArea);
+  const candidate = { ...size, ...(position ?? fallback) };
+  // Cross monitor boundaries freely, and retain intentional half-body crops.
+  // Only recover a completely lost window, after capture ends or on startup.
+  const bounds =
+    overlayInputState.dragging ||
+    intersectsDisplay(
+      candidate,
+      screen.getAllDisplays().map((display) => display.bounds),
+    )
+      ? candidate
+      : fallback;
+  position = { x: bounds.x, y: bounds.y };
   intendedOverlayBounds = bounds;
   overlay.setBounds(bounds);
   overlay.setAlwaysOnTop(settings.alwaysOnTop);
@@ -650,6 +652,35 @@ function registerIpc(): void {
     trusted(event);
     openChat();
   });
+  ipcMain.handle('companion:displays', (event) => {
+    trusted(event, true);
+    const current = screen.getDisplayMatching(
+      intendedOverlayBounds ?? overlay?.getBounds() ?? screen.getPrimaryDisplay().bounds,
+    ).id;
+    return screen.getAllDisplays().map((display, index) => ({
+      id: display.id,
+      label: display.label || `모니터 ${index + 1}`,
+      width: display.bounds.width,
+      height: display.bounds.height,
+      current: display.id === current,
+    }));
+  });
+  ipcMain.handle('companion:display', async (event, id: unknown) => {
+    trusted(event, true);
+    if (switching || quitting || !overlay || overlay.isDestroyed())
+      throw new Error('지금은 캐릭터를 이동할 수 없습니다.');
+    const displayId = z.number().int().safe().parse(id);
+    const target = screen.getAllDisplays().find((display) => display.id === displayId);
+    if (!target) throw new Error('연결된 모니터를 다시 선택하세요.');
+    stopOverlayDrag();
+    const bounds = intendedOverlayBounds ?? overlay.getBounds();
+    const source = screen.getDisplayMatching(bounds);
+    const moved = transferOverlay(bounds, source.bounds, target.bounds);
+    position = { x: moved.x, y: moved.y };
+    positionOverlay();
+    overlay.showInactive();
+    await settingsFile.write({ settings, position });
+  });
   ipcMain.handle('companion:move', async (event, dx: unknown, dy: unknown) => {
     trusted(event);
     const delta = z.number().finite().min(-200).max(200);
@@ -675,8 +706,7 @@ function registerIpc(): void {
       const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
       const cursor = { x: coordinate.parse(screenX), y: coordinate.parse(screenY) };
       const bounds = { ...(intendedOverlayBounds ?? overlay.getBounds()), ...position };
-      const workArea = screen.getDisplayMatching(bounds).workArea;
-      const resized = overlayInputState.resize(settings.scale, deltaY, cursor, bounds, workArea);
+      const resized = overlayInputState.resize(settings.scale, deltaY, cursor, bounds);
       if (!resized) throw new Error('캐릭터를 드래그하는 동안만 배율을 바꿀 수 있습니다.');
       if (resized.scale === settings.scale) return;
       settings = { ...settings, scale: resized.scale };
@@ -697,8 +727,10 @@ function registerIpc(): void {
         const bounds = overlay.getBounds();
         position = { x: bounds.x, y: bounds.y };
       }
-      overlayInputState.setDragging(active);
-      updateOverlayInput();
+      if (active) {
+        overlayInputState.setDragging(true);
+        updateOverlayInput();
+      } else stopOverlayDrag();
     } catch {
       /* invalid renderer input is ignored */
     }
@@ -817,7 +849,44 @@ async function runSmoke(): Promise<void> {
     credentialSource: smokeEnv ? 'env-file' : smokeStdinJev ? 'stdin' : 'vault',
   };
   let uiRouting = true;
+  let monitorSelection = true;
   if (!smokeHermes) {
+    const beforeDisplaySelection = selectionId;
+    const beforeDisplayRequest = coordinator?.current?.requestId;
+    await chat?.webContents.executeJavaScript("document.getElementById('settings-toggle').click()");
+    for (let i = 0; i < 40; i++) {
+      if (
+        await chat?.webContents.executeJavaScript(
+          "document.getElementById('display-list').options.length > 0",
+        )
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const listed = await chat?.webContents.executeJavaScript(
+      "document.getElementById('display-list').options.length",
+    );
+    await chat?.webContents.executeJavaScript("document.getElementById('move-display').click()");
+    let moved = false;
+    for (let i = 0; i < 40; i++) {
+      moved = Boolean(
+        await chat?.webContents.executeJavaScript(
+          "!document.getElementById('move-display').disabled && document.getElementById('notice').textContent.includes('캐릭터를 선택한 모니터로')",
+        ),
+      );
+      if (moved) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const rejectedUnknown = await chat?.webContents.executeJavaScript(
+      'window.companion.moveToDisplay(Number.MAX_SAFE_INTEGER).then(()=>false,()=>true)',
+    );
+    monitorSelection =
+      listed === screen.getAllDisplays().length &&
+      moved &&
+      rejectedUnknown &&
+      selectionId === beforeDisplaySelection &&
+      coordinator?.current?.requestId === beforeDisplayRequest;
+    Object.assign(result, { monitorSelection });
     const previousSession = settings.provider.sessionId;
     await chat?.webContents.executeJavaScript("document.getElementById('create-session').click()");
     for (let i = 0; i < 100; i++) {
@@ -859,6 +928,7 @@ async function runSmoke(): Promise<void> {
       result.turn === 'completed' &&
       cueApplied &&
       uiRouting &&
+      monitorSelection &&
       (!smokeJev || (lastCue?.cue.source === 'jev' && renderer.lastCue))
       ? 0
       : 1,
@@ -983,7 +1053,13 @@ app
         overlay?.showInactive();
       });
     }
-    screen.on('display-removed', positionOverlay);
+    screen.on('display-removed', () => {
+      stopOverlayDrag();
+      positionOverlay();
+      void settingsFile
+        .write({ settings, position })
+        .catch(() => console.error('캐릭터 위치를 저장하지 못했습니다.'));
+    });
     screen.on('display-metrics-changed', positionOverlay);
     if (smoke) await runSmoke();
   })

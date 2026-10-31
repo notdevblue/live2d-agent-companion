@@ -50,6 +50,8 @@ npm start
 
 캐릭터를 클릭하면 채팅이 열리고 왼쪽 드래그하면 이동합니다. 잡은 상태에서 휠로 크기를 조절하며 위치·크기는 재실행 후에도 유지됩니다. 조작은 사용자 지정 레퍼런스인 Steam [your wife](https://store.steampowered.com/app/3339420/your_wife/?l=english)의 공식 안내를 참고했습니다. `Ctrl+Shift+Space`는 채팅/설정, `Ctrl+Shift+Home`은 위치 복구입니다. 창 없는 상태의 조작은 트레이 메뉴에서도 가능합니다.
 
+다른 모니터로는 그대로 드래그하거나 **채팅 창 ⚙ → 캐릭터 → 모니터 선택 → 선택한 모니터로 이동**을 사용하세요. 위치는 즉시 저장되며 별도 연결 저장은 필요하지 않습니다. 화면 경계 제한이 없어 하반신을 화면 아래로 내려 상반신만 표시할 수 있습니다. 부분 표시 위치도 재실행 후 유지하며, 완전히 사라졌으면 위치 복구 단축키를 사용하세요.
+
 Sway에서는 Xwayland로 실행하며(사용자가 backend를 지정하지 않고 `DISPLAY`가 있으면 자동 선택), 항상 위 설정을 켜면 모델 창만 WM 관리에서 제외해 작업공간·전체화면 위에 표시합니다. 채팅 창은 일반 창입니다. Linux 입력 영역 helper의 빌드에는 C 컴파일러와 X11/Xext 개발 헤더가 필요합니다. 준비되지 않으면 클릭 통과를 미지원으로 표시합니다. native Wayland 클릭 통과와 Windows 실사용 검증은 별도입니다.
 
 설정에서 `ssh://user@host`와 Hermes 프로필을 저장한 뒤 기존 세션을 조회/선택하거나 **도구가 꺼진 테스트용 새 세션**을 만들 수 있습니다. 일반 HTTP는 API 소유 세션 전용입니다. 개인 주소·세션은 앱 설정 또는 ignored `local-assets/connection.json`에만 보관합니다. 해당 파일 생성은 `npm run configure:local -- --endpoint ssh://user@example.test --profile default --session SESSION_ID`입니다.

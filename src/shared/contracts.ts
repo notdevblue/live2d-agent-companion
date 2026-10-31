@@ -151,6 +151,13 @@ export interface OverlayInputRegion {
   rects: Array<{ x: number; y: number; width: number; height: number }>;
 }
 export type OverlayInputMode = 'forward' | 'native-shape' | 'unsupported';
+export interface OverlayDisplay {
+  id: number;
+  label: string;
+  width: number;
+  height: number;
+  current: boolean;
+}
 export interface Bootstrap {
   selectionId: string;
   revision: number;
@@ -177,6 +184,8 @@ export interface CompanionBridge {
   reconcile(requestId: string): Promise<void>;
   approve(approvalId: string, decision: 'allow_once' | 'deny', requestId: string): Promise<void>;
   openChat(): Promise<void>;
+  displays(): Promise<OverlayDisplay[]>;
+  moveToDisplay(id: number): Promise<void>;
   move(dx: number, dy: number): Promise<void>;
   resizeOverlay(deltaY: number, screenX: number, screenY: number): Promise<void>;
   setDragging(active: boolean): void;

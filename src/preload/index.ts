@@ -15,6 +15,8 @@ const bridge: CompanionBridge = {
   approve: (id, decision, requestId) =>
     ipcRenderer.invoke('companion:approve', id, decision, requestId),
   openChat: () => ipcRenderer.invoke('companion:chat'),
+  displays: () => ipcRenderer.invoke('companion:displays'),
+  moveToDisplay: (id) => ipcRenderer.invoke('companion:display', id),
   move: (dx, dy) => ipcRenderer.invoke('companion:move', dx, dy),
   resizeOverlay: (deltaY, screenX, screenY) =>
     ipcRenderer.invoke('companion:resize', deltaY, screenX, screenY),

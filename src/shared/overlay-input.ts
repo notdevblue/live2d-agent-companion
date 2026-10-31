@@ -27,17 +27,16 @@ export class OverlayInputState {
     deltaY: number,
     cursor: Point,
     bounds: Bounds,
-    workArea: Bounds,
   ): { scale: number; bounds: Bounds } | undefined {
     if (!this.dragging) return undefined;
     const limit = settingsSchema.in.shape.scale;
     const next = limit.parse(
       Math.max(limit.minValue!, Math.min(limit.maxValue!, scale * Math.exp(-deltaY * 0.001))),
     );
-    const width = Math.min(Math.round(440 * next), workArea.width);
-    const height = Math.min(Math.round(680 * next), workArea.height);
-    // Keep the model point underneath the cursor fixed. Clamping is necessary
-    // at a display edge, where maintaining both visibility and anchor is impossible.
+    const width = Math.round(440 * next);
+    const height = Math.round(680 * next);
+    // Preserve the grabbed point, including when the user intentionally crops
+    // the character at a monitor edge. Display edges are not movement limits.
     const anchorX = Math.max(0, Math.min(1, (cursor.x - bounds.x) / bounds.width));
     const anchorY = Math.max(0, Math.min(1, (cursor.y - bounds.y) / bounds.height));
     return {
@@ -45,20 +44,8 @@ export class OverlayInputState {
       bounds: {
         width,
         height,
-        x: Math.max(
-          workArea.x,
-          Math.min(
-            Math.round(bounds.x + anchorX * (bounds.width - width)),
-            workArea.x + workArea.width - width,
-          ),
-        ),
-        y: Math.max(
-          workArea.y,
-          Math.min(
-            Math.round(bounds.y + anchorY * (bounds.height - height)),
-            workArea.y + workArea.height - height,
-          ),
-        ),
+        x: Math.round(bounds.x + anchorX * (bounds.width - width)),
+        y: Math.round(bounds.y + anchorY * (bounds.height - height)),
       },
     };
   }

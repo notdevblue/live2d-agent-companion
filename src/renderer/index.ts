@@ -194,6 +194,18 @@ function populateOverlayInput(): void {
       ? ` · ${boot.overlayInputError ?? '현재 창 시스템에서는 미지원 (설정값은 유지).'}`
       : '';
 }
+async function refreshDisplays(): Promise<void> {
+  const displays = await bridge.displays();
+  const select = element<HTMLSelectElement>('display-list');
+  select.replaceChildren();
+  for (const display of displays) {
+    const option = document.createElement('option');
+    option.value = String(display.id);
+    option.textContent = `${display.label} · ${display.width}×${display.height}${display.current ? ' · 현재' : ''}`;
+    option.selected = display.current;
+    select.append(option);
+  }
+}
 function populate(): void {
   const s = boot.settings;
   element<HTMLSelectElement>('provider').value = s.provider.provider;
@@ -415,9 +427,22 @@ async function main(): Promise<void> {
   finish();
   const toggle = () => {
     element('settings').hidden = !element('settings').hidden;
+    if (!element('settings').hidden) safe(refreshDisplays);
   };
   element('settings-toggle').onclick = toggle;
   element('settings-close').onclick = toggle;
+  element('move-display').onclick = () =>
+    safe(async () => {
+      const button = element<HTMLButtonElement>('move-display');
+      button.disabled = true;
+      try {
+        await bridge.moveToDisplay(Number(element<HTMLSelectElement>('display-list').value));
+        await refreshDisplays();
+        notice('캐릭터를 선택한 모니터로 옮기고 위치를 저장했습니다.');
+      } finally {
+        button.disabled = false;
+      }
+    });
   element('choose-model').onclick = () =>
     safe(async () => {
       adoptBootstrap(await bridge.chooseModel());
