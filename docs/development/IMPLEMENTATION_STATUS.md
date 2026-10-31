@@ -32,7 +32,7 @@
 
 DeepSeek의 49개 마스크 그룹에 기본 버퍼 1개를 사용하면 SDK의 36그룹 용량을 초과해 얼굴·머리카락·꼬리가 오염됐다. SDK의 그룹 집계와 다중 버퍼 용량으로 버퍼 2개를 할당하고 POT 텍스처에는 mipmap 축소 필터를 적용한다. 원래 alpha 업로드를 공식 예제 방식과 동일 geometry에서 비교했을 때 픽셀 차이는 0이었다. 첫 gesture는 시작 후 1.6초 cooldown에 막히지 않도록 초기 시각을 분리했다.
 
-Linux에서는 `DISPLAY`가 있고 backend를 명시하지 않았으면 X11을 선택한다. 항상 위 옵션을 켠 Overlay만 생성 시 `focusable: false`를 사용하며 chat은 일반 창이다. Linux에서 해당 옵션을 바꾸면 Overlay만 재생성한다. Sway의 일회성 floating/sticky 명령이나 사용자 전체화면 해제로 해결하지 않는다.
+Linux에서는 `DISPLAY`가 있고 backend를 명시하지 않았으면 X11을 선택한다. 항상 위 옵션을 켠 Overlay만 생성 시 `focusable: false`를 사용하며 chat은 포커스 가능한 관리되는 `dialog` 창이다. 기본 normal 창이 Sway에서 tiled로 열리던 원인을 생성 시 Linux `type: dialog` 지정으로 해결해 자동 floating 처리한다. Linux에서 해당 옵션을 바꾸면 Overlay만 재생성한다. Sway의 일회성 floating/sticky 명령이나 사용자 전체화면 해제로 해결하지 않는다.
 
 Linux의 `setIgnoreMouseEvents`는 mouse forwarding을 지원하지 않는다. Sway에서 뒤쪽 Wayland 창으로 넘어가면 Xwayland의 전역 커서 좌표도 갱신되지 않아 polling 복구 역시 실패했다. 따라서 Linux는 자기 canvas의 alpha로 입력 전용 `ShapeInput` 영역을 갱신한다. 10Hz·8 CSS 픽셀 타일과 6픽셀 여유 영역을 사용하므로 외곽의 좁은 투명 여백은 조작 영역에 포함될 수 있다. 표시 영역은 자르지 않는다. 드래그 중에는 전체 입력 영역을 유지하고 resize·로드 오류·helper 실패 때도 조작 가능한 상태로 복구한다.
 
@@ -66,6 +66,8 @@ npm audit
 ## 확인 결과 (2026-10-31)
 
 - TypeScript strict, Prettier 및 production build 통과. Unit/Contract 118개: 기존 전송/SSE·SSH receipt/replay·복구/lease·승인·저장·지연 판단·모델 경로·인증 입력·렌더 용량·입력 영역·모니터 배치에 더해 actor의 30/60/120fps 일관성, 감정/태도·반복/만료/blocked, idle 호흡 주기·위상/강도·몸 반응, expression crossfade, upstream/range 선택, 전체 손 pose endpoint와 진입/유지/복귀, 표현 설정 마이그레이션/저장 검사를 포함한다.
+- 채팅·설정 창 변경 후 실제 Sway/Xwayland 앱을 새 프로세스로 실행하고 창을 닫았다 다시 열어 두 번 모두 `floating=true`, `_NET_WM_WINDOW_TYPE_DIALOG`, `modal=false`를 확인했다. 앱 생성 코드에서 매번 지정하므로 별도 Sway 규칙·서비스가 필요하지 않다. OS 재부팅/재로그인 및 Windows 창 동작은 이번 검사에서 검증하지 않았다. 로컬 근거는 ignored `.tmp/floating-check-*.json`이다.
+- DeepSeek 표정 23개·모션 8개의 표시 별칭을 추가했다. 의미 미확인 `脱捕`는 원문 병기, 알 수 없는 자산 이름은 원문 fallback이다. 기본 desktop smoke의 `localizedMaps`와 실제 창에서 ‘홍조’/‘검지 포즈 시작’ 표시, tooltip 원문 및 option의 원래 ID 보존을 확인했다. 파일 이름이나 기존 매핑은 바꾸지 않았다.
 - 기본 Electron Mock smoke에서 기존 form/모니터/세션 라우팅 외에 `presentationControls`, `previewSafety`, `lockedGesture`, `approvalBlocked`, `approvalResumed`, `pendingSelection` 모두 통과했다. 로컬 미리보기 후 첫 실제 cue의 표정 weight 1·pose 활성, 표현 설정 적용 시 renderer/selection/request/위치 유지, renderer reload 복원, 뒤늦은 character 이벤트의 승인 차단 유지, 이전 느린 connect와 새 선택의 pending token 격리를 검사했다. 고의로 잘못된 IPC를 보내는 거절 로그는 예상된 거절 경로 검사 결과다.
 - 실제 DeepSeek의 로컬 연속 프레임에서 고개 physics 출력이 thinking 중 약 −3.64까지 변하고, 설명 포즈 유지 중 `Movement3=1`과 손목/손가락 endpoint가 보존되며 복귀 뒤 모두 중립으로 돌아오는 것을 확인했다. happy→홍조→땀은 240ms crossfade 가중치가 연속으로 이어졌다. `neutral/none + attitude=tease`도 실제 장난 눈과 고개 연기로 적용됐다. 30fps 간격 시뮬레이션 1,980 draw와 10fps 간격 60 draw를 검사했으며 실시간 GPU FPS 측정은 아니다. 로컬 비교 영상/이미지는 ignored `artifacts/motion-comparison/updated-motion.mp4`, `before-after.png`, 수치 근거는 `.tmp/motion-after/*traces.json`이다.
 - idle 호흡은 actor의 4.8초 들숨/날숨, bodyY 반응과 canvas 내부 전체 모델 상하 offset을 합성한다. 사용자 피드백에 따라 첫 bodyY 호흡 폭을 2배로 키웠다. 실제 DeepSeek 8초/240 draw에서 `ParamBreath` 약 .188~.812, `PositionY` 약 −2.335~1.967 및 physics 뒤 몸 반응, 초기 clip 좌표 offset ±.0117을 확인하고 상반신 렌더 이미지를 검사했다. 사용자의 과도한 상하 이동 피드백에 따라 전체 offset만 1/4(기본 연출 ±.002925, 4배 창에서 약 ±4 CSS px)로 줄였고 몸통 호흡은 유지했다. 강도/reduced motion·cue와 독립적인 위상·blocked 중립 회귀와 새 offset 한도는 unit test로 검사했다. 참고 영상과 구현의 차이는 상호작용 설계의 추가 조사 절에 구분했다. 초기 offset의 로컬 시각 근거는 ignored `artifacts/motion-comparison/idle-breath-root.mp4`, `.tmp/motion-after/breath-traces.json`이다. 앱 재실행 뒤 사용자 배율·위치·표현 설정 유지도 확인했으며 OS 재부팅/재로그인 검증은 아니다.

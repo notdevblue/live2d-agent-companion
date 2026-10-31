@@ -11,6 +11,7 @@ import {
   type TurnView,
 } from '../shared/contracts.js';
 import type { Avatar } from './avatar.js';
+import { modelAssetLabel } from './model-labels.js';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const bridge = window.companion;
@@ -230,7 +231,11 @@ function populateMaps(): void {
       for (const option of options) {
         const entry = document.createElement('option');
         entry.value = option;
-        entry.textContent = option;
+        entry.textContent = modelAssetLabel(
+          option,
+          id === 'expression-maps' ? 'expression' : 'motion',
+        );
+        entry.title = option;
         select.append(entry);
       }
       select.value = (mapping as Record<string, string>)[key] ?? '';

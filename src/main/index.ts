@@ -330,7 +330,9 @@ function openChat(): void {
     minHeight: 600,
     backgroundColor: '#f6f8f7',
     show: false,
-    title: 'DeepSeek Companion',
+    title: 'Live2D Companion Chat',
+    // A managed dialog is automatically floated by Sway/Xwayland. Keep it focusable.
+    type: process.platform === 'linux' ? 'dialog' : 'normal',
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(root, 'dist/preload/index.cjs'),
@@ -341,6 +343,7 @@ function openChat(): void {
     },
   });
   secureWindow(chat);
+  chat.on('page-title-updated', (event) => event.preventDefault());
   chat.once('ready-to-show', () => {
     if (!smoke) chat?.show();
   });
@@ -828,6 +831,12 @@ async function runSmoke(): Promise<void> {
     if (await chat?.webContents.executeJavaScript('window.__uiReady === true')) break;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  const localizedMaps = await chat?.webContents.executeJavaScript(`(()=>{
+    const expression = Array.from(document.querySelectorAll('#expression-maps option')).find(o=>o.value==='脸红');
+    const motion = Array.from(document.querySelectorAll('#gesture-maps option')).find(o=>o.value==='竖手指切出来动画');
+    return expression?.textContent==='홍조' && expression.title==='脸红' &&
+      motion?.textContent==='검지 포즈 시작' && motion.title==='竖手指切出来动画';
+  })()`);
   let previewSafety = true;
   let presentationControls = true;
   let pendingSelection = true;
@@ -918,6 +927,7 @@ async function runSmoke(): Promise<void> {
     '({node:typeof require, bridge:typeof window.companion.send})',
   );
   const result = {
+    localizedMaps,
     renderer,
     alpha,
     provider: settings.provider.provider,
@@ -1215,6 +1225,7 @@ async function runSmoke(): Promise<void> {
       cueApplied &&
       uiRouting &&
       monitorSelection &&
+      localizedMaps &&
       presentationControls &&
       previewSafety &&
       pendingSelection &&
