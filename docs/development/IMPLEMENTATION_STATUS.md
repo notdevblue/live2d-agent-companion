@@ -1,6 +1,6 @@
 # 구현 및 검증 상태
 
-**확인일:** 2026-10-31 · **버전:** 0.1.0-alpha.1 · **배포:** 로컬 개발용, Windows 릴리스 검증 전
+**확인일:** 2026-11-01 · **버전:** 0.1.0-alpha.1 · **배포:** 로컬 개발용, Windows 릴리스 검증 전
 
 ## 구현 범위
 
@@ -64,7 +64,16 @@ npm audit
 
 사용자 `.env` 경로의 실제 시작 검사는 `node scripts/smoke-desktop.mjs --smoke-hermes --smoke-env`다. 기본 `test:desktop`은 `.env`를 읽거나 유료 Jev 호출을 하지 않는다.
 
-## 확인 결과 (2026-10-31)
+## 확인 결과 (2026-11-01)
+
+- `FR-DIR-005`: streaming도 thinking으로 매핑하고 도구 상태 변화가 actor reaction·표정 mixer·paired pose를 초기화하던 경로를 수정했다. streaming은 도구 작업이 없으면 idle, 같은 요청의 배경 상태 변화는 메시지 반응을 보존하고 반응 중 생각 포즈와의 합성을 멈춘다. 새 요청 경계는 renderer에서 명시적으로 reset하며 승인/복구/취소/오류는 계속 즉시 정리한다. 단위 검사는 메시지 연기 중 상태 변화 전후 동일 궤적과 자연 종료 뒤 최신 working 복귀를 비교한다. 실제 DeepSeek/SDK 로컬 fixture에서도 thinking→메시지 explain 손 포즈→working→thinking→idle 전환의 포즈/표정 유지, 자연 복귀와 승인 차단 즉시 정리, 짧은 놀람 뒤 긴 손 복귀 동작 완주를 확인했다. 사용자 thinking 자산은 메시지 도착 시 교체되고 이전 대기 clip의 cooldown이 실제 제스처를 막지 않는다. 근거는 `tests/avatar.test.ts`, `acting.test.ts`, `director.test.ts`와 ignored `.tmp/request-recovery/motion-result.json`이다.
+
+- `FR-AG-012`/`AC-02`/`E-019`: 30초 무이벤트 뒤 타이머를 지우고 수동 조회만 기다리던 원인을 수정했다. 원래 요청의 자동 조회·재시작 복원, 미확인 최초+5회 backoff, 진행 확인 시 감시 재개와 승인 만료의 별도 처리를 추가했다. 이벤트 replay가 만료돼도 receipt로 진행을 확인하며 snapshot의 살아 있는 승인도 복원한다. 중복/낡은 요청 조회·dispose 뒤 타이머·원격 terminal 증거 없는 lease 해제를 회귀 검사했다.
+- 실제 미수신 요청의 원격 receipt는 이미 completed였으며 최종 본문 886자가 남아 있었다. 같은 binding/request/admission 메타데이터로 별도 클라이언트의 `restore`만 호출해 자동 완료 복구를 확인했다. 실제 RPC는 `session.resume`, `prompt.receipt` 각 1회이며 새 prompt·중단·승인·Jev 호출은 0회다. 복구 본문을 snapshot으로 먼저 적용해 과거 모션을 재생하지 않는다. 비공개 근거는 ignored `.tmp/request-recovery/automatic-result.json`이며 본문·주소·ID는 기록하지 않는다. 실제 Sway 앱을 재실행해 같은 default 세션의 최종 답변이 history에 정확히 1개, 알림 없음·전송 가능·모델 로드 상태이며 기존 설정/위치가 유지됨을 확인했다. 이 검증은 새 prompt/도구 실행 없이 수행했고 OS 재부팅/재로그인은 하지 않았다.
+
+- 이 변경의 `typecheck`, `format:check`, 전체 단위/계약 검사 174개, production build와 외부 AI 없는 Electron Mock desktop 검사를 통과했다. 검증 후 일반 앱을 최신 build로 재실행하고 선택 세션·표현 설정·배율·최신 위치 유지와 프로세스 실행을 확인했다.
+
+## 이전 확인 결과 (2026-10-31)
 
 - Hermes의 공개 중간 응답을 합치던 원인을 native `message.delta {text:null}` 경계와 비스트리밍 `message.interim` 처리로 수정했다. TurnView/messages와 메모리 history·renderer는 requestId+messageId로 말풍선을 나누며, 중간 message.complete는 요청 완료를 뜻하지 않는다. 앱의 prompt.submit에만 api_text 진행 보고 안내를 넣고 원래 transcript user text·프로필/서비스 설정은 보존한다. 같은 title의 session.create가 기존 제한 세션을 재사용한다는 원인도 확인해 명시적인 새 대화는 고유 제목을 사용한다.
 - 실제 default의 독립 테스트 세션에서 read_file 두 단계(/etc/os-release, /proc/version) → 중간 응답 2개와 최종 답변 1개 → 서로 다른 messageId 3개·Jev 판단 1회씩을 확인했다. 응답 종료 후 추가 문장 큐가 재생되지 않았고 일반 앱의 선택 세션은 바꾸지 않았다. 별도 SSH 조회에서도 user 1/assistant 3개를 복원했다. 기존 bridge가 공개 display_commentary를 빠뜨리던 경로는 공개 문자열만 펼치는 방식으로 수정해 중간 응답도 재실행 후 보이게 했다. 최초 검사는 기존 테스트 title이 x_search 전용 세션을 재사용해 파일 도구가 없어 성립하지 않았으며, 고유 제목의 새 세션에서 다시 검증했다. 원문/키/실제 ID 대신 event 시각·메시지 순번·도구명/판단 enum만 ignored `.tmp/progress-check/result.json`에 기록한다. 모델의 진행 보고 빈도 보장은 아니다.

@@ -15,6 +15,7 @@ import { bindingSchema, validateAgentEvent } from '../shared/validation.js';
 import { CharacterDirector } from './character-director.js';
 
 const terminalStates = new Set<TurnState>(['completed', 'failed', 'cancelled', 'interrupted']);
+const recoveryBackoffMs = [1000, 2000, 4000, 8000, 16000] as const;
 const metadataSchema = z
   .object({
     version: z.literal(1),
@@ -93,11 +94,13 @@ export class TurnCoordinator {
   private approval?: Approval;
   private remoteRunId?: string;
   private timeout?: ReturnType<typeof setTimeout>;
+  private recoveryTimer?: ReturnType<typeof setTimeout>;
+  private recoveryFailures = 0;
   private approvalTimeout?: ReturnType<typeof setTimeout>;
   private disposed = false;
   private effectsCancelled = false;
   private submissionStarted = false;
-  private reconciling = false;
+  private reconciling?: { requestId: string };
   private approvalRefreshAllowed = false;
 
   constructor(private readonly options: CoordinatorOptions) {
@@ -140,6 +143,9 @@ export class TurnCoordinator {
     this.remoteRunId = undefined;
     this.effectsCancelled = false;
     this.submissionStarted = false;
+    clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = undefined;
+    this.recoveryFailures = 0;
     this.director.begin(request.requestId);
     this.publish();
     try {
@@ -198,11 +204,29 @@ export class TurnCoordinator {
 
   async reconcile(): Promise<void> {
     this.assertActive();
-    if (!this.view || this.isTerminal() || this.reconciling) return;
+    return this.checkRemote(false);
+  }
+
+  private async checkRemote(automatic: boolean): Promise<void> {
+    if (
+      !this.view ||
+      this.isTerminal() ||
+      this.disposed ||
+      this.reconciling?.requestId === this.view.requestId
+    )
+      return;
     if (!this.owns(this.view.requestId)) throw new Error('현재 요청 소유권이 없습니다.');
     const request = this.requestRef();
-    this.markReconciling('기존 요청의 원격 상태를 확인하고 있습니다.');
-    this.reconciling = true;
+    clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = undefined;
+    if (!automatic) this.recoveryFailures = 0;
+    const operation = { requestId: request.requestId };
+    this.reconciling = operation;
+    this.markReconciling(
+      automatic
+        ? '기존 요청의 원격 실행 상태를 자동으로 확인하고 있습니다.'
+        : '기존 요청의 원격 상태를 확인하고 있습니다.',
+    );
     try {
       await this.options.adapter.reconcile?.(request, (event) => this.receive(event));
       // Only a correlated event can confirm progress/termination, never this return value.
@@ -210,7 +234,21 @@ export class TurnCoordinator {
       if (this.owns(request.requestId) && !this.isTerminal())
         this.markReconciling('원격 상태 확인에 실패했습니다. 새 요청은 전송하지 않았습니다.');
     } finally {
-      this.reconciling = false;
+      if (this.reconciling === operation) this.reconciling = undefined;
+      if (this.owns(request.requestId) && !this.isTerminal()) {
+        if (this.view!.state === 'reconciling') {
+          const delay = recoveryBackoffMs[this.recoveryFailures++];
+          if (delay !== undefined) this.scheduleRecovery(delay);
+          else {
+            this.view!.error =
+              '자동 상태 확인으로 원격 결과를 확인하지 못했습니다. 연결을 확인한 뒤 상태 확인을 눌러 주세요. 원래 요청은 재전송하지 않았습니다.';
+            this.publish();
+          }
+        } else {
+          this.recoveryFailures = 0;
+          this.armTimeout();
+        }
+      }
     }
   }
 
@@ -321,6 +359,7 @@ export class TurnCoordinator {
       this.armApprovalExpiry();
     }
     this.publish();
+    this.scheduleRecovery();
   }
 
   async dispose(): Promise<void> {
@@ -335,6 +374,8 @@ export class TurnCoordinator {
     }
     this.disposed = true;
     clearTimeout(this.timeout);
+    clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = undefined;
     clearTimeout(this.approvalTimeout);
     this.director.invalidate();
     // Persist snapshot before dispose. Disconnect is not a remote cancellation.
@@ -362,7 +403,17 @@ export class TurnCoordinator {
       return;
     }
     if (this.seen.size < 4096) this.seen.add(event.eventId);
+    if (
+      event.type !== 'turn.reconciling' &&
+      event.type !== 'message.snapshot' &&
+      this.reconciling?.requestId !== event.requestId
+    ) {
+      this.recoveryFailures = 0;
+      clearTimeout(this.recoveryTimer);
+      this.recoveryTimer = undefined;
+    }
     this.apply(event);
+    if (this.view?.state === 'reconciling') this.scheduleRecovery();
   }
 
   private apply(event: AgentEvent): void {
@@ -373,7 +424,10 @@ export class TurnCoordinator {
         if (view.state === 'submitting') view.state = 'accepted';
         break;
       case 'turn.awaiting_result':
-        if (view.state !== 'cancel_requested') view.state = 'awaiting_result';
+        if (view.state !== 'cancel_requested') {
+          view.state = 'awaiting_result';
+          delete view.error;
+        }
         break;
       case 'turn.reconciling':
         this.markReconciling('연결이 끊겨 원격 실행 상태를 확인해야 합니다.');
@@ -438,8 +492,15 @@ export class TurnCoordinator {
         )
           return;
         this.approvalRefreshAllowed = false;
-        this.approval = { ...event.payload, status: 'pending' };
-        view.approval = { ...event.payload };
+        // Refresh the description/status without extending a previously issued approval.
+        view.approval = {
+          ...event.payload,
+          expiresAt:
+            this.approval?.approvalId === event.payload.approvalId
+              ? Math.min(this.approval.expiresAt, event.payload.expiresAt)
+              : event.payload.expiresAt,
+        };
+        this.approval = { ...view.approval, status: 'pending' };
         this.director.replaceSnapshot();
         this.armApprovalExpiry();
         break;
@@ -476,6 +537,8 @@ export class TurnCoordinator {
     delete this.view.approval;
     clearTimeout(this.approvalTimeout);
     this.publish();
+    if (this.view?.state === 'reconciling') this.scheduleRecovery();
+    else this.armTimeout();
   }
   private armApprovalExpiry(): void {
     clearTimeout(this.approvalTimeout);
@@ -525,6 +588,8 @@ export class TurnCoordinator {
   private finish(state: TurnState, error?: string): void {
     if (!this.view || this.isTerminal()) return;
     clearTimeout(this.timeout);
+    clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = undefined;
     clearTimeout(this.approvalTimeout);
     this.view.state = state;
     if (state === 'failed') this.director.invalidate();
@@ -544,15 +609,39 @@ export class TurnCoordinator {
     this.view.error = error;
     this.director.replaceSnapshot();
     this.publish();
+    this.scheduleRecovery();
+  }
+  private scheduleRecovery(delay = 0): void {
+    const requestId = this.view?.requestId;
+    if (
+      !requestId ||
+      !this.owns(requestId) ||
+      this.isTerminal() ||
+      !this.options.adapter.reconcile ||
+      this.recoveryTimer ||
+      this.reconciling?.requestId === requestId ||
+      this.recoveryFailures > recoveryBackoffMs.length
+    )
+      return;
+    this.recoveryTimer = setTimeout(() => {
+      this.recoveryTimer = undefined;
+      if (this.owns(requestId) && !this.isTerminal()) void this.checkRemote(true).catch(() => {});
+    }, delay);
   }
   private armTimeout(): void {
     clearTimeout(this.timeout);
-    if (this.disposed || !this.view || this.isTerminal() || this.view.state === 'reconciling')
+    if (
+      this.disposed ||
+      !this.view ||
+      this.isTerminal() ||
+      this.view.state === 'reconciling' ||
+      (this.approval?.status === 'pending' && this.approval.expiresAt > Date.now())
+    )
       return;
     this.timeout = setTimeout(
       () =>
         this.markReconciling(
-          '응답 대기 시간이 초과되었습니다. 원격 실행은 종료 확인되지 않았습니다.',
+          '응답 수신이 잠시 멈춰 원격 실행 상태를 확인합니다. 원래 요청은 재전송하지 않습니다.',
         ),
       this.options.requestTimeoutMs ?? 30_000,
     );

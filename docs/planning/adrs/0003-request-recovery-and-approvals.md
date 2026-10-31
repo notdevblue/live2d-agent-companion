@@ -40,3 +40,7 @@
 2026-10-31 최초 문서 개정에서 계약·요구사항·수락 조건을 대조하고 별도 읽기 전용 재검토를 수행했다. 당시 Markdown 28개의 상대 링크/앵커 39개와 JSON 예시 3개는 오류 0건, `git diff --check`는 통과했다. 당시에는 실행 코드가 없어 E-012~018은 계획이었다. 이후 구현/실제 검증 결과는 [IMPLEMENTATION_STATUS](../../development/IMPLEMENTATION_STATUS.md)로 추적하며 Windows 검증과 구분한다.
 
 외부 근거: [Hermes Programmatic Integration](https://hermes-agent.nousresearch.com/docs/developer-guide/programmatic-integration)의 server request 응답 및 `open_requests`/`inflight` 복원 설명. 공급자 기능과 앱의 구현 증거는 구분한다.
+
+## 자동 복구 보완 (2026-11-01)
+
+30초 무이벤트 뒤 수동 조회만 기다리던 구현을 원래 요청의 자동 조회로 변경한다. 진행 확인 시 감시를 이어가고 미확인일 때만 유한 backoff로 제한한다. 메서드 반환값만으로 lease를 해제하지 않으며 terminal 이벤트가 필요하다. replay 만료도 receipt/snapshot으로 현재 실행·승인을 확인한다. 재시작·과거 답변 복구는 재제출/Jev 재판단을 하지 않는다. 수락 근거는 AC-02, E-019와 core/SSH 계약 검사다.

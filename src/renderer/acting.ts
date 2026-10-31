@@ -167,7 +167,9 @@ export class ActingController {
 
   setState(state: ActingState, nowMs: number): void {
     this.initialize(nowMs);
-    if (state !== this.state && state !== 'idle') this.reaction = undefined;
+    // Task progress is a background state. A visible message owns its short
+    // reaction until it releases; a new request explicitly resets the actor.
+    if (state === 'error' || state === 'blocked') this.reaction = undefined;
     this.state = state;
     if (state === 'blocked') {
       this.reaction = undefined;
@@ -341,7 +343,9 @@ export class ActingController {
     const reaction = this.reaction;
     const age = reaction ? now - reaction.started : 0;
     const weight = reaction ? this.envelope(age, reaction.preset) : 0;
-    const base = this.target(this.base(), (now - this.epoch!) / 1000);
+    // Do not blend a waiting/working pose back into the message's attack or
+    // release. Once the reaction expires the latest task state resumes.
+    const base = this.target(reaction ? 'neutral' : this.base(), (now - this.epoch!) / 1000);
     const target = reaction ? this.target(reaction.preset, age / 1000, reaction.variant) : base;
     // A gesture carries body/gaze intent independently of the face's emotion or attitude.
     if (reaction?.gesture === 'thinking' || reaction?.gesture === 'explain') {

@@ -45,7 +45,10 @@ class ControlledAdapter implements AgentAdapter {
     this.responses.push(response);
     return this.approvalResult;
   }
-  async reconcile(_request: RequestRef, sink: EventSink): Promise<'unknown'> {
+  async reconcile(
+    _request: RequestRef,
+    sink: EventSink,
+  ): Promise<'resumed' | 'settled' | 'unknown'> {
     this.sink = sink;
     return 'unknown';
   }
@@ -608,5 +611,153 @@ describe('asynchronous CharacterDirector (FR-DIR-001/002)', () => {
     await flush();
     expect(cueEvents(events)).toHaveLength(0);
     expect(judge.judge.mock.calls[0]?.[0]).toBe('표시용 답변.');
+  });
+});
+
+describe('automatic read-only request recovery (FR-AG-012)', () => {
+  it('does not release a lease on an uncorrelated settled return value', async () => {
+    const { core, adapter } = fixture();
+    const check = vi.spyOn(adapter, 'reconcile').mockResolvedValue('settled');
+    await core.send('fixture');
+    adapter.emit('turn.reconciling', { reason: 'offline' });
+    await vi.advanceTimersByTimeAsync(100000);
+    expect(check).toHaveBeenCalledTimes(6);
+    expect(core.current?.state).toBe('reconciling');
+    expect(core.snapshot().pending).toBeDefined();
+    await expect(core.send('duplicate')).rejects.toThrow();
+    await core.dispose();
+  });
+  it('checks a silent long-running tool and later gets its original final result without resubmitting', async () => {
+    const { core, adapter } = fixture();
+    let checks = 0;
+    const check = vi.spyOn(adapter, 'reconcile').mockImplementation(async (_ref, sink) => {
+      if (++checks === 1) sink(adapter.event('turn.resumed', { state: 'streaming' }));
+      else {
+        sink(adapter.event('message.snapshot', { messageId: 'm', text: '최종 결과' }));
+        sink(adapter.event('message.complete', { messageId: 'm', text: '최종 결과' }));
+        sink(adapter.event('turn.completed', {}));
+      }
+      return 'unknown';
+    });
+    await core.send('fixture');
+    adapter.emit('turn.accepted', { remoteRunId: 'remote' });
+    adapter.emit('tool.started', { toolId: 't', name: 'read_file' });
+    await vi.advanceTimersByTimeAsync(30001);
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(core.current?.state).toBe('streaming');
+    await expect(core.send('duplicate')).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(30001);
+    expect(core.current).toMatchObject({ state: 'completed', text: '최종 결과' });
+    expect(adapter.sent).toHaveLength(1);
+    expect(adapter.responses).toHaveLength(0);
+    await core.dispose();
+  });
+  it('automatically reconciles restored metadata without replaying expressions', async () => {
+    const original = fixture();
+    await original.core.send('fixture');
+    original.adapter.emit('turn.accepted', { remoteRunId: 'remote' });
+    const metadata = original.core.snapshot();
+    await original.core.dispose();
+    const events: CompanionEvent[] = [];
+    const judge = { judge: vi.fn(async () => happy) };
+    const restored = new TurnCoordinator({
+      adapter: original.adapter,
+      binding: metadata.binding,
+      judge,
+      onEvent: (e) => events.push(e),
+    });
+    const check = vi.spyOn(original.adapter, 'reconcile').mockImplementation(async (_ref, sink) => {
+      sink(original.adapter.event('message.snapshot', { messageId: 'm', text: '복구 결과' }));
+      sink(original.adapter.event('message.complete', { messageId: 'm', text: '복구 결과' }));
+      sink(original.adapter.event('turn.completed', {}));
+      return 'unknown';
+    });
+    restored.restore(metadata);
+    await flush();
+    expect(check).toHaveBeenCalledOnce();
+    expect(restored.current).toMatchObject({ state: 'completed', text: '복구 결과' });
+    expect(original.adapter.sent).toHaveLength(1);
+    expect(judge.judge).not.toHaveBeenCalled();
+    expect(cueEvents(events)).toHaveLength(0);
+    await restored.dispose();
+  });
+  it('bounds unknown/offline retries, keeps the lease, and lets manual retry start a new budget', async () => {
+    const { core, adapter } = fixture();
+    const check = vi.spyOn(adapter, 'reconcile').mockRejectedValue(new Error('offline'));
+    const cancel = vi.spyOn(adapter, 'cancel');
+    await core.send('fixture');
+    adapter.emit('turn.reconciling', { reason: 'offline' });
+    await vi.advanceTimersByTimeAsync(100000);
+    expect(check).toHaveBeenCalledTimes(6);
+    expect(core.current?.state).toBe('reconciling');
+    await expect(core.send('duplicate')).rejects.toThrow();
+    expect(adapter.sent).toHaveLength(1);
+    expect(cancel).not.toHaveBeenCalled();
+    expect(adapter.responses).toHaveLength(0);
+    await core.reconcile();
+    expect(check).toHaveBeenCalledTimes(7);
+    await core.dispose();
+    await vi.advanceTimersByTimeAsync(100000);
+    expect(check).toHaveBeenCalledTimes(7);
+  });
+  it('serializes manual/automatic polls and never re-arms after a late terminal event', async () => {
+    const { core, adapter } = fixture();
+    const gate = deferred<'unknown'>();
+    const check = vi.spyOn(adapter, 'reconcile').mockReturnValue(gate.promise);
+    await core.send('fixture');
+    adapter.emit('turn.reconciling', { reason: 'offline' });
+    await flush();
+    expect(check).toHaveBeenCalledOnce();
+    await core.reconcile();
+    await vi.advanceTimersByTimeAsync(100000);
+    expect(check).toHaveBeenCalledOnce();
+    adapter.emit('message.complete', { messageId: 'm', text: 'late' });
+    adapter.emit('turn.completed', {});
+    gate.resolve('unknown');
+    await flush();
+    await vi.advanceTimersByTimeAsync(100000);
+    expect(check).toHaveBeenCalledOnce();
+    expect(core.current?.state).toBe('completed');
+    await core.dispose();
+  });
+  it('does not let an old poll completion change the next request or its recovery timer', async () => {
+    const { core, adapter } = fixture({ requestTimeoutMs: 20 });
+    const gate = deferred<'unknown'>();
+    const check = vi
+      .spyOn(adapter, 'reconcile')
+      .mockReturnValueOnce(gate.promise)
+      .mockResolvedValue('unknown');
+    await core.send('first');
+    adapter.emit('turn.reconciling', { reason: 'offline' });
+    await flush();
+    adapter.emit('turn.completed', {});
+    await core.send('second');
+    const id = core.current?.requestId;
+    gate.resolve('unknown');
+    await flush();
+    expect(core.current?.requestId).toBe(id);
+    expect(core.current?.state).toBe('submitting');
+    await vi.advanceTimersByTimeAsync(21);
+    expect(check).toHaveBeenCalledTimes(2);
+    expect(adapter.sent).toHaveLength(2);
+    await core.dispose();
+  });
+  it('waits for a known approval and resumes checking after its original expiry without auto-approving', async () => {
+    const { core, adapter } = fixture({ requestTimeoutMs: 20 });
+    const check = vi.spyOn(adapter, 'reconcile');
+    await core.send('fixture');
+    adapter.emit('approval.requested', {
+      approvalId: 'a',
+      summary: 'fixture',
+      expiresAt: Date.now() + 200,
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(check).not.toHaveBeenCalled();
+    expect(core.current?.approval?.approvalId).toBe('a');
+    await vi.advanceTimersByTimeAsync(121);
+    expect(core.current?.approval).toBeUndefined();
+    expect(check).toHaveBeenCalledOnce();
+    expect(adapter.responses).toHaveLength(0);
+    await core.dispose();
   });
 });

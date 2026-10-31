@@ -237,3 +237,7 @@ VTube Studio 공식 [모델 설정](https://github.com/DenchiSoft/VTubeStudio/wi
 ## 반응 우선순위
 
 `approval/security > user interaction > speech playback > tool execution > thought > idle`. 단일 모션 슬롯으로만 구현 가능한 모델에서도 안전 상태가 우선한다.
+
+### 메시지 연기와 작업 상태 우선순위 (2026-11-01)
+
+텍스트가 도착하는 동안 도구 작업이 없으면 기본 연기는 idle이다. waiting의 thinking과 도구 실행의 working은 배경 상태이고 메시지의 한 번짜리 반응을 덮어쓰지 않는다. 메시지 반응 중에는 배경 생각 고개·시선을 섞지 않으며, 표정과 손 포즈가 자연스럽게 끝난 뒤 최신 작업 상태로 돌아간다. 이는 음성 talking/립싱크 구현이 아니다. 새 요청·선택 변경은 이전 반응을 초기화하며, 승인·재연결 상태 확인·취소·오류는 즉시 표현을 정리한다.

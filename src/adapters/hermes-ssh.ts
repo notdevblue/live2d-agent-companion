@@ -456,9 +456,9 @@ export class HermesSshAdapter implements AgentAdapter {
         replay.snapshot_required === true ||
         !Array.isArray(replay.events)
       ) {
-        this.emit(run, 'turn.reconciling', {
-          reason: '복구 이벤트가 보존 범위를 벗어났습니다. 원격 완료 확인을 기다립니다.',
-        });
+        // The receipt proves this admission is still running, even if streaming replay expired.
+        this.emit(run, 'turn.resumed', { state: 'awaiting_result' });
+        this.prompts(run, snapshot.prompts);
         return 'unknown';
       }
       if (replay.replay_epoch !== run.epoch)
@@ -626,6 +626,11 @@ export class HermesSshAdapter implements AgentAdapter {
         result.interrupted !== true &&
         typeof result.final_response === 'string'
       ) {
+        if (run.recovering)
+          this.emit(run, 'message.snapshot', {
+            text: boundedString(result.final_response),
+            messageId: this.messageId(run),
+          });
         this.emit(run, 'message.complete', {
           text: boundedString(result.final_response),
           messageId: this.messageId(run),

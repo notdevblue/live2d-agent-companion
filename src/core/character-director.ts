@@ -61,7 +61,9 @@ export class CharacterDirector {
           ? 'idle'
           : working
             ? 'working'
-            : 'thinking';
+            : state === 'streaming'
+              ? 'idle'
+              : 'thinking';
     if (next !== this.state) {
       this.state = next;
       this.options.onEvent({ type: 'character', state: next });

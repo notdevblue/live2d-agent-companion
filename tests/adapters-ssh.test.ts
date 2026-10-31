@@ -7,6 +7,7 @@ import {
 } from '../src/adapters/hermes-ssh.js';
 import { TransportError } from '../src/adapters/transport.js';
 import type { AgentEvent, UserTurn } from '../src/shared/contracts.js';
+import { TurnCoordinator } from '../src/core/turn-coordinator.js';
 const turn: UserTurn = {
   turnId: 'turn-1',
   requestId: 'request-1',
@@ -297,7 +298,11 @@ describe('Hermes SSH native adapter', () => {
       'session.resume',
       'prompt.receipt',
     ]);
-    expect(events.map((e) => e.type)).toEqual(['message.complete', 'turn.completed']);
+    expect(events.map((e) => e.type)).toEqual([
+      'message.snapshot',
+      'message.complete',
+      'turn.completed',
+    ]);
   });
   it('binds deny to exact generation and cannot reuse uncertain approval', async () => {
     const { bridge, adapter } = create();
@@ -410,6 +415,124 @@ describe('profile-backed Hermes conversation', () => {
 });
 
 describe('native in-flight replay recovery', () => {
+  it('restores a current approval from the snapshot when replay has expired without answering it', async () => {
+    vi.useFakeTimers();
+    const { bridge, adapter } = create();
+    const original = bridge.request.getMockImplementation()!;
+    const expiresAt = Date.now() + 45000;
+    bridge.request.mockImplementation(async (method, params) => {
+      if (method === 'session.resume')
+        return {
+          ...snapshot,
+          execution_generation: 7,
+          prompts: [
+            {
+              kind: 'approval',
+              prompt_id: 'approve-1',
+              execution_generation: 7,
+              description: 'fixture',
+            },
+          ],
+        };
+      if (method === 'prompt.receipt') return receipt('started');
+      if (method === 'session.events.since')
+        return { replay_epoch: 'epoch-1', snapshot_required: true };
+      return original(method, params);
+    });
+    const metadata = {
+      version: 1 as const,
+      binding: turn.binding,
+      pending: {
+        turnId: turn.turnId,
+        requestId: turn.requestId,
+        state: 'reconciling' as const,
+        remoteRunId: 'admission-1',
+        eventIds: [],
+        effectsCancelled: false,
+        approval: { approvalId: 'approve-1', expiresAt, status: 'unknown' as const },
+      },
+    };
+    adapter.restore(
+      { binding: turn.binding, turnId: turn.turnId, requestId: turn.requestId },
+      'admission-1',
+      () => {},
+    );
+    const core = new TurnCoordinator({ adapter, binding: turn.binding, onEvent: () => {} });
+    try {
+      core.restore(metadata);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(core.current).toMatchObject({
+        state: 'awaiting_result',
+        approval: { approvalId: 'approve-1' },
+      });
+      expect(core.snapshot().pending?.approval?.status).toBe('pending');
+      expect(core.current?.approval?.expiresAt).toBe(expiresAt);
+      await vi.advanceTimersByTimeAsync(30001);
+      expect(core.current?.approval?.approvalId).toBe('approve-1');
+      expect(
+        bridge.request.mock.calls.some(([method]) =>
+          ['prompt.submit', 'approval.respond', 'session.interrupt', 'prompt.cancel'].includes(
+            method,
+          ),
+        ),
+      ).toBe(false);
+      // Release the test lease with correlated terminal proof.
+      bridge.request.mockImplementation(async (method, params) =>
+        method === 'prompt.receipt'
+          ? receipt('terminal', {
+              outcome: 'completed',
+              result: { completed: true, final_response: 'done' },
+            })
+          : original(method, params),
+      );
+      await core.reconcile();
+      expect(core.current?.state).toBe('completed');
+    } finally {
+      await core.dispose();
+      vi.useRealTimers();
+    }
+  });
+  it('automatically monitors a silent running admission even after replay expires and restores its terminal receipt once', async () => {
+    vi.useFakeTimers();
+    const { bridge, adapter } = create();
+    let completed = false;
+    const original = bridge.request.getMockImplementation()!;
+    bridge.request.mockImplementation(async (method, params) =>
+      method === 'prompt.receipt'
+        ? completed
+          ? receipt('terminal', {
+              outcome: 'completed',
+              result: { completed: true, final_response: 'final' },
+            })
+          : receipt('started')
+        : method === 'session.events.since'
+          ? { replay_epoch: 'epoch-1', truncated: true, events: [] }
+          : original(method, params),
+    );
+    const judge = { judge: vi.fn() };
+    const core = new TurnCoordinator({ adapter, binding: turn.binding, onEvent: () => {}, judge });
+    try {
+      await core.send('fixture');
+      for (let i = 0; i < 8; i++) {
+        await vi.advanceTimersByTimeAsync(30001);
+        expect(core.current?.state).toBe('awaiting_result');
+        expect(core.current?.error).toBeUndefined();
+      }
+      expect(
+        bridge.request.mock.calls.filter(([method]) => method === 'prompt.submit'),
+      ).toHaveLength(1);
+      completed = true;
+      await vi.advanceTimersByTimeAsync(30001);
+      expect(core.current).toMatchObject({ state: 'completed', text: 'final' });
+      expect(judge.judge).not.toHaveBeenCalled();
+      const count = bridge.request.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(100000);
+      expect(bridge.request.mock.calls).toHaveLength(count);
+    } finally {
+      await core.dispose();
+      vi.useRealTimers();
+    }
+  });
   it('restores progress boundaries as separate snapshots without replaying live completions', async () => {
     const { bridge, adapter } = create();
     const events: AgentEvent[] = [];
@@ -506,7 +629,10 @@ describe('native in-flight replay recovery', () => {
           : original(method, params),
     );
     expect(await adapter.reconcile(turn, (event) => events.push(event))).toBe('unknown');
-    expect(events.at(-1)?.type).toBe('turn.reconciling');
+    expect(events.at(-1)).toMatchObject({
+      type: 'turn.resumed',
+      payload: { state: 'awaiting_result' },
+    });
     expect(bridge.request.mock.calls.filter(([method]) => method === 'prompt.submit')).toHaveLength(
       1,
     );

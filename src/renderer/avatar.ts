@@ -107,6 +107,7 @@ export class Avatar {
     { duration: number; parameters: Set<string>; held: Map<string, number> }
   >();
   private activeGesture = '';
+  private stateGesture = false;
   private posePhase = 'none';
   private poseTime = 0;
   private ranges = new Map<string, ParameterRange>();
@@ -311,14 +312,22 @@ export class Avatar {
       ? (state as ActingState)
       : 'idle';
     const changed = next !== this.state;
-    if (changed && next !== 'idle') {
+    const reacting =
+      this.actor.sample(now, 0).active ||
+      (!this.stateGesture &&
+        (this.poses.sample(now).phase !== 'none' ||
+          (!!this.activeGesture && !this.gestureManager.isFinished())));
+    if (changed && (this.stateGesture || next === 'error' || next === 'blocked' || !reacting)) {
       this.mixer.clear(now, next === 'blocked');
       this.clearPose();
     }
     this.state = next;
     this.errorUntil = next === 'error' ? now + 3000 : 0;
     this.actor.setState(next, now);
-    if (changed && next === 'thinking') this.startGesture(this.inventory.gestureMap.thinking, now);
+    if (changed && next === 'thinking' && !reacting) {
+      this.startGesture(this.inventory.gestureMap.thinking, now);
+      this.stateGesture = !!this.activeGesture || this.poses.sample(now).phase !== 'none';
+    }
   }
   reset(): void {
     const now = performance.now();
@@ -365,6 +374,13 @@ export class Avatar {
   cue(cue: CharacterCue): void {
     const now = performance.now();
     if (!this.actor.cue(cue, now)) return;
+    // A configured waiting clip must not keep owning head/hand channels or
+    // consume the cooldown of the actual message gesture.
+    if (this.stateGesture) {
+      this.clearPose();
+      this.lastGesture = -Infinity;
+      this.lastGestureName = '';
+    }
     const emotion = cue.attitude === 'shy' ? 'embarrassed' : cue.emotion;
     const name =
       cue.attitude === 'tease' &&
@@ -393,6 +409,7 @@ export class Avatar {
     );
   }
   private clearPose(): void {
+    this.stateGesture = false;
     this.poses.clear();
     this.gestureManager.stopAllMotions();
     this.activeGesture = '';
@@ -500,6 +517,11 @@ export class Avatar {
         this.poseTime = time;
       } else if (pose.phase === 'none') this.gestureManager.updateMotion(this.model, elapsed);
       if (pose.phase === 'none' && this.gestureManager.isFinished()) this.activeGesture = '';
+      if (this.stateGesture && pose.phase === 'none' && !this.activeGesture) {
+        this.stateGesture = false;
+        this.lastGesture = -Infinity;
+        this.lastGestureName = '';
+      }
       const acting = this.actor.sample(now, dt);
       const animated = this.motionInfo.get(this.activeGesture)?.parameters;
       for (const [channel, range] of Object.entries(this.channels) as [

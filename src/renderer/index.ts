@@ -196,7 +196,13 @@ function renderEvent(event: CompanionEvent): void {
   }
   const followReply = isConversationAtBottom(element('conversation'));
   const readingPosition = element('conversation').scrollTop;
-  if (event.turn.requestId !== view?.requestId) lastCharacterState = 'thinking';
+  if (event.turn.requestId !== view?.requestId) {
+    // Background task transitions preserve message reactions. A new request is
+    // the explicit boundary that stops the preceding request's transient pose.
+    avatar?.reset();
+    appliedCharacterState = 'idle';
+    lastCharacterState = 'thinking';
+  }
   view = event.turn;
   applyCharacterState();
   if (view.requestId !== boot.historyRestoredRequestId)

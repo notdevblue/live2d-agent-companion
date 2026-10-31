@@ -55,6 +55,12 @@ Hermes Bot Mode의 Bot은 프로필이며, 별도 기억/스킬/설정을 가지
 
 실행 attach의 `session.resume`은 원문 이력을 생략한다. 채팅 복원은 같은 session을 지정한 별도 `session.history`로 읽고, 원격 bridge가 표시 projection의 user/assistant 본문(`text`/공개 `display_commentary`/`display_content`)과 행 ID만 추출한다. reasoning/도구 입출력/내부 transcript·sidecar는 로컬로 넘기지 않는다. 실시간 응답은 사용자에게 보이는 assistant 메시지와 도구 lifecycle/승인 요약만 정규화한다. 제출은 session authority admission/receipt와 연결하고 terminal receipt를 확인해야 완료한다. 재접속 replay가 누락됐으면 snapshot을 사용하거나 미확정으로 유지하며 새 prompt를 보내지 않는다.
 
+### 무이벤트·재시작 자동 복구
+
+Core의 30초 제한은 원격 실행 제한이 아니라 이벤트 수신 감시다. 무이벤트·disconnect·재시작 시 원래 admission의 `session.resume`→`prompt.receipt`를 자동 조회한다. 실행 중이면 replay를 복구하고, 보존 범위 초과 시 receipt가 확인한 `awaiting_result`와 snapshot의 유효 승인을 표시하며 감시를 이어간다. 원격 상태도 확인하지 못하면 유한 backoff 뒤 수동 확인을 안내한다. 원래 prompt를 다시 보내거나 중단/승인 응답을 자동 전송하지 않는다.
+
+복구 중 terminal receipt의 최종 본문은 `message.snapshot`→`message.complete` 순서로 전달해 화면은 복원하되 과거 본문을 Jev/모션으로 재생하지 않는다. 2026-11-01 사용자 요청의 terminal receipt를 새 SSH 클라이언트와 자동 restore로 읽어 completed/본문 길이 886자·Jev 호출 0회를 확인했다. 기존 요청의 read-only 복구이며 새 작업 실행·canonical Bot Chat 검증이 아니다.
+
 ### 채팅 기록 이어보기
 
 기존 구현은 같은 session ID를 저장했지만 완료한 대화를 DOM에만 쌓아 창 재생성/앱 재실행 때 보이지 않았다. `ConversationHistory`는 binding별 표시 cache를 main 메모리에 유지하고, 프로세스 재시작 때는 같은 원격 session의 기록을 다시 읽는다. loader는 동시에 한 번만 실행하고 새 제출보다 먼저 완료해 과거 기록과 현재 답변을 중복 쌓지 않는다. 기록 로드는 prompt/도구/Jev를 호출하지 않는다. 재시작 중인 pending 요청은 admission과 history row의 안정적인 join이 없으므로 텍스트 비교로 합치지 않고, 원래 실행의 상태만 별도로 복구하다 종결 뒤 history를 재조회한다.

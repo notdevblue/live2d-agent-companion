@@ -10,6 +10,22 @@ afterEach(() => vi.useRealTimers());
 const happy: ExpressionDecision = { emotion: 'happy', gesture: 'none', confidence: 0.9 };
 const flush = () => vi.advanceTimersByTimeAsync(0);
 describe('one decision per actual assistant message (FR-DIR-005)', () => {
+  it('ends the waiting pose when visible text streams and retains actual tool work as the fallback', () => {
+    const events: CompanionEvent[] = [];
+    const d = new CharacterDirector({ onEvent: (e) => events.push(e) });
+    d.begin('r');
+    d.updateState('accepted', false);
+    d.updateState('streaming', false);
+    d.updateState('streaming', true);
+    d.updateState('streaming', false);
+    d.updateState('completed', false);
+    expect(events).toEqual([
+      { type: 'character', state: 'thinking' },
+      { type: 'character', state: 'idle' },
+      { type: 'character', state: 'working' },
+      { type: 'character', state: 'idle' },
+    ]);
+  });
   it('does not spend the call budget on superseded messages in the same incoming batch', async () => {
     const judge = { judge: vi.fn(async () => happy) },
       events: CompanionEvent[] = [];

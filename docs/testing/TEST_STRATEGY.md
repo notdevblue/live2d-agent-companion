@@ -43,6 +43,7 @@
 - E-015: 공급자 승인 거절 → 원래 승인에 deny 응답 1회. 잘못된 binding/turn/request/approval과 중복 응답은 재적용 0회, 로컬 PC 권한 발행 0회.
 - E-016: 승인 대기 중 만료/서버 철회/다른 클라이언트 응답 → 해당 UI만 닫힘. 승인 전송 ack 유실 시 unknown 표시 후 실제 open_requests와 대조.
 - E-017: 종료 확인된 실패의 사용자 재전송 → 같은 turn_id/새 request_id. 과거 요청의 late complete는 새 요청의 상태를 변경하지 않음.
+- E-019: 30초 무이벤트/restore→자동 reconcile, 진행 중+replay 만료에서도 감시 지속→terminal 1회. 조회 실패는 최초+5회 backoff 뒤 lease 유지/수동 안내. 중복 조회·이전 요청 finally·dispose·승인 만료·snapshot 승인 복원·복구 Jev 0회 회귀 검사(`core.test.ts`, `adapters-ssh.test.ts`).
 - E-018: accepted → 비스트리밍 completed 및 accepted/awaiting_result → 로컬 timeout → reconciling → 인증된 늦은 완료 수신. 각 request의 terminal 반영 1회.
 
 E-012~018은 [ADR-0003](../planning/adrs/0003-request-recovery-and-approvals.md)의 회귀 기준이다. 첫 core PoC에서는 가짜 clock과 메모리 상태의 저장/복원으로 검증하고, 실제 앱 재시작·네트워크·Hermes 검증은 Integration/E2E 단계에서 별도로 기록한다.
@@ -66,3 +67,5 @@ E-012~018은 [ADR-0003](../planning/adrs/0003-request-recovery-and-approvals.md)
 ## CI 목표(미구현)
 
 현재 `npm run typecheck`, `npm test`, `npm run build`, `npm run test:desktop`이 있다. CI 자동 실행은 아직 없다. desktop 검사는 모델/SDK를 준비한 뒤 실행하며 기본은 Mock 응답+명시적 표현 fixture이다. 실제 Hermes/Jev 검사는 별도 로컬 연결 설정과 비밀 입력으로만 수행하며 CI fixture로 키/자산을 업로드하지 않는다.
+
+- 메시지/배경 연기 우선순위: streaming 기본 상태, 생각/도구 상태 변화 중 동일 reaction 궤적, 짧은 반응 뒤 긴 paired pose의 복귀 완주, 사용자 대기 clip 교체와 cooldown, 새 요청/승인/복구/취소 경계 정리를 검사한다(`director.test.ts`, `acting.test.ts`, `avatar.test.ts`). 실제 DeepSeek/SDK fixture 수치 검증과 실서비스 진행 응답 품질 검증은 구분한다.

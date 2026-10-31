@@ -205,7 +205,7 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     expect(resumed.lean).toBeGreaterThan(0.08);
   });
 
-  it('preserves completion reactions but clears them for cancel, new work and approval blocking', () => {
+  it('preserves message reactions through task changes and completion but resets at request/approval boundaries', () => {
     const actor = new ActingController();
     actor.setState('thinking', 0);
     actor.cue({ emotion: 'happy', gesture: 'wave' }, 0);
@@ -213,7 +213,10 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     actor.setState('idle', 1000);
     expect(actor.sample(1000, 0).preset).toBe('happy');
     actor.setState('working', 1000);
-    expect(actor.sample(1000, 0).active).toBe(false);
+    expect(actor.sample(1000, 0).preset).toBe('happy');
+    actor.reset(1000);
+    actor.setState('thinking', 1000);
+    expect(actor.sample(1000, 0)).toMatchObject({ preset: 'thinking', active: false });
     actor.preview('tease', 1000);
     advance(actor, 2000, 60, 1000);
     actor.setState('blocked', 2000);
@@ -226,6 +229,26 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     actor.reset(2300);
     expect(actor.sample(2300, 0)).toMatchObject({ preset: 'neutral', active: false, blink: 1 });
     expect(magnitude(actor.sample(2300, 0))).toBe(0);
+  });
+
+  it('gives a message the same pose over thinking/working transitions and resumes the latest task after release', () => {
+    const actor = new ActingController(),
+      reference = new ActingController();
+    for (const a of [actor, reference]) {
+      a.setState('thinking', 0);
+      a.cue({ emotion: 'happy', gesture: 'explain' }, 0);
+    }
+    advance(actor, 1000);
+    advance(reference, 1000);
+    actor.setState('working', 1000);
+    expect(advance(actor, 2000, 60, 1000)).toEqual(advance(reference, 2000, 60, 1000));
+    actor.setState('thinking', 2000);
+    expect(advance(actor, 4000, 60, 2000)).toEqual(advance(reference, 4000, 60, 2000));
+    actor.setState('working', 4000);
+    expect(advance(actor, 4200, 60, 4000)).toMatchObject({ preset: 'working', active: false });
+    const resumed = advance(actor, 6500, 60, 4200);
+    expect(resumed.gazeY).toBeLessThan(-0.1);
+    expect(resumed.lean).toBeGreaterThan(0.08);
   });
 
   it('automatically ends thinking previews and lets reset stop a preview immediately', () => {
