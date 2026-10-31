@@ -100,6 +100,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 let overlay: BrowserWindow | undefined;
 let chat: BrowserWindow | undefined;
+let settingsWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let coordinator: TurnCoordinator | undefined;
 let adapter: AgentAdapter | undefined;
@@ -153,7 +154,7 @@ function emit(event: CompanionEvent): void {
   if (event.type === 'turn') conversation(event.turn.binding).update(event.turn);
   event = { ...event, selectionId, revision: ++revision };
   if (event.type === 'cue') lastCue = event;
-  for (const window of event.type === 'history' ? [chat] : [overlay, chat])
+  for (const window of event.type === 'history' ? [chat] : [overlay, chat, settingsWindow])
     if (window && !window.isDestroyed()) window.webContents.send('companion:event', event);
   if (event.type === 'turn' || event.type === 'character' || event.type === 'cue') persistPending();
 }
@@ -379,32 +380,38 @@ function secureWindow(window: BrowserWindow): void {
 }
 function trusted(
   event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent,
-  chatOnly = false,
+  scope: 'all' | 'chat' | 'controls' = 'all',
 ): void {
   if (event.senderFrame !== event.sender.mainFrame)
     throw new Error('허용되지 않은 IPC 요청입니다.');
-  const windows = chatOnly ? [chat] : [overlay, chat];
+  const windows =
+    scope === 'chat'
+      ? [chat]
+      : scope === 'controls'
+        ? [chat, settingsWindow]
+        : [overlay, chat, settingsWindow];
   if (!windows.some((w) => w && !w.isDestroyed() && w.webContents === event.sender))
     throw new Error('허용되지 않은 창입니다.');
   const url = new URL(event.senderFrame?.url ?? '');
   if (url.protocol !== 'app:' || url.hostname !== 'ui' || url.pathname !== '/index.html')
     throw new Error('허용되지 않은 페이지입니다.');
 }
-function openChat(): void {
-  if (chat && !chat.isDestroyed()) {
-    chat.show();
-    chat.focus();
+function openPanel(view: 'chat' | 'settings'): void {
+  const existing = view === 'chat' ? chat : settingsWindow;
+  if (existing && !existing.isDestroyed()) {
+    existing.show();
+    existing.focus();
     return;
   }
-  chat = new BrowserWindow({
-    width: 470,
+  const created = new BrowserWindow({
+    width: view === 'chat' ? 470 : 560,
     height: 810,
     minWidth: 400,
     minHeight: 600,
     backgroundColor: '#1e191f',
     show: false,
-    title: 'Live2D Companion Chat',
-    // A managed dialog is automatically floated by Sway/Xwayland. Keep it focusable.
+    title: view === 'chat' ? 'Live2D Companion Chat' : 'Live2D Companion Settings',
+    // Independent managed dialogs float on Sway without hiding or blocking chat.
     type: process.platform === 'linux' ? 'dialog' : 'normal',
     autoHideMenuBar: true,
     webPreferences: {
@@ -415,15 +422,24 @@ function openChat(): void {
       webSecurity: true,
     },
   });
-  secureWindow(chat);
-  chat.on('page-title-updated', (event) => event.preventDefault());
-  chat.once('ready-to-show', () => {
-    if (!smoke) chat?.show();
+  if (view === 'chat') chat = created;
+  else settingsWindow = created;
+  secureWindow(created);
+  created.on('page-title-updated', (event) => event.preventDefault());
+  created.once('ready-to-show', () => {
+    if (!smoke && !created.isDestroyed()) created.show();
   });
-  chat.on('closed', () => {
-    chat = undefined;
+  created.on('closed', () => {
+    if (chat === created) chat = undefined;
+    if (settingsWindow === created) settingsWindow = undefined;
   });
-  void chat.loadURL('app://ui/index.html?view=chat');
+  void created.loadURL(`app://ui/index.html?view=${view}`);
+}
+function openChat(): void {
+  openPanel('chat');
+}
+function openSettings(): void {
+  openPanel('settings');
 }
 function updateOverlayInput(): void {
   if (!overlay || overlay.isDestroyed()) return;
@@ -591,7 +607,7 @@ function registerIpc(): void {
     return bootstrap(event.sender === chat?.webContents);
   });
   ipcMain.handle('companion:test', async (event) => {
-    trusted(event, true);
+    trusted(event, 'controls');
     const selected = selectionId;
     const active = adapter;
     if (switching || !active) throw new Error('연결 변경 중입니다.');
@@ -605,15 +621,16 @@ function registerIpc(): void {
       if (selectionId === selected)
         connectionError = '공급자 연결을 확인할 수 없습니다. 주소와 인증 정보를 확인하세요.';
     }
-    return bootstrap();
+    if (selectionId === selected) emit({ type: 'configuration' });
+    return bootstrap(event.sender === chat?.webContents);
   });
   ipcMain.handle('companion:sessions', async (event) => {
-    trusted(event, true);
+    trusted(event, 'controls');
     if (switching) throw new Error('연결 변경 중입니다.');
     return (await adapter?.listSessions?.(settings.provider.agentId)) ?? [];
   });
   ipcMain.handle('companion:create-session', async (event) => {
-    trusted(event, true);
+    trusted(event, 'controls');
     if (switching || quitting || !adapter?.createSession)
       throw new Error('이 연결은 세션 생성을 지원하지 않습니다.');
     switching = true;
@@ -623,13 +640,14 @@ function registerIpc(): void {
       await settingsFile.write({ settings, position });
       await configure(true);
       overlay?.reload();
-      return await bootstrap();
+      emit({ type: 'configuration' });
+      return await bootstrap(event.sender === chat?.webContents);
     } finally {
       switching = false;
     }
   });
   ipcMain.handle('companion:settings', async (event, input: unknown) => {
-    trusted(event, true);
+    trusted(event, 'controls');
     const next = parseSettings(input);
     const recreateOverlay =
       process.platform === 'linux' && next.alwaysOnTop !== settings.alwaysOnTop;
@@ -671,13 +689,14 @@ function registerIpc(): void {
             settings: settings.presentation ?? { ...DEFAULT_PRESENTATION },
           });
       }
-      return await bootstrap();
+      if (runtimeChanged || mappingsChanged) emit({ type: 'configuration' });
+      return await bootstrap(event.sender === chat?.webContents);
     } finally {
       switching = false;
     }
   });
   ipcMain.handle('companion:credential', async (event, provider: unknown, value: unknown) => {
-    trusted(event, true);
+    trusted(event, 'controls');
     const key = z.enum(['hermes', 'grok_bot', 'jev']).parse(provider);
     await vault.set(
       credentialScope(key, settings.provider.endpoint),
@@ -685,8 +704,8 @@ function registerIpc(): void {
     );
   });
   ipcMain.handle('companion:model', async (event) => {
-    trusted(event, true);
-    const selected = await dialog.showOpenDialog(chat!, {
+    trusted(event, 'controls');
+    const selected = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender)!, {
       filters: [{ name: 'Live2D model', extensions: ['json'] }],
       properties: ['openFile'],
     });
@@ -699,11 +718,12 @@ function registerIpc(): void {
       modelError = undefined;
       await settingsFile.write({ settings, position });
       overlay?.reload();
+      emit({ type: 'configuration' });
     }
-    return bootstrap();
+    return bootstrap(event.sender === chat?.webContents);
   });
   ipcMain.handle('companion:preview', (event, input: unknown) => {
-    trusted(event, true);
+    trusted(event, 'controls');
     const preset = characterPreviewSchema.parse(input);
     const current = coordinator?.current;
     if (
@@ -717,7 +737,7 @@ function registerIpc(): void {
     emit({ type: 'character.preview', preset });
   });
   ipcMain.handle('companion:send', async (event, text: unknown, expectedSelection: unknown) => {
-    trusted(event, true);
+    trusted(event, 'chat');
     if (quitting || switching || storageFault || !coordinator || !adapter)
       throw new Error('연결 또는 저장소 준비 상태를 확인하세요.');
     if (settings.provider.sessionId === '__select_session__')
@@ -746,29 +766,33 @@ function registerIpc(): void {
     return coordinator;
   };
   ipcMain.handle('companion:cancel', async (event, id: unknown) => {
-    trusted(event, true);
+    trusted(event, 'chat');
     await activeRequest(id).cancel();
   });
   ipcMain.handle('companion:reconcile', async (event, id: unknown) => {
-    trusted(event, true);
+    trusted(event, 'chat');
     await activeRequest(id).reconcile();
   });
   ipcMain.handle(
     'companion:approve',
     async (event, id: unknown, decision: unknown, requestId: unknown) => {
-      trusted(event, true);
+      trusted(event, 'chat');
       await activeRequest(requestId).approve(
         z.string().min(1).max(512).parse(id),
         z.enum(['allow_once', 'deny']).parse(decision),
       );
     },
   );
+  ipcMain.handle('companion:open-settings', (event) => {
+    trusted(event);
+    openSettings();
+  });
   ipcMain.handle('companion:chat', (event) => {
     trusted(event);
     openChat();
   });
   ipcMain.handle('companion:displays', (event) => {
-    trusted(event, true);
+    trusted(event, 'controls');
     const current = screen.getDisplayMatching(
       intendedOverlayBounds ?? overlay?.getBounds() ?? screen.getPrimaryDisplay().bounds,
     ).id;
@@ -781,7 +805,7 @@ function registerIpc(): void {
     }));
   });
   ipcMain.handle('companion:display', async (event, id: unknown) => {
-    trusted(event, true);
+    trusted(event, 'controls');
     if (switching || quitting || !overlay || overlay.isDestroyed())
       throw new Error('지금은 캐릭터를 이동할 수 없습니다.');
     const displayId = z.number().int().safe().parse(id);
@@ -916,7 +940,75 @@ async function runSmoke(): Promise<void> {
     if (await chat?.webContents.executeJavaScript('window.__uiReady === true')) break;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  const localizedMaps = await chat?.webContents.executeJavaScript(`(()=>{
+  await chat?.webContents.executeJavaScript(`
+    window.__chatViewSentinel = document.getElementById('conversation');
+    document.getElementById('message').value = '설정 창 보존 검사';
+    for (let i=0;i<20;i++) {
+      const row=document.createElement('p');row.dataset.windowProbe='true';
+      row.textContent='로컬 설정 창 표시 검사';row.style.height='60px';
+      document.getElementById('conversation').append(row);
+    }
+    document.getElementById('conversation').scrollTop=240;
+    document.getElementById('settings-toggle').click();
+  `);
+  for (let i = 0; i < 100; i++) {
+    if (
+      settingsWindow &&
+      (await settingsWindow.webContents.executeJavaScript('window.__uiReady === true'))
+    )
+      break;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  settingsWindow?.show();
+  const firstSettings = settingsWindow;
+  await chat?.webContents.executeJavaScript("document.getElementById('settings-toggle').click()");
+  const chatUnchanged = await chat?.webContents.executeJavaScript(`
+    window.__chatViewSentinel===document.getElementById('conversation') &&
+    document.getElementById('conversation').scrollTop===240 &&
+    document.getElementById('message').value==='설정 창 보존 검사' &&
+    !document.getElementById('chat').hidden && document.getElementById('settings').hidden &&
+    !document.getElementById('welcome') && !document.getElementById('expression-status')
+  `);
+  const settingsIsolated = await settingsWindow?.webContents.executeJavaScript(`
+    !document.getElementById('settings').hidden && document.getElementById('chat').hidden &&
+    typeof require==='undefined'
+  `);
+  const settingsCannotSubmit = await settingsWindow?.webContents.executeJavaScript(`(async()=>{
+    const b=await window.companion.bootstrap();
+    const tested=await window.companion.testConnection();
+    const rejected=await window.companion.send('설정 창은 메시지를 전송하지 않음', b.selectionId).then(()=>false,()=>true);
+    return rejected && !Object.hasOwn(b,'history') && !Object.hasOwn(tested,'history');
+  })()`);
+  const closedSettings = new Promise<void>((resolve) =>
+    settingsWindow?.once('closed', () => resolve()),
+  );
+  await settingsWindow?.webContents.executeJavaScript(
+    "document.getElementById('settings-close').click()",
+  );
+  await closedSettings;
+  await chat?.webContents.executeJavaScript("document.getElementById('settings-toggle').click()");
+  for (let i = 0; i < 100; i++) {
+    if (
+      settingsWindow &&
+      (await settingsWindow.webContents.executeJavaScript('window.__uiReady === true'))
+    )
+      break;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  settingsWindow?.show();
+  const independentSettings = Boolean(
+    chatUnchanged &&
+    settingsIsolated &&
+    settingsCannotSubmit &&
+    firstSettings?.isDestroyed() &&
+    settingsWindow &&
+    chat?.isVisible(),
+  );
+  await chat?.webContents.executeJavaScript(`
+    document.getElementById('message').value='';
+    for(const row of document.querySelectorAll('[data-window-probe]'))row.remove();
+  `);
+  const localizedMaps = await settingsWindow?.webContents.executeJavaScript(`(()=>{
     const expression = Array.from(document.querySelectorAll('#expression-maps option')).find(o=>o.value==='脸红');
     const motion = Array.from(document.querySelectorAll('#gesture-maps option')).find(o=>o.value==='竖手指切出来动画');
     return expression?.textContent==='홍조' && expression.title==='脸红' &&
@@ -938,7 +1030,7 @@ async function runSmoke(): Promise<void> {
     );
     const previews: string[] = [];
     for (const preset of CHARACTER_PREVIEWS) {
-      await chat?.webContents.executeJavaScript(
+      await settingsWindow?.webContents.executeJavaScript(
         `document.querySelector('[data-preview="${preset}"]').click()`,
       );
       for (let i = 0; i < 40; i++) {
@@ -961,7 +1053,7 @@ async function runSmoke(): Promise<void> {
       coordinator?.current?.requestId === beforeRequest &&
       !lastJudgeMs,
     );
-    const selectedDefaults = await chat?.webContents.executeJavaScript(`
+    const selectedDefaults = await settingsWindow?.webContents.executeJavaScript(`
       document.querySelector('#gesture-maps [data-map="thinking"]').value === '${THINKING_MOTION}' &&
       document.querySelector('#expression-maps [data-map="surprised"]').value === '${SURPRISED_EXPRESSION}'
     `);
@@ -1076,6 +1168,7 @@ async function runSmoke(): Promise<void> {
     '({node:typeof require, bridge:typeof window.companion.send})',
   );
   const result = {
+    independentSettings,
     localizedMaps,
     mappingCoverage,
     mappingChecks,
@@ -1159,25 +1252,26 @@ async function runSmoke(): Promise<void> {
     await chat?.webContents.executeJavaScript("window.companion.previewCharacter('reset')");
     const beforeDisplaySelection = selectionId;
     const beforeDisplayRequest = coordinator?.current?.requestId;
-    await chat?.webContents.executeJavaScript("document.getElementById('settings-toggle').click()");
     for (let i = 0; i < 40; i++) {
       if (
-        await chat?.webContents.executeJavaScript(
+        await settingsWindow?.webContents.executeJavaScript(
           "document.getElementById('display-list').options.length > 0",
         )
       )
         break;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    const listed = await chat?.webContents.executeJavaScript(
+    const listed = await settingsWindow?.webContents.executeJavaScript(
       "document.getElementById('display-list').options.length",
     );
-    await chat?.webContents.executeJavaScript("document.getElementById('move-display').click()");
+    await settingsWindow?.webContents.executeJavaScript(
+      "document.getElementById('move-display').click()",
+    );
     let moved = false;
     for (let i = 0; i < 40; i++) {
       moved = Boolean(
-        await chat?.webContents.executeJavaScript(
-          "!document.getElementById('move-display').disabled && document.getElementById('notice').textContent.includes('캐릭터를 선택한 모니터로')",
+        await settingsWindow?.webContents.executeJavaScript(
+          "!document.getElementById('move-display').disabled && document.getElementById('settings-notice').textContent.includes('캐릭터를 선택한 모니터로')",
         ),
       );
       if (moved) break;
@@ -1193,11 +1287,22 @@ async function runSmoke(): Promise<void> {
       selectionId === beforeDisplaySelection &&
       coordinator?.current?.requestId === beforeDisplayRequest;
     Object.assign(result, { monitorSelection });
+    // Earlier mapping probes call main directly, bypassing the settings form's
+    // adoptBootstrap. Reopen its renderer before testing real form edits.
+    const settingsReloaded = new Promise<void>((resolve) =>
+      settingsWindow?.webContents.once('did-finish-load', () => resolve()),
+    );
+    settingsWindow?.reload();
+    await settingsReloaded;
+    for (let i = 0; i < 100; i++) {
+      if (await settingsWindow?.webContents.executeJavaScript('window.__uiReady === true')) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
     const beforePresentationSelection = selectionId;
     const beforePresentationRequest = coordinator?.current?.requestId;
     const beforePresentationPosition = structuredClone(position);
     await overlay?.webContents.executeJavaScript('window.__presentationSentinel = true');
-    await chat?.webContents.executeJavaScript(`
+    await settingsWindow?.webContents.executeJavaScript(`
       for (const [id, value] of [['intensity','quiet'],['framing','bust'],['position-locked',true],['reduced-motion',true]]) {
         const control = document.getElementById(id);
         if (typeof value === 'boolean') control.checked = value;
@@ -1253,6 +1358,7 @@ async function runSmoke(): Promise<void> {
         document.getElementById('avatar').addEventListener('pointerdown', ()=>window.__lockedPointerEvents++);
       `);
       chat?.hide();
+      settingsWindow?.hide();
       const mouse = (type: 'mouseMove' | 'mouseDown' | 'mouseUp', x: number, y: number) =>
         overlay?.webContents.sendInputEvent({ type, x, y, button: 'left', clickCount: 1 });
       mouse('mouseMove', hitPoint.x, hitPoint.y);
@@ -1272,6 +1378,7 @@ async function runSmoke(): Promise<void> {
         (await overlay.webContents.executeJavaScript('window.__lockedPointerEvents === 2')),
       );
       chat?.show();
+      settingsWindow?.show();
     }
     presentationControls = Boolean(presentationControls && lockedGesture);
     Object.assign(result, { lockedGesture });
@@ -1326,7 +1433,9 @@ async function runSmoke(): Promise<void> {
     }
     Object.assign(result, { presentationControls, previewSafety });
     const previousSession = settings.provider.sessionId;
-    await chat?.webContents.executeJavaScript("document.getElementById('create-session').click()");
+    await settingsWindow?.webContents.executeJavaScript(
+      "document.getElementById('create-session').click()",
+    );
     for (let i = 0; i < 100; i++) {
       if (settings.provider.sessionId !== previousSession) break;
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -1403,7 +1512,7 @@ async function runSmoke(): Promise<void> {
     for (let i = 0; i < 40 && coordinator?.current?.state !== 'completed'; i++)
       await new Promise((resolve) => setTimeout(resolve, 25));
     Object.assign(result, { pendingSelection });
-    await chat?.webContents.executeJavaScript(
+    await settingsWindow?.webContents.executeJavaScript(
       "document.getElementById('provider').value='hermes';document.getElementById('endpoint').value='https://example.invalid';document.getElementById('agent-id').value='default';document.getElementById('session-id').value='routing-test';document.getElementById('load-sessions').click()",
     );
     for (let i = 0; i < 100; i++) {
@@ -1457,6 +1566,7 @@ async function runSmoke(): Promise<void> {
       uiRouting &&
       monitorSelection &&
       localizedMaps &&
+      independentSettings &&
       mappingCoverage &&
       presentationControls &&
       previewSafety &&
@@ -1568,7 +1678,8 @@ app
       tray.setToolTip('DeepSeek Companion');
       tray.setContextMenu(
         Menu.buildFromTemplate([
-          { label: '채팅 / 설정', click: openChat },
+          { label: '채팅', click: openChat },
+          { label: '설정', click: openSettings },
           {
             label: '캐릭터 위치 복구',
             click: () => {

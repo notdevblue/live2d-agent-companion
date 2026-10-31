@@ -167,6 +167,7 @@ export const CHARACTER_PREVIEWS = [
 ] as const;
 export type CharacterPreview = (typeof CHARACTER_PREVIEWS)[number];
 export type CompanionEvent = (
+  | { type: 'configuration' }
   | { type: 'turn'; turn: TurnView }
   | { type: 'history'; messages: ConversationMessage[]; restoredRequestId?: string; error?: string }
   | { type: 'character'; state: 'idle' | 'thinking' | 'working' | 'error' }
@@ -248,6 +249,7 @@ export interface CompanionBridge {
   reconcile(requestId: string): Promise<void>;
   approve(approvalId: string, decision: 'allow_once' | 'deny', requestId: string): Promise<void>;
   openChat(): Promise<void>;
+  openSettings(): Promise<void>;
   displays(): Promise<OverlayDisplay[]>;
   moveToDisplay(id: number): Promise<void>;
   move(dx: number, dy: number): Promise<void>;

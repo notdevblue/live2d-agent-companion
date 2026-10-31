@@ -21,149 +21,7 @@
         </div>
         <button id="settings-toggle" class="icon-button" aria-label="설정 열기">⚙</button>
       </header>
-      <div class="connection-strip">
-        <span id="provider-badge" class="badge">연결 준비</span
-        ><span id="continuity">로컬 캐릭터 · 독립된 세션</span>
-      </div>
-      <section id="settings" hidden aria-label="연결과 표현 설정">
-        <div class="section-heading">
-          <h2>연결과 표현</h2>
-          <button id="settings-close" class="text-button">닫기</button>
-        </div>
-        <label
-          >대화 연결<select id="provider">
-            <option value="mock">Mock 데모 · 실제 Bot 연결 아님</option>
-            <option value="hermes">Hermes · SSH 기존 세션 / HTTP API</option>
-            <option value="grok_bot">Grok Bot · Webhook 실험적</option>
-          </select></label
-        >
-        <label
-          >서버 / Webhook 주소<input
-            id="endpoint"
-            placeholder="http://127.0.0.1:8642"
-            autocomplete="off"
-            spellcheck="false"
-        /></label>
-        <div class="two-columns">
-          <label>에이전트 / 프로필<input id="agent-id" value="default" /></label
-          ><label
-            >세션 ID<input id="session-id" placeholder="기존 세션 선택 또는 새 세션 생성"
-          /></label>
-        </div>
-        <div class="button-row">
-          <button id="load-sessions" type="button">기존 세션 조회</button
-          ><button id="create-session" type="button">새 대화</button>
-        </div>
-        <select id="session-list" hidden aria-label="기존 Hermes 세션 목록"></select>
-        <p class="hint">
-          Hermes 기존 세션은 ssh://user@host 연결 후 직접 선택하세요. SSH 키 인증을 사용합니다.
-          HTTP는 API 전용 세션입니다. Grok Webhook은 요청 시작만 확인합니다.
-        </p>
-        <label
-          >공급자 인증키<input
-            id="provider-key"
-            type="password"
-            autocomplete="new-password"
-            placeholder="입력 시 선택한 서버에만 저장"
-        /></label>
-        <label class="check"
-          ><input id="jev-enabled" type="checkbox" /> Jev로 답변의 표정·제스처 판단</label
-        >
-        <p class="hint">
-          켜면 채팅 메시지마다 대표 표정을 한 번 판단합니다. 요청당 최대 8회, 각 800자 이하를
-          TypeSafe API에 전달합니다. 도구 로그·세션 기억·모델 파일은 전송하지 않습니다.
-        </p>
-        <div class="two-columns">
-          <label>Jev 모델<input id="jev-model" value="jev-1.14.0" /></label
-          ><label
-            >Jev 인증키<input
-              id="jev-key"
-              type="password"
-              autocomplete="new-password"
-              placeholder="변경할 때만 입력"
-          /></label>
-        </div>
-        <p id="vault-status" class="hint"></p>
-        <div class="divider"></div>
-        <div class="section-heading">
-          <h2>캐릭터</h2>
-          <button id="choose-model" class="text-button">모델 선택</button>
-        </div>
-        <p id="model-name" class="hint"></p>
-        <div class="two-columns">
-          <label
-            >연기 강도<select id="intensity">
-              <option value="quiet">차분하게</option>
-              <option value="normal">자연스럽게</option>
-              <option value="expressive">풍부하게</option>
-            </select></label
-          >
-          <label
-            >화면 구도<select id="framing">
-              <option value="full">전신</option>
-              <option value="bust">상반신</option>
-              <option value="close">가까이</option>
-            </select></label
-          >
-        </div>
-        <label class="check"
-          ><input id="position-locked" type="checkbox" /> 위치 잠금 · 드래그와 휠 크기 조절
-          방지</label
-        >
-        <label class="check"><input id="reduced-motion" type="checkbox" /> 움직임 줄이기</label>
-        <p class="hint">연기·구도·잠금·움직임 설정은 선택 즉시 저장됩니다.</p>
-        <div class="preview-buttons" role="group" aria-label="캐릭터 연기 미리 보기">
-          <button type="button" data-preview="thinking">생각</button
-          ><button type="button" data-preview="explain">설명</button>
-          <button type="button" data-preview="shy">수줍음</button
-          ><button type="button" data-preview="tease">장난</button>
-          <button type="button" data-preview="happy">기쁨</button
-          ><button type="button" data-preview="surprised">놀람</button>
-          <button type="button" data-preview="wink">윙크</button>
-          <button type="button" data-preview="nod">끄덕끄덕</button>
-          <button type="button" data-preview="shake">도리도리</button>
-          <button type="button" data-preview="pout">볼빵빵 · 삐짐</button>
-          <button type="button" data-preview="laugh">눈웃음</button>
-          <button type="button" data-preview="heart">하트 눈</button>
-          <button type="button" data-preview="grass">강아지풀</button>
-          <button type="button" data-preview="reset">초기화</button>
-        </div>
-        <p id="preview-status" class="hint"></p>
-        <label>캐릭터를 표시할 모니터<select id="display-list"></select></label>
-        <button id="move-display" class="text-button">선택한 모니터로 이동</button>
-        <p class="hint">
-          드래그로 모니터를 넘길 수도 있어요. 화면 밖으로 일부를 내보내면 상반신만 보이게 둘 수
-          있습니다. 위치는 자동 저장됩니다.
-        </p>
-        <label
-          >캐릭터 크기<input id="scale" type="range" min="0.4" max="4" step="0.05" value="1"
-        /></label>
-        <label class="check"
-          ><input id="always-on-top" type="checkbox" checked /> 항상 위에 표시</label
-        >
-        <label class="check"
-          ><input id="click-through" type="checkbox" checked /> 모델 바깥 빈 영역 클릭 통과</label
-        >
-        <details>
-          <summary>표정·모션 매핑</summary>
-          <p class="hint">
-            모델 자산과 기본 연기 중에서 연결합니다. 중립과 ‘없음’은 기본 상태입니다.
-          </p>
-          <div id="expression-maps"></div>
-          <div id="gesture-maps"></div>
-        </details>
-        <button id="save-settings" class="primary">설정 저장 · 연결 확인</button>
-      </section>
-      <section id="conversation" aria-label="대화 내용" aria-live="polite">
-        <div id="welcome">
-          <span class="welcome-symbol">✳</span>
-          <h2>여기서 이야기해요.</h2>
-          <p>
-            캐릭터는 곁에, 대화는 연결한 에이전트에.<br />설정에서 Hermes와 Jev를 연결해 주세요.
-          </p>
-          <span class="small-pill">대화 원문은 디스크에 저장하지 않습니다</span>
-        </div>
-      </section>
+      <section id="conversation" aria-label="대화 내용" aria-live="polite"></section>
       <aside id="approval" hidden>
         <p class="eyebrow">HERMES 원격 도구 승인</p>
         <p id="approval-summary"></p>
@@ -187,11 +45,144 @@
           <span id="turn-status">연결 대기</span
           ><span
             ><button id="reconcile" class="text-button" hidden>상태 확인</button
-            ><button id="stop" class="text-button" hidden>중단</button
-            ><span id="expression-status">표현: 기본 규칙</span></span
+            ><button id="stop" class="text-button" hidden>중단</button></span
           >
         </div>
       </footer>
+    </main>
+    <main id="settings" hidden aria-label="연결과 표현 설정">
+      <div class="section-heading">
+        <h2>연결과 표현</h2>
+        <button id="settings-close" class="text-button">닫기</button>
+      </div>
+      <div class="connection-strip">
+        <span id="provider-badge" class="badge">연결 준비</span
+        ><span id="continuity">로컬 캐릭터 · 독립된 세션</span>
+      </div>
+      <label
+        >대화 연결<select id="provider">
+          <option value="mock">Mock 데모 · 실제 Bot 연결 아님</option>
+          <option value="hermes">Hermes · SSH 기존 세션 / HTTP API</option>
+          <option value="grok_bot">Grok Bot · Webhook 실험적</option>
+        </select></label
+      >
+      <label
+        >서버 / Webhook 주소<input
+          id="endpoint"
+          placeholder="http://127.0.0.1:8642"
+          autocomplete="off"
+          spellcheck="false"
+      /></label>
+      <div class="two-columns">
+        <label>에이전트 / 프로필<input id="agent-id" value="default" /></label
+        ><label
+          >세션 ID<input id="session-id" placeholder="기존 세션 선택 또는 새 세션 생성"
+        /></label>
+      </div>
+      <div class="button-row">
+        <button id="load-sessions" type="button">기존 세션 조회</button
+        ><button id="create-session" type="button">새 대화</button>
+      </div>
+      <select id="session-list" hidden aria-label="기존 Hermes 세션 목록"></select>
+      <p class="hint">
+        Hermes 기존 세션은 ssh://user@host 연결 후 직접 선택하세요. SSH 키 인증을 사용합니다. HTTP는
+        API 전용 세션입니다. Grok Webhook은 요청 시작만 확인합니다.
+      </p>
+      <label
+        >공급자 인증키<input
+          id="provider-key"
+          type="password"
+          autocomplete="new-password"
+          placeholder="입력 시 선택한 서버에만 저장"
+      /></label>
+      <label class="check"
+        ><input id="jev-enabled" type="checkbox" /> Jev로 답변의 표정·제스처 판단</label
+      >
+      <p class="hint">
+        켜면 채팅 메시지마다 대표 표정을 한 번 판단합니다. 요청당 최대 8회, 각 800자 이하를 TypeSafe
+        API에 전달합니다. 도구 로그·세션 기억·모델 파일은 전송하지 않습니다.
+      </p>
+      <div class="two-columns">
+        <label>Jev 모델<input id="jev-model" value="jev-1.14.0" /></label
+        ><label
+          >Jev 인증키<input
+            id="jev-key"
+            type="password"
+            autocomplete="new-password"
+            placeholder="변경할 때만 입력"
+        /></label>
+      </div>
+      <p id="vault-status" class="hint"></p>
+      <div class="divider"></div>
+      <div class="section-heading">
+        <h2>캐릭터</h2>
+        <button id="choose-model" class="text-button">모델 선택</button>
+      </div>
+      <p id="model-name" class="hint"></p>
+      <div class="two-columns">
+        <label
+          >연기 강도<select id="intensity">
+            <option value="quiet">차분하게</option>
+            <option value="normal">자연스럽게</option>
+            <option value="expressive">풍부하게</option>
+          </select></label
+        >
+        <label
+          >화면 구도<select id="framing">
+            <option value="full">전신</option>
+            <option value="bust">상반신</option>
+            <option value="close">가까이</option>
+          </select></label
+        >
+      </div>
+      <label class="check"
+        ><input id="position-locked" type="checkbox" /> 위치 잠금 · 드래그와 휠 크기 조절
+        방지</label
+      >
+      <label class="check"><input id="reduced-motion" type="checkbox" /> 움직임 줄이기</label>
+      <p class="hint">연기·구도·잠금·움직임 설정은 선택 즉시 저장됩니다.</p>
+      <div class="preview-buttons" role="group" aria-label="캐릭터 연기 미리 보기">
+        <button type="button" data-preview="thinking">생각</button
+        ><button type="button" data-preview="explain">설명</button>
+        <button type="button" data-preview="shy">수줍음</button
+        ><button type="button" data-preview="tease">장난</button>
+        <button type="button" data-preview="happy">기쁨</button
+        ><button type="button" data-preview="surprised">놀람</button>
+        <button type="button" data-preview="wink">윙크</button>
+        <button type="button" data-preview="nod">끄덕끄덕</button>
+        <button type="button" data-preview="shake">도리도리</button>
+        <button type="button" data-preview="pout">볼빵빵 · 삐짐</button>
+        <button type="button" data-preview="laugh">눈웃음</button>
+        <button type="button" data-preview="heart">하트 눈</button>
+        <button type="button" data-preview="grass">강아지풀</button>
+        <button type="button" data-preview="reset">초기화</button>
+      </div>
+      <p id="preview-status" class="hint"></p>
+      <label>캐릭터를 표시할 모니터<select id="display-list"></select></label>
+      <button id="move-display" class="text-button">선택한 모니터로 이동</button>
+      <p class="hint">
+        드래그로 모니터를 넘길 수도 있어요. 화면 밖으로 일부를 내보내면 상반신만 보이게 둘 수
+        있습니다. 위치는 자동 저장됩니다.
+      </p>
+      <label
+        >캐릭터 크기<input id="scale" type="range" min="0.4" max="4" step="0.05" value="1"
+      /></label>
+      <label class="check"
+        ><input id="always-on-top" type="checkbox" checked /> 항상 위에 표시</label
+      >
+      <label class="check"
+        ><input id="click-through" type="checkbox" checked /> 모델 바깥 빈 영역 클릭 통과</label
+      >
+      <details>
+        <summary>표정·모션 매핑</summary>
+        <p class="hint">
+          모델 자산과 기본 연기 중에서 연결합니다. 중립과 ‘없음’은 기본 상태입니다.
+        </p>
+        <div id="expression-maps"></div>
+        <div id="gesture-maps"></div>
+      </details>
+      <div id="settings-notice" role="status"></div>
+      <button id="save-settings" class="primary">설정 저장 · 연결 확인</button>
     </main>
     <script type="module" src="./index.ts"></script>
   </body>

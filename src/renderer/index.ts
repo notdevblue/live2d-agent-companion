@@ -19,6 +19,10 @@ import { AssistantMessageBubbles } from './assistant-messages.js';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const bridge = window.companion;
+const mode = new URLSearchParams(location.search).get('view');
+const isOverlay = mode === 'overlay';
+const isSettings = mode === 'settings';
+let configurationRefresh = 0;
 let boot: Bootstrap;
 let avatar: Avatar | undefined;
 let view: TurnView | undefined;
@@ -34,11 +38,15 @@ const input = (id: string) => element<HTMLInputElement>(id);
 const notice = (text: string) => {
   element('notice').textContent = text;
 };
-const safe = (work: () => Promise<void>) => {
+const settingsNotice = (text: string) => {
+  element('settings-notice').textContent = text;
+};
+const safe = (work: () => Promise<void>, report = notice) => {
   void work().catch(() =>
-    notice('처리하지 못했습니다. 연결 주소·인증·현재 요청 상태를 확인하세요.'),
+    report('처리하지 못했습니다. 연결 주소·인증·현재 요청 상태를 확인하세요.'),
   );
 };
+const settingsWork = (work: () => Promise<void>) => safe(work, settingsNotice);
 const labels: Record<string, string> = {
   submitting: '요청 전송 중',
   accepted: '응답 대기',
@@ -67,7 +75,6 @@ const gestureLabels: Record<string, string> = {
 };
 
 function addMessage(role: 'user' | 'assistant', text: string): HTMLElement {
-  element('welcome').hidden = true;
   const item = document.createElement('article');
   item.className = `message ${role}`;
   const label = document.createElement('p');
@@ -81,10 +88,9 @@ function addMessage(role: 'user' | 'assistant', text: string): HTMLElement {
   return content;
 }
 function restoreHistory(): void {
-  if (!boot.history) return;
+  if (isSettings || isOverlay || !boot.history) return;
   for (const message of element('conversation').querySelectorAll('.message')) message.remove();
   assistantMessages.clear();
-  element('welcome').hidden = false;
   for (const message of boot.history) {
     const content = addMessage(message.role, message.text);
     if (message.role === 'assistant' && message.requestId)
@@ -141,7 +147,9 @@ function applyCharacterState(): void {
   appliedCharacterState = state;
 }
 function renderEvent(event: CompanionEvent): void {
+  if (event.type === 'configuration') return;
   if (event.type === 'history') {
+    if (isSettings || isOverlay) return;
     boot.history = event.messages;
     boot.historyRestoredRequestId = event.restoredRequestId;
     boot.historyError = event.error;
@@ -190,8 +198,11 @@ function renderEvent(event: CompanionEvent): void {
     )
       return;
     avatar?.cue(event.cue);
-    element('expression-status').textContent =
-      `표현: ${emotionLabels[event.cue.emotion]}${event.cue.attitude && event.cue.attitude !== 'neutral' ? ` · ${{ explain: '설명', tease: '장난', shy: '쑥스러움', reassure: '안심' }[event.cue.attitude]}` : ''} · ${event.cue.source === 'jev' ? 'Jev' : '기본'}`;
+    return;
+  }
+  if (isSettings) {
+    view = event.turn;
+    updatePreviewAvailability();
     return;
   }
   const followReply = isConversationAtBottom(element('conversation'));
@@ -224,6 +235,18 @@ function receive(event: CompanionEvent): void {
   if (!ready) {
     buffered.push(event);
     if (buffered.length > 256) buffered.shift();
+    return;
+  }
+  if (event.type === 'configuration') {
+    // Settings mutations already return their snapshot to the settings window.
+    // Re-fetching there would replace controls the user is still editing.
+    if (isSettings) return;
+    const refresh = ++configurationRefresh;
+    safe(async () => {
+      const next = await bridge.bootstrap();
+      if (refresh !== configurationRefresh) return;
+      adoptBootstrap(next, true);
+    });
     return;
   }
   if (event.selectionId !== boot.selectionId || (event.revision ?? 0) <= currentRevision) return;
@@ -344,13 +367,8 @@ function populate(): void {
   element('model-name').textContent = boot.model
     ? `${boot.model.name} · 표정 ${boot.model.expressions.length} / 모션 ${boot.model.motions.length}`
     : '모델이 선택되지 않았습니다.';
-  element('expression-status').textContent = s.jevEnabled
-    ? boot.credentials.jev
-      ? '표현: Jev 사용'
-      : '표현: Jev 키 입력 필요'
-    : '표현: 기본 규칙';
-  if (boot.connectionError) notice(boot.connectionError);
-  else if (boot.historyError) notice(boot.historyError);
+  const report = isSettings ? settingsNotice : notice;
+  report(boot.connectionError ?? boot.historyError ?? '');
   populateMaps();
   if (boot.currentTurn) renderEvent({ type: 'turn', turn: boot.currentTurn });
   else {
@@ -363,10 +381,14 @@ function populate(): void {
     updatePreviewAvailability();
   }
 }
-function adoptBootstrap(next: Bootstrap): void {
-  const switched =
-    JSON.stringify(next.settings.provider) !== JSON.stringify(boot.settings.provider);
+function adoptBootstrap(next: Bootstrap, configuration = false): void {
   const sameSelection = next.selectionId === boot.selectionId;
+  const switched = !sameSelection;
+  if (configuration && sameSelection) {
+    // A settings update must not rebuild the transcript or interrupt reading.
+    next.history = undefined;
+    next.currentTurn = view;
+  }
   if (sameSelection && next.revision < currentRevision) {
     next.currentTurn = view;
     next.history = undefined;
@@ -377,12 +399,13 @@ function adoptBootstrap(next: Bootstrap): void {
     view = undefined;
     lastCharacterState = 'idle';
     appliedCharacterState = undefined;
-    element('welcome').hidden = false;
     element('session-list').hidden = true;
   }
   currentRevision = sameSelection ? Math.max(currentRevision, next.revision) : next.revision;
   boot = next;
+  const readingPosition = element('conversation').scrollTop;
   populate();
+  if (configuration && sameSelection) element('conversation').scrollTop = readingPosition;
 }
 function collectSettings(): AppSettings {
   const maps = (id: string) =>
@@ -420,7 +443,7 @@ async function overlayMode(): Promise<void> {
   };
   if (!boot.model) {
     element('model-error').hidden = false;
-    element('model-error').onclick = () => void bridge.openChat();
+    element('model-error').onclick = () => void bridge.openSettings();
     return;
   }
   try {
@@ -436,7 +459,7 @@ async function overlayMode(): Promise<void> {
     bridge.setInputRegion(null);
     element('model-error').hidden = false;
     element('model-error').textContent = '모델 로드 실패 · 설정 열기';
-    element('model-error').onclick = () => void bridge.openChat();
+    element('model-error').onclick = () => void bridge.openSettings();
     window.__avatarStatus = { loaded: false, frames: 0, error: '모델 로드 실패' };
   }
   let pointerId: number | undefined;
@@ -517,8 +540,7 @@ async function overlayMode(): Promise<void> {
 }
 async function main(): Promise<void> {
   if (!bridge) throw new Error('보안 브리지를 불러올 수 없습니다.');
-  const isOverlay = new URLSearchParams(location.search).get('view') === 'overlay';
-  if (!isOverlay) {
+  if (!isOverlay && !isSettings) {
     element('chat').hidden = false;
     element<HTMLButtonElement>('send').disabled = true;
     notice('이전 대화를 불러오는 중입니다.');
@@ -538,24 +560,23 @@ async function main(): Promise<void> {
     finish();
     return;
   }
-  element('chat').hidden = false;
+  element('chat').hidden = isSettings;
+  element('settings').hidden = !isSettings;
+  if (isSettings) document.title = 'DeepSeek Companion · 설정';
   populate();
-  if (!boot.currentTurn) notice(boot.historyError ?? boot.connectionError ?? '');
+  if (!boot.currentTurn && !isSettings) notice(boot.historyError ?? boot.connectionError ?? '');
   finish();
-  const toggle = () => {
-    element('settings').hidden = !element('settings').hidden;
-    if (!element('settings').hidden) safe(refreshDisplays);
-  };
-  element('settings-toggle').onclick = toggle;
-  element('settings-close').onclick = toggle;
+  element('settings-toggle').onclick = () => safe(() => bridge.openSettings());
+  element('settings-close').onclick = () => window.close();
+  if (isSettings) settingsWork(refreshDisplays);
   element('move-display').onclick = () =>
-    safe(async () => {
+    settingsWork(async () => {
       const button = element<HTMLButtonElement>('move-display');
       button.disabled = true;
       try {
         await bridge.moveToDisplay(Number(element<HTMLSelectElement>('display-list').value));
         await refreshDisplays();
-        notice('캐릭터를 선택한 모니터로 옮기고 위치를 저장했습니다.');
+        settingsNotice('캐릭터를 선택한 모니터로 옮기고 위치를 저장했습니다.');
       } finally {
         button.disabled = false;
       }
@@ -567,22 +588,22 @@ async function main(): Promise<void> {
         .then(async () => {
           const next = await bridge.saveSettings({ ...boot.settings, presentation });
           boot.settings = next.settings;
-          notice('캐릭터 표현 설정을 저장했습니다.');
+          settingsNotice('캐릭터 표현 설정을 저장했습니다.');
         })
-        .catch(() => notice('캐릭터 표현 설정을 저장하지 못했습니다. 다시 선택해 주세요.'));
+        .catch(() => settingsNotice('캐릭터 표현 설정을 저장하지 못했습니다. 다시 선택해 주세요.'));
     });
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-preview]'))
     button.onclick = () =>
-      safe(async () => {
+      settingsWork(async () => {
         await presentationSaves;
         await bridge.previewCharacter(button.dataset.preview as CharacterPreview);
       });
   element('choose-model').onclick = () =>
-    safe(async () => {
+    settingsWork(async () => {
       adoptBootstrap(await bridge.chooseModel());
     });
   element('load-sessions').onclick = () =>
-    safe(async () => {
+    settingsWork(async () => {
       adoptBootstrap(await bridge.saveSettings(collectSettings()));
       const sessions = await bridge.sessions();
       const select = element<HTMLSelectElement>('session-list');
@@ -598,7 +619,7 @@ async function main(): Promise<void> {
         select.append(option);
       }
       select.hidden = false;
-      notice(
+      settingsNotice(
         sessions.length
           ? '세션을 선택한 뒤 설정 저장을 눌러 주세요.'
           : '사용 가능한 기존 세션이 없습니다.',
@@ -608,13 +629,13 @@ async function main(): Promise<void> {
       };
     });
   element('create-session').onclick = () =>
-    safe(async () => {
+    settingsWork(async () => {
       adoptBootstrap(await bridge.saveSettings(collectSettings()));
       adoptBootstrap(await bridge.createSession());
-      notice('선택한 프로필에 새 대화를 만들었습니다. 기존 Bot Chat과 별도입니다.');
+      settingsNotice('선택한 프로필에 새 대화를 만들었습니다. 기존 Bot Chat과 별도입니다.');
     });
   element('save-settings').onclick = () =>
-    safe(async () => {
+    settingsWork(async () => {
       const button = element<HTMLButtonElement>('save-settings');
       button.disabled = true;
       try {
@@ -629,7 +650,7 @@ async function main(): Promise<void> {
         input('provider-key').value = '';
         input('jev-key').value = '';
         adoptBootstrap(await bridge.testConnection());
-        notice(boot.connectionError ?? '설정을 저장했습니다.');
+        settingsNotice(boot.connectionError ?? '설정을 저장했습니다.');
       } finally {
         button.disabled = false;
       }

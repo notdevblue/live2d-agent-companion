@@ -63,3 +63,7 @@ assistant 원문은 `markdown-it`에서 HTML 비활성화로 token화한 뒤 허
 Cubism SDK/Core, MotionSync, 개별 Live2D 모델·음성 모델/보이스마다 별도의 사용·배포 조건을 확인한다. 사용자가 제공한 자산의 로컬 참조만 기본 지원하며, 별도 허락 없는 바이너리 배포 금지.
 
 관련 근거: https://www.electronjs.org/docs/latest/tutorial/security
+
+## 독립 설정 창 IPC
+
+채팅/설정은 parent·modal 없는 별도 managed dialog이며 동일한 sandbox/contextIsolation/CSP/외부 navigation·새 창 차단을 적용한다. main의 `trusted`는 현재 소유한 mainFrame·app origin·window identity를 검사한다. 설정 조작은 chat/settings에 허용하지만 메시지 전송·원격 승인·취소·상태 조회는 chat에만 허용한다. Overlay의 파일 선택 fallback은 좁은 `openSettings`만 호출한다. 설정의 bootstrap·작업 응답에는 대화 history를 넣지 않는다. 설정 열기/재열기는 세션을 만들거나 prompt를 보내지 않는다.

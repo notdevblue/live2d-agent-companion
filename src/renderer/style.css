@@ -170,10 +170,11 @@ h2 {
   flex-direction: column;
   background: var(--bg);
 }
-#chat > :not(#conversation):not(#settings) {
+#chat > :not(#conversation) {
   flex-shrink: 0;
 }
 #chat[hidden],
+#settings[hidden],
 #overlay[hidden] {
   display: none;
 }
@@ -205,7 +206,7 @@ header {
   margin-left: 9px;
 }
 .connection-strip {
-  padding: 12px 23px;
+  padding: 12px 0;
   display: flex;
   gap: 9px;
   align-items: center;
@@ -213,8 +214,7 @@ header {
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
-.badge,
-.small-pill {
+.badge {
   border-radius: 0;
   padding: 4px 7px;
   border: 1px solid var(--border);
@@ -233,30 +233,6 @@ header {
   overflow: auto;
   scrollbar-gutter: stable;
   padding: 20px;
-}
-#welcome {
-  text-align: center;
-  padding: 65px 0 30px;
-}
-#welcome h2 {
-  font-size: 23px;
-  letter-spacing: 0;
-  margin: 16px 0 12px;
-}
-#welcome p {
-  font-size: 12px;
-  line-height: 1.9;
-  color: var(--muted);
-  margin-bottom: 22px;
-}
-.welcome-symbol {
-  font-size: 51px;
-  color: var(--accent);
-}
-.small-pill {
-  background: var(--surface);
-  color: var(--muted);
-  font-weight: 400;
 }
 .message {
   margin-bottom: 19px;
@@ -360,13 +336,15 @@ footer {
   margin-left: auto;
   justify-content: flex-end;
 }
-#notice {
+#notice,
+#settings-notice {
   padding: 0 22px;
   font-size: 11px;
   color: var(--warning);
   line-height: 1.6;
 }
-#notice:not(:empty) {
+#notice:not(:empty),
+#settings-notice:not(:empty) {
   padding-top: 9px;
   padding-bottom: 9px;
   background: var(--surface);
@@ -392,14 +370,12 @@ footer {
   justify-content: flex-end;
 }
 #settings {
+  color-scheme: dark;
+  height: 100vh;
   overflow: auto;
   padding: 20px 23px;
   min-height: 0;
-  flex: 1;
   background: var(--surface);
-}
-#settings:not([hidden]) ~ #conversation {
-  display: none;
 }
 .section-heading {
   display: flex;
@@ -463,11 +439,13 @@ summary {
   font-size: 12px;
 }
 
-#chat * {
+#chat *,
+#settings * {
   scrollbar-width: thin;
   scrollbar-color: var(--border) var(--bg);
 }
-#chat ::selection {
+#chat ::selection,
+#settings ::selection {
   color: var(--bg);
   background: var(--accent);
 }

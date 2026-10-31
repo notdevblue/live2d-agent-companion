@@ -75,6 +75,10 @@ submitting, accepted, streaming, awaiting_result, cancel_requested, reconciling 
 - 종결 후 중복 delta/complete는 무시, 진단 카운터만 증가.
 - 네트워크 재연결 후 `unknown`일 때 자동 재전송 금지. 재전송은 사용자 확인뿐 아니라 이전 실행의 종료/미접수 확인도 필요하다(`ADAPTER_CONTRACT.md`).
 
+## 로컬 설정 동기화
+
+`CompanionEvent {type: configuration, selectionId, revision}`은 설정 창에서 프로필/세션·runtime·모델 매핑 또는 연결 검사 결과가 바뀌었음을 main이 알리는 로컬 알림이다. chat은 기존 selection 필터보다 먼저 이를 처리해 bootstrap/history를 새로 읽고, fetch token으로 더 늦게 도착한 이전 응답을 버린다. 같은 selection이면 transcript DOM·입력 초안·스크롤을 유지한다. 설정 창은 자신의 변경 응답으로 상태를 갱신하므로 이 방송으로 작성 중인 필드를 덮지 않는다. presentation·배율·입력 영역은 기존 전용 이벤트를 재사용한다. 외부 어댑터 이벤트나 새 원격 제출이 아니다.
+
 ## 캐릭터 이벤트
 
 현재 `TurnView.messages`는 `messageId/text/completed`의 순서 있는 배열이며 `text` 집계는 기존 호출과 호환하기 위해 유지한다. 말풍선/로컬 표시 cache는 requestId+messageId로 구분한다. `cue.messageId`는 실제 assistant 메시지 하나에, segmentId는 현재 요청의 메시지 순서에 대응한다. 같은 메시지를 문장별로 다시 판단하거나 큐에 쌓지 않는다. 새 메시지는 이전 미적용 판단을 취소하고 애니메이션 종료를 기다리지 않으며, 같은 메시지/복구 텍스트는 재적용하지 않는다. 본문/호출/수집·판단 기한은 shared `EXPRESSION_PACING`을 따른다.
