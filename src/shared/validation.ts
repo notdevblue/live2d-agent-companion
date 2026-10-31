@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CHARACTER_PREVIEWS, DEFAULT_PRESENTATION } from './contracts.js';
 import type { AgentEvent, AppSettings } from './contracts.js';
 
 const id = z.string().min(1).max(512);
@@ -111,6 +112,15 @@ export function canonicalEndpoint(value: string): string {
   url.hostname = url.hostname.toLowerCase();
   return url.toString().replace(/\/+$/, '');
 }
+export const characterPreviewSchema = z.enum(CHARACTER_PREVIEWS);
+export const presentationSchema = z
+  .object({
+    intensity: z.enum(['quiet', 'normal', 'expressive']),
+    framing: z.enum(['full', 'bust', 'close']),
+    positionLocked: z.boolean(),
+    reducedMotion: z.boolean(),
+  })
+  .strict();
 export const settingsSchema = z
   .object({
     provider: z
@@ -130,6 +140,7 @@ export const settingsSchema = z
     scale: z.number().min(0.4).max(2),
     alwaysOnTop: z.boolean(),
     clickThrough: z.boolean(),
+    presentation: presentationSchema.optional(),
     expressionMap: z
       .partialRecord(
         z.enum(['neutral', 'happy', 'sad', 'surprised', 'embarrassed', 'concerned']),
@@ -155,6 +166,7 @@ export const settingsSchema = z
   })
   .transform((value) => ({
     ...value,
+    presentation: value.presentation ?? { ...DEFAULT_PRESENTATION },
     provider: {
       ...value.provider,
       endpoint:

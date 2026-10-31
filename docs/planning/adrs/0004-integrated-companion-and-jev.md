@@ -9,7 +9,7 @@
 ## Decision
 
 - 첫 완료 흐름은 캐릭터 표시→요청/응답→비동기 Jev 판단→표정/모션이다. TTS/PC 제어/화면 캡처는 포함하지 않는다.
-- 본문은 즉시 표시한다. Director는 결정적 상태와 선택적 Jev 의미 판단을 분리한다. Jev는 제한된 emotion/gesture Choice이며 실패는 neutral/none, 취소·전환·이전 구간 결과는 폐기한다.
+- 본문은 즉시 표시한다. Director는 결정적 상태와 선택적 Jev 의미 판단을 분리한다. Jev는 제한된 emotion/gesture Choice이며 실패는 neutral/none, 취소·전환·이전 구간 결과는 폐기한다. 2026-10-31 후속 사용자 지시에 따라 같은 요청에 선택적 attitude Choice를 추가했다. 연기의 타이밍·강도·중립 복귀는 로컬에서 처리하고 attitude가 없는 기존 응답도 지원한다.
 - 단일 npm 패키지로 시작한다. 확인 환경은 Node 26.12.1/npm 12.2.1이며 Electron 45.2.1, TypeScript 6.0.3, Vite 8.3.5, Vitest 5.0.5, esbuild 0.28.2, Zod 4.6.7, Prettier 3.9.10을 lockfile로 고정한다. npm은 실행 환경에 이미 있어 별도 전역 패키지 매니저를 설치하지 않았다.
 - 공식 Cubism Framework 5-r.5와 Core 5.3/06을 로컬에서 준비한다. Core legacy URL과 새 Framework의 API 차이는 호환 버전 조합으로 해결한다. 모델/SDK를 저장소·배포물에 넣지 않는다.
 - HTTP API가 기존 Desktop 세션을 소유한다고 가정하지 않는다. 실행 중인 Hermes에는 SSH를 통한 native control→일회성 ticket→WebSocket으로 연결한다. 기존 owner를 재사용하고 gateway 시작/정지나 공개 포트 설정을 하지 않는다.

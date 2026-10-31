@@ -1,9 +1,12 @@
 import {
   EMOTIONS,
   GESTURES,
+  DEFAULT_PRESENTATION,
   type AppSettings,
   type Bootstrap,
   type CompanionEvent,
+  type CharacterPreview,
+  type PresentationSettings,
   type TurnView,
 } from '../shared/contracts.js';
 import type { Avatar } from './avatar.js';
@@ -13,9 +16,13 @@ const bridge = window.companion;
 let boot: Bootstrap;
 let avatar: Avatar | undefined;
 let view: TurnView | undefined;
+let lastCharacterState: Extract<CompanionEvent, { type: 'character' }>['state'] = 'idle';
+let appliedCharacterState: string | undefined;
 let ready = false;
 let currentRevision = 0;
 const buffered: CompanionEvent[] = [];
+let cancelOverlayGesture: (() => void) | undefined;
+let presentationSaves: Promise<void> = Promise.resolve();
 const assistantMessages = new Map<string, HTMLElement>();
 const input = (id: string) => element<HTMLInputElement>(id);
 const notice = (text: string) => {
@@ -67,7 +74,65 @@ function addMessage(role: 'user' | 'assistant', text: string): HTMLElement {
   element('conversation').append(item);
   return content;
 }
+function applyPresentation(settings: PresentationSettings): void {
+  boot.settings.presentation = { ...settings };
+  avatar?.configure(settings);
+  element('avatar').classList.toggle('position-locked', settings.positionLocked);
+  if (settings.positionLocked) cancelOverlayGesture?.();
+  element<HTMLSelectElement>('intensity').value = settings.intensity;
+  element<HTMLSelectElement>('framing').value = settings.framing;
+  input('position-locked').checked = settings.positionLocked;
+  input('reduced-motion').checked = settings.reducedMotion;
+}
+function collectPresentation(): PresentationSettings {
+  return {
+    intensity: element<HTMLSelectElement>('intensity').value as PresentationSettings['intensity'],
+    framing: element<HTMLSelectElement>('framing').value as PresentationSettings['framing'],
+    positionLocked: input('position-locked').checked,
+    reducedMotion: input('reduced-motion').checked,
+  };
+}
+function updatePreviewAvailability(): void {
+  const busy =
+    !!view &&
+    (!!view.approval || !['completed', 'failed', 'cancelled', 'interrupted'].includes(view.state));
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-preview]'))
+    button.disabled = busy;
+  element('preview-status').textContent = busy
+    ? '요청·승인이 끝나면 미리 볼 수 있습니다.'
+    : '로컬 캐릭터만 움직입니다. 메시지를 보내거나 Jev를 호출하지 않습니다.';
+}
+function applyCharacterState(): void {
+  const blocked =
+    view?.approval ||
+    (view && ['cancel_requested', 'reconciling', 'cancelled', 'interrupted'].includes(view.state));
+  const state = blocked
+    ? 'blocked'
+    : view?.state === 'failed'
+      ? 'error'
+      : view?.state === 'completed'
+        ? 'idle'
+        : lastCharacterState;
+  if (state === appliedCharacterState) return;
+  // Clear transient reactions once at the boundary, without restarting the error timer
+  // or erasing a completed turn's still-fading cue on subsequent state publications.
+  if (state === 'blocked' || state === 'error') avatar?.reset();
+  avatar?.setState(state);
+  appliedCharacterState = state;
+}
 function renderEvent(event: CompanionEvent): void {
+  if (event.type === 'presentation') {
+    applyPresentation(event.settings);
+    return;
+  }
+  if (event.type === 'character.preview') {
+    // Only main's guarded local-preview IPC emits this event. Terminal cancelled
+    // turns can explicitly preview again without changing their request state.
+    appliedCharacterState = 'idle';
+    avatar?.setState('idle');
+    avatar?.preview(event.preset);
+    return;
+  }
   if (event.type === 'overlay-input') {
     boot.overlayInput = event.mode;
     boot.overlayInputError = event.error;
@@ -85,7 +150,8 @@ function renderEvent(event: CompanionEvent): void {
     return;
   }
   if (event.type === 'character') {
-    avatar?.setState(event.state);
+    lastCharacterState = event.state;
+    applyCharacterState();
     return;
   }
   if (event.type === 'cue') {
@@ -97,22 +163,12 @@ function renderEvent(event: CompanionEvent): void {
       return;
     avatar?.cue(event.cue);
     element('expression-status').textContent =
-      `표현: ${emotionLabels[event.cue.emotion]} · ${event.cue.source === 'jev' ? 'Jev' : '기본'}`;
+      `표현: ${emotionLabels[event.cue.emotion]}${event.cue.attitude && event.cue.attitude !== 'neutral' ? ` · ${{ explain: '설명', tease: '장난', shy: '쑥스러움', reassure: '안심' }[event.cue.attitude]}` : ''} · ${event.cue.source === 'jev' ? 'Jev' : '기본'}`;
     return;
   }
+  if (event.turn.requestId !== view?.requestId) lastCharacterState = 'thinking';
   view = event.turn;
-  if (
-    view.state === 'cancel_requested' ||
-    view.state === 'reconciling' ||
-    view.state === 'failed' ||
-    view.state === 'cancelled' ||
-    view.state === 'interrupted'
-  )
-    avatar?.reset();
-  if (view.approval) {
-    avatar?.reset();
-    avatar?.setState('idle');
-  }
+  applyCharacterState();
   if (view.text || assistantMessages.has(view.requestId)) {
     let content = assistantMessages.get(view.requestId);
     if (!content) {
@@ -121,6 +177,7 @@ function renderEvent(event: CompanionEvent): void {
     } else content.textContent = view.text;
     element('conversation').scrollTop = element('conversation').scrollHeight;
   }
+  updatePreviewAvailability();
   element('turn-status').textContent = labels[view.state] ?? view.state;
   const terminal = ['completed', 'failed', 'cancelled', 'interrupted'].includes(view.state);
   element<HTMLButtonElement>('send').disabled = !terminal;
@@ -217,6 +274,7 @@ function populate(): void {
   input('scale').value = String(s.scale);
   input('always-on-top').checked = s.alwaysOnTop;
   input('click-through').checked = s.clickThrough;
+  applyPresentation(s.presentation ?? { ...DEFAULT_PRESENTATION });
   populateOverlayInput();
   const ssh = s.provider.endpoint.startsWith('ssh:');
   element('provider-badge').textContent =
@@ -258,6 +316,7 @@ function populate(): void {
     element('reconcile').hidden = true;
     element('approval').hidden = true;
     element('turn-status').textContent = '전송 준비';
+    updatePreviewAvailability();
   }
 }
 function adoptBootstrap(next: Bootstrap): void {
@@ -269,6 +328,8 @@ function adoptBootstrap(next: Bootstrap): void {
     for (const message of element('conversation').querySelectorAll('.message')) message.remove();
     assistantMessages.clear();
     view = undefined;
+    lastCharacterState = 'idle';
+    appliedCharacterState = undefined;
     element('welcome').hidden = false;
     element('session-list').hidden = true;
   }
@@ -297,6 +358,7 @@ function collectSettings(): AppSettings {
     scale: Number(input('scale').value),
     alwaysOnTop: input('always-on-top').checked,
     clickThrough: input('click-through').checked,
+    presentation: collectPresentation(),
     expressionMap: maps('expression-maps'),
     gestureMap: maps('gesture-maps'),
   };
@@ -317,6 +379,7 @@ async function overlayMode(): Promise<void> {
   try {
     const { Avatar } = await import('./avatar.js');
     avatar = new Avatar(element<HTMLCanvasElement>('avatar'), boot.model);
+    applyPresentation(boot.settings.presentation ?? { ...DEFAULT_PRESENTATION });
     if (boot.overlayInput === 'native-shape' && boot.settings.clickThrough)
       avatar.onInputRegion = bridge.setInputRegion;
     await avatar.load();
@@ -346,6 +409,7 @@ async function overlayMode(): Promise<void> {
     bridge.hitTest(x !== undefined && y !== undefined && hitAt(x, y));
     if (clicked && !moved) void bridge.openChat();
   };
+  cancelOverlayGesture = () => finishDrag();
   canvas.addEventListener('pointerdown', (event) => {
     if (pointerId !== undefined || event.button !== 0 || !hitAt(event.clientX, event.clientY))
       return;
@@ -354,7 +418,7 @@ async function overlayMode(): Promise<void> {
     moved = false;
     startX = lastX = event.screenX;
     startY = lastY = event.screenY;
-    bridge.setDragging(true);
+    if (!boot.settings.presentation?.positionLocked) bridge.setDragging(true);
     event.preventDefault();
   });
   window.addEventListener('pointermove', (event) => {
@@ -369,7 +433,8 @@ async function overlayMode(): Promise<void> {
       lastX = event.screenX;
       lastY = event.screenY;
       if (Math.abs(event.screenX - startX) + Math.abs(event.screenY - startY) > 3) moved = true;
-      if (Math.abs(dx) <= 200 && Math.abs(dy) <= 200) void bridge.move(dx, dy).catch(() => {});
+      if (!boot.settings.presentation?.positionLocked && Math.abs(dx) <= 200 && Math.abs(dy) <= 200)
+        void bridge.move(dx, dy).catch(() => {});
     } else if (performance.now() - hitTime > 30) {
       hitTime = performance.now();
       bridge.hitTest(hitAt(event.clientX, event.clientY));
@@ -381,6 +446,7 @@ async function overlayMode(): Promise<void> {
       if (pointerId === undefined || !(event.buttons & 1)) return;
       event.preventDefault();
       moved = true; // Resizing is a manipulation, so release must not open chat.
+      if (boot.settings.presentation?.positionLocked) return;
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
       const deltaY = Math.max(-240, Math.min(240, event.deltaY * unit));
       void bridge.resizeOverlay(deltaY, event.screenX, event.screenY).catch(() => {});
@@ -388,13 +454,17 @@ async function overlayMode(): Promise<void> {
     { passive: false },
   );
   canvas.addEventListener('pointerup', (event) => {
-    if (event.pointerId === pointerId) finishDrag(true, event.clientX, event.clientY);
+    if (event.pointerId === pointerId) {
+      if (Math.abs(event.screenX - startX) + Math.abs(event.screenY - startY) > 3) moved = true;
+      finishDrag(true, event.clientX, event.clientY);
+    }
   });
   canvas.addEventListener('pointercancel', () => finishDrag());
   canvas.addEventListener('lostpointercapture', () => finishDrag());
   window.addEventListener('blur', () => finishDrag());
   window.addEventListener('unload', () => {
     finishDrag();
+    cancelOverlayGesture = undefined;
     avatar?.dispose();
   });
 }
@@ -406,13 +476,6 @@ async function main(): Promise<void> {
   const finish = () => {
     if (boot.currentTurn) {
       renderEvent({ type: 'turn', turn: boot.currentTurn });
-      avatar?.setState(
-        ['completed', 'cancelled', 'interrupted'].includes(boot.currentTurn.state)
-          ? 'idle'
-          : boot.currentTurn.state === 'failed'
-            ? 'error'
-            : 'thinking',
-      );
     }
     ready = true;
     for (const event of buffered.splice(0)) receive(event);
@@ -443,6 +506,23 @@ async function main(): Promise<void> {
         button.disabled = false;
       }
     });
+  for (const id of ['intensity', 'framing', 'position-locked', 'reduced-motion'])
+    element(id).addEventListener('change', () => {
+      const presentation = collectPresentation();
+      presentationSaves = presentationSaves
+        .then(async () => {
+          const next = await bridge.saveSettings({ ...boot.settings, presentation });
+          boot.settings = next.settings;
+          notice('캐릭터 표현 설정을 저장했습니다.');
+        })
+        .catch(() => notice('캐릭터 표현 설정을 저장하지 못했습니다. 다시 선택해 주세요.'));
+    });
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-preview]'))
+    button.onclick = () =>
+      safe(async () => {
+        await presentationSaves;
+        await bridge.previewCharacter(button.dataset.preview as CharacterPreview);
+      });
   element('choose-model').onclick = () =>
     safe(async () => {
       adoptBootstrap(await bridge.chooseModel());

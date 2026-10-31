@@ -475,12 +475,14 @@ describe('asynchronous CharacterDirector (FR-DIR-001/002)', () => {
     expect(judge.judge.mock.calls[0]?.[0]).toBe('첫 문장.');
     adapter.emit('message.delta', { text: '두 번째 문장. ', messageId: 'm' });
     await flush();
-    second.resolve(sad);
+    second.resolve({ ...sad, attitude: 'shy' });
     await flush();
-    first.resolve(happy);
+    first.resolve({ ...happy, attitude: 'tease' });
     await flush();
     expect(cueEvents(events)).toHaveLength(1);
-    expect(cueEvents(events)[0]).toMatchObject({ cue: { emotion: 'sad', segmentId: 2 } });
+    expect(cueEvents(events)[0]).toMatchObject({
+      cue: { emotion: 'sad', attitude: 'shy', segmentId: 2 },
+    });
     await core.dispose();
   });
   it('deadlines/low confidence/invalid decisions fall back neutral and bound input length', async () => {
@@ -502,6 +504,7 @@ describe('asynchronous CharacterDirector (FR-DIR-001/002)', () => {
     for (const result of [
       { emotion: 'happy', gesture: 'wave', confidence: 0.1 },
       { emotion: 'execute', gesture: 'shell', confidence: 1 },
+      { emotion: 'happy', gesture: 'wave', confidence: 0.9, attitude: 'execute' },
     ]) {
       const f = fixture({ judge: { judge: async () => result as ExpressionDecision } });
       await f.core.send('fixture');

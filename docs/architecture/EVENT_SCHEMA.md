@@ -4,6 +4,8 @@
 
 ## 봉투(Envelope)
 
+현재 로컬 `CompanionEvent`의 `cue`에는 선택적 `attitude`(`neutral/explain/tease/shy/reassure`)가 있다. `presentation` 이벤트는 연출 강도·구도·배치 잠금·움직임 줄이기 설정을 같은 selection의 renderer에 전달하고, `character.preview`는 main에서 검증한 로컬 preset만 전달한다. 이들은 원격 AgentEvent/실행 권한이 아니며, 외부 입력이 직접 발행할 수 없다. pose/표정 타이밍은 renderer 로컬에서 처리한다. 실제 타입은 `src/shared/contracts.ts`를 따른다.
+
 ~~~json
 {
   "schemaVersion": 1,

@@ -399,3 +399,18 @@ summary {
   outline: 2px solid #387b63;
   outline-offset: 3px;
 }
+
+#avatar.position-locked,
+#avatar.position-locked:active {
+  cursor: pointer;
+}
+.preview-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 12px 0 6px;
+}
+.preview-buttons button {
+  padding: 8px;
+  font-size: 12px;
+}

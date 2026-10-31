@@ -1,0 +1,205 @@
+import { describe, expect, it } from 'vitest';
+import { ActingController, type ActingFrame, type ActingPreset } from '../src/renderer/acting.js';
+
+const motionKeys = ['headX', 'headY', 'headZ', 'bodyX', 'bodyY', 'lean', 'gazeX', 'gazeY'] as const;
+function advance(actor: ActingController, end: number, fps = 60, start = 0): ActingFrame {
+  let frame = actor.sample(start, 0);
+  const count = Math.round(((end - start) * fps) / 1000);
+  for (let i = 1; i <= count; i++) frame = actor.sample(start + (i * 1000) / fps, 1 / fps);
+  return frame;
+}
+function magnitude(frame: ActingFrame): number {
+  return motionKeys.reduce((sum, key) => sum + Math.abs(frame[key]), 0);
+}
+
+describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
+  it('keeps the same elapsed-time trajectory at 30, 60 and 120 FPS', () => {
+    const frames = [30, 60, 120].map((fps) => {
+      const actor = new ActingController();
+      actor.setState('thinking', 0);
+      actor.cue({ emotion: 'happy', gesture: 'explain' }, 0);
+      return [advance(actor, 1700, fps), advance(actor, 6000, fps, 1700)];
+    });
+    for (const trajectory of frames.slice(1)) {
+      for (let i = 0; i < trajectory.length; i++) {
+        for (const key of [...motionKeys, 'blink', 'smile'] as const)
+          expect(trajectory[i]![key]).toBeCloseTo(frames[0]![i]![key], 7);
+      }
+    }
+  });
+
+  it('expires a cue with attack and release and returns to its ongoing state', () => {
+    const actor = new ActingController();
+    actor.setState('working', 0);
+    actor.cue({ emotion: 'sad', gesture: 'none' }, 0);
+    expect(actor.sample(0, 0).expressionWeight).toBe(0);
+    const held = advance(actor, 1000);
+    expect(held).toMatchObject({ preset: 'sad', active: true, expressionWeight: 1 });
+    const releasing = advance(actor, 3800, 60, 1000);
+    expect(releasing.expressionWeight).toBeGreaterThan(0);
+    expect(releasing.expressionWeight).toBeLessThan(0.5);
+    expect(advance(actor, 4200, 60, 3800)).toMatchObject({
+      preset: 'working',
+      active: false,
+      expressionWeight: 0,
+      emotion: 'neutral',
+    });
+    const resumed = advance(actor, 7000, 60, 4200);
+    expect(resumed.gazeY).toBeLessThan(-0.1);
+    expect(resumed.lean).toBeGreaterThan(0.08);
+  });
+
+  it('preserves completion reactions but clears them for cancel, new work and approval blocking', () => {
+    const actor = new ActingController();
+    actor.setState('thinking', 0);
+    actor.cue({ emotion: 'happy', gesture: 'wave' }, 0);
+    advance(actor, 1000);
+    actor.setState('idle', 1000);
+    expect(actor.sample(1000, 0).preset).toBe('happy');
+    actor.setState('working', 1000);
+    expect(actor.sample(1000, 0).active).toBe(false);
+    actor.preview('tease', 1000);
+    advance(actor, 2000, 60, 1000);
+    actor.setState('blocked', 2000);
+    const blocked = actor.sample(2100, 0.1);
+    expect(blocked).toMatchObject({ preset: 'neutral', active: false, blink: 1, smile: 0 });
+    for (const key of motionKeys) expect(blocked[key]).toBe(0);
+    expect(actor.cue({ emotion: 'happy', gesture: 'wave' }, 2200)).toBe(false);
+    actor.preview('happy', 2200);
+    expect(actor.sample(2300, 0.1).active).toBe(false);
+    actor.reset(2300);
+    expect(actor.sample(2300, 0)).toMatchObject({ preset: 'neutral', active: false, blink: 1 });
+    expect(magnitude(actor.sample(2300, 0))).toBe(0);
+  });
+
+  it('automatically ends thinking previews and lets reset stop a preview immediately', () => {
+    const actor = new ActingController();
+    actor.preview('thinking', 0);
+    expect(advance(actor, 1000).preset).toBe('thinking');
+    expect(advance(actor, 4200, 60, 1000)).toMatchObject({ preset: 'neutral', active: false });
+    actor.preview('shy', 4200);
+    advance(actor, 5000, 60, 4200);
+    actor.preview('reset', 5000);
+    expect(actor.sample(5000, 0)).toMatchObject({
+      active: false,
+      preset: 'neutral',
+      emotion: 'neutral',
+    });
+    expect(magnitude(actor.sample(5000, 0))).toBe(0);
+  });
+
+  it('accepts neutral emotion plus attitude and gives attitude priority without losing emotion', () => {
+    const actor = new ActingController();
+    expect(actor.cue({ emotion: 'neutral', gesture: 'none', attitude: 'neutral' }, 0)).toBe(false);
+    expect(actor.cue({ emotion: 'neutral', gesture: 'none', attitude: 'tease' }, 0)).toBe(true);
+    const tease = advance(actor, 1300);
+    expect(tease).toMatchObject({
+      preset: 'tease',
+      attitude: 'tease',
+      emotion: 'neutral',
+      active: true,
+    });
+    expect(tease.headZ).toBeLessThan(-0.15);
+    expect(tease.smile).toBeGreaterThan(0.5);
+    // Attitude changes are meaningful even when emotion and gesture stay the same.
+    expect(actor.cue({ emotion: 'neutral', gesture: 'none', attitude: 'shy' }, 1300)).toBe(true);
+    expect(advance(actor, 2500, 60, 1300).preset).toBe('shy');
+    expect(actor.cue({ emotion: 'happy', gesture: 'wave', attitude: 'explain' }, 2500)).toBe(true);
+    expect(advance(actor, 3700, 60, 2500)).toMatchObject({ preset: 'explain', emotion: 'happy' });
+    expect(actor.cue({ emotion: 'concerned', gesture: 'none', attitude: 'reassure' }, 3700)).toBe(
+      true,
+    );
+    const reassuring = advance(actor, 5000, 60, 3700);
+    expect(reassuring).toMatchObject({ preset: 'reassure', emotion: 'concerned' });
+    expect(reassuring.smile).toBeGreaterThan(0.25);
+    expect(reassuring.smile).toBeLessThan(0.5);
+  });
+
+  it('does not extend a reaction or repeatedly restart high energy for repeated chunks', () => {
+    const actor = new ActingController();
+    const cue = { emotion: 'happy', gesture: 'wave' } as const;
+    expect(actor.cue(cue, 0)).toBe(true);
+    for (let now = 100; now <= 4100; now += 100) {
+      expect(actor.cue(cue, now)).toBe(false);
+      actor.sample(now, 0.1);
+    }
+    expect(actor.sample(4200, 0.1).active).toBe(false);
+    expect(actor.cue(cue, 5000)).toBe(false);
+    expect(actor.cue(cue, 6200)).toBe(true);
+    expect(actor.cue({ emotion: 'surprised', gesture: 'none' }, 6300)).toBe(false);
+    expect(actor.cue({ emotion: 'surprised', gesture: 'none' }, 7100)).toBe(true);
+  });
+
+  it('moves eyes before head and body, and gives distinct expressive poses', () => {
+    const actor = new ActingController();
+    actor.setState('thinking', 0);
+    const early = advance(actor, 100);
+    expect(early.gazeX).toBeGreaterThan(early.headX * 2);
+    expect(early.headX).toBeGreaterThan(early.bodyX * 4);
+    const poses = new Map<ActingPreset, ActingFrame>();
+    for (const emotion of ['happy', 'sad', 'concerned', 'surprised', 'embarrassed'] as const) {
+      const actor = new ActingController();
+      actor.cue({ emotion, gesture: 'none' }, 0);
+      const frame = advance(actor, 1300);
+      poses.set(frame.preset, frame);
+    }
+    expect(poses.get('happy')!.smile).toBeGreaterThan(0.7);
+    expect(poses.get('sad')!.headY).toBeLessThan(-0.15);
+    expect(poses.get('concerned')!.headZ).toBeGreaterThan(0.1);
+    expect(poses.get('surprised')!.lean).toBeLessThan(-0.15);
+    expect(poses.get('shy')!.gazeX).toBeLessThan(-0.2);
+    actor.preview('explain', 100);
+    expect(advance(actor, 1500, 60, 100).lean).toBeGreaterThan(0.1);
+    actor.preview('tease', 1500);
+    expect(advance(actor, 2800, 60, 1500).headZ).toBeLessThan(-0.15);
+  });
+
+  it('uses deterministic irregular gaze and blink schedules rather than fixed cycles', () => {
+    const actor = new ActingController();
+    const twin = new ActingController();
+    const starts: number[] = [];
+    let previousBlink = 1;
+    for (let i = 0; i <= 2400; i++) {
+      const now = (i * 1000) / 120;
+      const frame = actor.sample(now, i ? 1 / 120 : 0);
+      expect(frame).toEqual(twin.sample(now, i ? 1 / 120 : 0));
+      if (frame.blink < 0.99 && previousBlink >= 0.99) starts.push(now);
+      previousBlink = frame.blink;
+    }
+    expect(starts.length).toBeGreaterThanOrEqual(3);
+    expect(Math.abs(starts[2]! - starts[1]! - (starts[1]! - starts[0]!))).toBeGreaterThan(50);
+  });
+
+  it('bounds finite poses and limits movement with intensity and reduced motion', () => {
+    const peaks: number[] = [];
+    for (const [intensity, reducedMotion] of [
+      ['expressive', false],
+      ['normal', false],
+      ['quiet', false],
+      ['normal', true],
+    ] as const) {
+      const actor = new ActingController();
+      actor.configure({ intensity, reducedMotion });
+      actor.preview('tease', 0);
+      let peak = 0;
+      for (let i = 0; i <= 1200; i++) {
+        const frame = actor.sample((i * 1000) / 120, i ? 1 / 120 : 0);
+        peak = Math.max(peak, magnitude(frame));
+        for (const key of motionKeys) {
+          expect(Number.isFinite(frame[key])).toBe(true);
+          expect(Math.abs(frame[key])).toBeLessThanOrEqual(1);
+        }
+        for (const key of ['blink', 'smile', 'expressionWeight'] as const) {
+          expect(frame[key]).toBeGreaterThanOrEqual(0);
+          expect(frame[key]).toBeLessThanOrEqual(1);
+        }
+      }
+      for (const key of motionKeys)
+        expect(Number.isFinite(actor.sample(NaN, Infinity)[key])).toBe(true);
+      peaks.push(peak);
+    }
+    expect(peaks[1]!).toBeCloseTo(peaks[0]! * 0.65, 7);
+    expect(peaks[2]!).toBeCloseTo(peaks[0]! * 0.35, 7);
+    expect(peaks[3]!).toBeCloseTo(peaks[1]! * 0.18, 7);
+  });
+});

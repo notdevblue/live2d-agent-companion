@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   allowedEndpoint,
   canonicalEndpoint,
+  characterPreviewSchema,
   parseSettings,
   validateAgentEvent,
 } from '../src/shared/validation.js';
@@ -43,5 +44,58 @@ describe('IPC and endpoint validation', () => {
         clickThrough: true,
       }),
     ).toThrow();
+  });
+});
+
+const legacySettings = {
+  provider: { provider: 'mock', endpoint: '', agentId: 'demo', sessionId: 'demo-session' },
+  jevEnabled: false,
+  jevModel: 'jev-1.14.0',
+  modelPath: '/model/character.model3.json',
+  scale: 1,
+  alwaysOnTop: true,
+  clickThrough: true,
+};
+describe('character presentation settings (FR-SET-001)', () => {
+  it('migrates legacy settings without losing provider, scale or model fields', () => {
+    const migrated = parseSettings(legacySettings);
+    expect(migrated).toMatchObject(legacySettings);
+    expect(migrated.presentation).toEqual({
+      intensity: 'normal',
+      framing: 'full',
+      positionLocked: false,
+      reducedMotion: false,
+    });
+    migrated.presentation!.positionLocked = true;
+    expect(parseSettings(legacySettings).presentation?.positionLocked).toBe(false);
+  });
+  it('round trips all supported presentation modes and rejects invalid bounds and fields', () => {
+    for (const intensity of ['quiet', 'normal', 'expressive'])
+      for (const framing of ['full', 'bust', 'close']) {
+        const presentation = { intensity, framing, positionLocked: true, reducedMotion: true };
+        const parsed = parseSettings({ ...legacySettings, presentation });
+        expect(parseSettings(JSON.parse(JSON.stringify(parsed))).presentation).toEqual(
+          presentation,
+        );
+      }
+    const presentation = parseSettings(legacySettings).presentation!;
+    for (const invalid of [
+      { ...presentation, intensity: 'unbounded' },
+      { ...presentation, framing: 'camera' },
+      { ...presentation, positionLocked: 'true' },
+      { ...presentation, reducedMotion: 1 },
+      { ...presentation, network: true },
+      {},
+      null,
+    ])
+      expect(() => parseSettings({ ...legacySettings, presentation: invalid })).toThrow();
+    for (const scale of [0, 0.39, 2.01, Infinity, NaN])
+      expect(() => parseSettings({ ...legacySettings, scale })).toThrow();
+  });
+  it('accepts only local preview preset enum values', () => {
+    for (const preset of ['thinking', 'explain', 'shy', 'tease', 'happy', 'reset'])
+      expect(characterPreviewSchema.parse(preset)).toBe(preset);
+    for (const invalid of ['tool.started', 'happy;send', '', null, { preset: 'happy' }])
+      expect(characterPreviewSchema.safeParse(invalid).success).toBe(false);
   });
 });

@@ -9,6 +9,7 @@ const bridge: CompanionBridge = {
   saveSettings: (settings) => ipcRenderer.invoke('companion:settings', settings),
   storeCredential: (provider, value) => ipcRenderer.invoke('companion:credential', provider, value),
   chooseModel: () => ipcRenderer.invoke('companion:model'),
+  previewCharacter: (preset) => ipcRenderer.invoke('companion:preview', preset),
   send: (text, selectionId) => ipcRenderer.invoke('companion:send', text, selectionId),
   cancel: (requestId) => ipcRenderer.invoke('companion:cancel', requestId),
   reconcile: (requestId) => ipcRenderer.invoke('companion:reconcile', requestId),

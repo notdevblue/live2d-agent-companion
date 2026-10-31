@@ -47,9 +47,17 @@ Chat Panel/Action Panel/Settings는 필요할 때 별도 창으로 열어 모델
 
 2026-10-31 사용자 지정 레퍼런스는 Steam의 [your wife](https://store.steampowered.com/app/3339420/your_wife/?l=english)다. 공식 설명에서 왼쪽 드래그 이동, 드래그 중 휠 확대/축소, 마우스를 바라보는 동작을 확인했다. 이번 조작 수정에는 이동·휠 배율을 반영한다. 시선 추적과 전체 모델 입력 잠금은 후속 설계로 남기며, 게임을 직접 실행해 검증한 결과는 아니다. Windows의 `Win+Shift+방향키` 모니터 이동 안내는 Sway 단축키로 그대로 적용하지 않는다.
 
+## 구현된 캐릭터 연기와 표현 설정
+
+2026-10-31 사용자 후속 지시로 아래 기능을 구현했다. `⚙ → 캐릭터`에서 연출 강도(조용함/기본/과장), 전신/상반신/얼굴 근접 구도, 위치 잠금, 움직임 줄이기를 바꾸면 즉시 저장한다. 대화 provider/session과 Overlay renderer를 유지하며 구도는 canvas 안에서만 바뀐다. 기존 모니터 위치·배율·화면 밖 잘림·항상 위/모든 작업공간 선택을 바꾸지 않는다. 위치 잠금 중에도 모델 클릭으로 채팅을 열고 명시적 모니터 이동·위치 복구를 사용할 수 있다.
+
+생각/설명/쑥스러움/장난/기쁨 미리보기와 초기화는 로컬 연출 전용이다. 실제 요청·승인 중에는 비활성화하고 main에서도 거절한다. 미리보기가 실제 첫 cue의 cooldown을 소모하지 않는다. 머리/시선/몸의 시간차 반응, 비주기 blink, 표정 crossfade, DeepSeek 손동작의 진입·유지·복귀를 제공한다. 손 포즈는 손목·손가락의 authored endpoint까지 유지한다. reduced motion은 연속 움직임을 줄이고 손 제스처를 중단한다.
+
+Jev는 기존 한 요청에서 emotion/gesture와 함께 선택적 attitude(`neutral/explain/tease/shy/reassure`)를 판단한다. 장난에는 로컬에 존재할 때 `屑屑眼`, 쑥스러움에는 사용자 embarrassed 매핑, 설명에는 설명 손 포즈를 사용한다. 공급자 답변·기억을 수정하거나 새로운 대사를 생성하지 않는다. 구체 검증 범위와 한계는 [구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다. TTS·립싱크·마우스 시선 추적·쓰다듬기·새로운 리깅 제작은 구현하지 않았다.
+
 ## 버튜버 영상 조사와 표현 발전안
 
-**조사일: 2026-10-31. 상태: 조사/제안이며 아래 연출은 구현 완료가 아니다.**
+**조사일: 2026-10-31. 아래 감사/비교는 개선 전 `e00d04d` 기준이다. 제안 일부는 위 구현 절에 반영했으며, 나머지 프리셋/확장안 전체를 완료한 것은 아니다.**
 
 ### 직접 확인한 범위
 
@@ -66,12 +74,12 @@ Chat Panel/Action Panel/Settings는 필요할 때 별도 창으로 열어 모델
 ### 움직임의 세 범위
 
 1. **배치:** OS Overlay의 위치/크기. 사용자가 정한 모니터, 화면 밖 잘림, 항상 위·모든 작업공간 표시를 보존한다. 자동 감정 연기가 창을 다른 모니터로 옮기거나 저장 위치를 덮어쓰지 않는다.
-2. **구도:** canvas 안의 모델 이동/배율/회전. 전신·상반신·얼굴 근접 프리셋과 일시적인 전진/후퇴를 담당한다. 저장한 기본 구도와 일시 연출 offset을 나누고 끝나면 기본 구도로 복귀한다. 현재 구현에는 이 독립 구도 계층이 없다.
+2. **구도:** canvas 안의 모델 이동/배율/회전. 전신·상반신·얼굴 근접 프리셋과 일시적인 전진/후퇴를 담당한다. 저장한 기본 구도와 일시 연출 offset을 나누고 끝나면 기본 구도로 복귀한다. 조사 시점에는 이 독립 구도 계층이 없었고 후속 구현에서 canvas 구도를 추가했다.
 3. **연기:** 시선·고개·몸·눈썹·눈꺼풀·입 모양과 기존 physics. 전체 창을 흔드는 것과 모델 안의 고개 끄덕임을 구별한다.
 
 VTube Studio 공식 [모델 설정](https://github.com/DenchiSoft/VTubeStudio/wiki/VTS-Model-Settings)은 head position 기반 좌우/거리 이동과 위치·회전·크기·전환 시간을 저장하는 Move Model hotkey를 제공한다. [시작 안내](https://github.com/DenchiSoft/VTubeStudio/wiki/Getting-Started)는 위치 잠금이 face tracking까지 끄지는 않는다고 구분한다. 우리 앱도 **배치 잠금과 표정/연기를 독립 옵션**으로 설계한다. VTube Studio를 이 프로젝트에 연결하거나 카메라를 켠 것은 아니다.
 
-### 현재 구현과 DeepSeek 자산 감사
+### 개선 전 구현과 DeepSeek 자산 감사
 
 - `src/renderer/avatar.ts`: 고정 4.4초 blink, sine breath, thinking/working 공통 tilt, 한 개의 4.2초 expression, 1.6초 cooldown의 단발 gesture다. 새 표정은 이전 표정 목록을 교체하고 새 gesture는 기존 motion을 중지한다. 복합 표정·시선·연기 sequence·pose hold/release·구도 전환은 없다.
 - `src/core/character-director.ts`: 결정적 idle/thinking/working/error와 비동기 Jev 판단을 분리한다. 문장/최대 800자 구간에서 최신 판단만 적용하며 timeout 기본 1.5초, confidence 기준 .6이다. 빠른 구간이 앞선 판단을 취소하므로 답변 전체의 순차 연기 계획은 아니다.
@@ -83,7 +91,7 @@ VTube Studio 공식 [모델 설정](https://github.com/DenchiSoft/VTubeStudio/wi
 - `脱捕` 13.15초 모션의 실제 내용과 적절성은 미리보기 전 미확정이다. 자동 연기에 연결하지 않는다.
 - 활용할 expression 후보: `脸红`(홍조), `屑屑眼`(장난스러운 눈), `＞＜`, `圈圈眼`, `流冷汗`, `加载`, `前倾`, `竖食指开`. 파일이 존재한다는 뜻이며 조합 결과가 검증됐다는 뜻은 아니다. 현재 대부분 Add이므로 같은 눈 형태는 배타, 홍조/땀 등은 호환 조합으로 검토한다. 옷/체형/소품은 감정 기본값과 분리한다.
 
-### 현재 렌더러를 직접 재생한 비교
+### 개선 전 렌더러를 직접 재생한 비교
 
 2026-10-31 추가 확인: 현재 `Avatar`와 `ModelLibrary` 소스를 별도 로컬 진단 창에서 그대로 사용했다. 기존 앱/사용자 설정/대화를 바꾸지 않고 기본 자동 매핑으로 idle, thinking, working, happy/wave, neutral/explain, embarrassed/none, happy→embarrassed→concerned를 각 6초씩 재생했다. `.env`·Hermes·Jev는 사용하지 않았다. 시뮬레이션 clock을 30fps 간격으로 진행해 1,260회 draw하고 10fps로 420장의 자기 canvas 이미지를 수집했다. 이는 실시간 FPS/지연 측정이 아니다. 로컬 근거는 ignored `artifacts/motion-comparison/current-motion.mp4`(42초), `contact-sheet.png`, `.tmp/motion-compare/traces.json`이다.
 

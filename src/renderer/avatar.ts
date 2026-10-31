@@ -3,7 +3,27 @@ import { CubismUserModel } from '@cubism/model/cubismusermodel';
 import { CubismMotionManager } from '@cubism/motion/cubismmotionmanager';
 import { CubismMatrix44 } from '@cubism/math/cubismmatrix44';
 import { CubismClippingManager_WebGL } from '@cubism/rendering/cubismrenderer_webgl';
-import type { CharacterCue, ModelInventory, OverlayInputRegion } from '../shared/contracts.js';
+import {
+  DEFAULT_PRESENTATION,
+  type CharacterCue,
+  type CharacterPreview,
+  type ModelInventory,
+  type OverlayInputRegion,
+  type PresentationSettings,
+} from '../shared/contracts.js';
+import { ActingController, type ActingState } from './acting.js';
+import {
+  actingChannels,
+  expressionValues,
+  ExpressionMixer,
+  parameterValue,
+  motionEndpoints,
+  PoseSequence,
+  type ActingChannel,
+  type ExpressionParameter,
+  type ParameterRange,
+  type PoseDefinition,
+} from './performance.js';
 import { canGenerateMipmaps, maskBufferCountForGroups } from './rendering.js';
 import { alphaInputRegion } from '../shared/input-region.js';
 
@@ -21,6 +41,9 @@ interface Model {
   getParameterId(index: number): unknown;
   getParameterValueByIndex(index: number): number;
   setParameterValueByIndex(index: number, value: number, weight?: number): void;
+  getParameterMinimumValue(index: number): number;
+  getParameterMaximumValue(index: number): number;
+  getParameterDefaultValue(index: number): number;
   getCanvasWidth(): number;
   getCanvasHeight(): number;
 }
@@ -44,11 +67,6 @@ interface Runtime {
   _physics?: { evaluate(model: Model, dt: number): void };
   release(): void;
 }
-interface ExpressionParameter {
-  index: number;
-  value: number;
-  blend: 'Add' | 'Multiply' | 'Overwrite';
-}
 interface Manifest {
   FileReferences: {
     Moc: string;
@@ -60,6 +78,12 @@ interface Manifest {
   Groups?: Array<{ Name: string; Ids: string[] }>;
 }
 
+const FRAMING = {
+  full: { scale: 1, y: 0 },
+  bust: { scale: 2.1, y: -0.8 },
+  close: { scale: 3.2, y: -1.7 },
+} as const;
+
 export class Avatar {
   private runtime!: Runtime;
   private gl!: WebGLRenderingContext;
@@ -70,9 +94,23 @@ export class Avatar {
   private indexes = new Map<string, number>();
   private textures: WebGLTexture[] = [];
   private idle?: Motion;
-  private expression: ExpressionParameter[] = [];
-  private expressionUntil = 0;
-  private expressionStarted = 0;
+  private gestureManager = new CubismMotionManager();
+  private actor = new ActingController();
+  private mixer = new ExpressionMixer();
+  private poses = new PoseSequence();
+  private poseDefinitions = new Map<string, PoseDefinition>();
+  private motionInfo = new Map<
+    string,
+    { duration: number; parameters: Set<string>; held: Map<string, number> }
+  >();
+  private activeGesture = '';
+  private posePhase = 'none';
+  private poseTime = 0;
+  private ranges = new Map<string, ParameterRange>();
+  private channels: Partial<Record<ActingChannel, ParameterRange>> = {};
+  private presentation: PresentationSettings = { ...DEFAULT_PRESENTATION };
+  private framing = { scale: 1, y: 0 };
+  private errorUntil = 0;
   private lastGesture = -Infinity;
   private previous = 0;
   private frame = 0;
@@ -112,11 +150,23 @@ export class Avatar {
       if (typeof id !== 'string' || !id || this.indexes.has(id))
         throw new Error('모델 파라미터 식별자를 확인할 수 없습니다.');
       this.indexes.set(id, i);
+      const min = this.model.getParameterMinimumValue(i);
+      const max = this.model.getParameterMaximumValue(i);
+      const neutral = this.model.getParameterDefaultValue(i);
+      if ([min, max, neutral].every(Number.isFinite) && max >= min)
+        this.ranges.set(id, { index: i, min, max, neutral });
     }
+    const physicsOutputs = new Set<string>();
     if (refs.Physics) {
       const buffer = await this.buffer(refs.Physics);
+      const physics = JSON.parse(new TextDecoder().decode(buffer)) as {
+        PhysicsSettings?: Array<{ Output?: Array<{ Destination: { Id: string } }> }>;
+      };
+      for (const setting of physics.PhysicsSettings ?? [])
+        for (const output of setting.Output ?? []) physicsOutputs.add(output.Destination.Id);
       this.runtime.loadPhysics(buffer, buffer.byteLength);
     }
+    this.channels = actingChannels(this.ranges, physicsOutputs);
     this.blinkIds = manifest.Groups?.find((group) => group.Name === 'EyeBlink')?.Ids ?? [];
     this.resize();
     this.runtime.getModelMatrix().setHeight(1.82);
@@ -181,6 +231,19 @@ export class Avatar {
           .pop()!
           .replace(/\.motion3\.json$/i, '');
         const buffer = await this.buffer(entry.File);
+        const data = JSON.parse(new TextDecoder().decode(buffer)) as {
+          Meta?: { Duration?: number };
+          Curves?: Array<{ Target: string; Id: string; Segments?: number[] }>;
+        };
+        this.motionInfo.set(name, {
+          duration: Math.max(0, data.Meta?.Duration ?? 0) * 1000,
+          held: motionEndpoints(data.Curves ?? []),
+          parameters: new Set(
+            (data.Curves ?? [])
+              .filter((curve) => curve.Target === 'Parameter')
+              .map((curve) => curve.Id),
+          ),
+        });
         const motion = this.runtime.loadMotion(buffer, buffer.byteLength, name);
         if (!motion) continue;
         motion.setEffectIds(
@@ -196,6 +259,27 @@ export class Avatar {
           motion.setLoop(true);
         }
       }
+    for (const [enter, exit, parameter] of [
+      ['默认手切举手', '举手切默认手', 'Movement2'],
+      ['竖手指切出来动画', '竖手指切回默认', 'Movement3'],
+    ]) {
+      if (!enter || !exit || !parameter || !this.ranges.has(parameter)) continue;
+      const entry = this.motionInfo.get(enter),
+        back = this.motionInfo.get(exit);
+      if (!entry?.duration || !back?.duration) continue;
+      this.poseDefinitions.set(enter, {
+        enter,
+        exit,
+        parameter,
+        enterMs: entry.duration,
+        exitMs: back.duration,
+      });
+      // These clips are authored as a pair. Preserve their final pose until the return clip.
+      for (const name of [enter, exit]) {
+        this.motions.get(name)?.setFadeInTime(0);
+        this.motions.get(name)?.setFadeOutTime(0);
+      }
+    }
     this.model.saveParameters();
     window.__avatarStatus = {
       loaded: true,
@@ -208,32 +292,100 @@ export class Avatar {
     window.addEventListener('resize', this.resize);
     this.canvas.addEventListener('webglcontextlost', this.contextLost);
   }
+  configure(settings: PresentationSettings): void {
+    this.presentation = { ...settings };
+    this.actor.configure(settings);
+    if (settings.reducedMotion) this.clearPose();
+    if (!this.model || settings.reducedMotion) this.framing = { ...FRAMING[settings.framing] };
+  }
   setState(state: string): void {
-    this.state = state;
-    if (state !== 'idle') this.reset();
+    const now = performance.now();
+    const next: ActingState = ['thinking', 'working', 'error', 'blocked'].includes(state)
+      ? (state as ActingState)
+      : 'idle';
+    if (next !== this.state && next !== 'idle') {
+      this.mixer.clear(now, next === 'blocked');
+      this.clearPose();
+    }
+    this.state = next;
+    this.errorUntil = next === 'error' ? now + 3000 : 0;
+    this.actor.setState(next, now);
   }
   reset(): void {
-    this.expression = [];
-    this.expressionUntil = 0;
-    this.motionManager.stopAllMotions();
+    const now = performance.now();
+    this.actor.reset(now);
+    this.lastGesture = -Infinity;
+    this.state = 'idle';
+    this.mixer.clear(now, true);
+    this.clearPose();
+  }
+  preview(preset: CharacterPreview): void {
+    if (this.state === 'blocked') return;
+    const now = performance.now();
+    this.reset();
+    this.actor.preview(preset, now);
+    if (preset !== 'reset') {
+      const emotion = preset === 'shy' ? 'embarrassed' : preset === 'happy' ? 'happy' : 'neutral';
+      const name =
+        preset === 'tease' && this.expressions.has('屑屑眼')
+          ? '屑屑眼'
+          : this.inventory.expressionMap[emotion];
+      this.setExpression(name, now);
+      if (preset === 'explain') this.startGesture(this.inventory.gestureMap.explain, now);
+    }
+    if (window.__avatarStatus) window.__avatarStatus.lastPreview = preset;
   }
   cue(cue: CharacterCue): void {
-    const name = this.inventory.expressionMap[cue.emotion];
-    this.expression = name ? (this.expressions.get(name) ?? []) : [];
-    this.expressionStarted = performance.now();
-    this.expressionUntil = this.expressionStarted + 4200;
-    const motionName = this.inventory.gestureMap[cue.gesture];
-    const motion = motionName ? this.motions.get(motionName) : undefined;
-    if (motion && performance.now() - this.lastGesture > 1600) {
-      this.motionManager.stopAllMotions();
-      this.motionManager.startMotionPriority(motion, false, 3);
-      this.lastGesture = performance.now();
-    }
+    const now = performance.now();
+    if (!this.actor.cue(cue, now)) return;
+    const emotion = cue.attitude === 'shy' ? 'embarrassed' : cue.emotion;
+    const name =
+      cue.attitude === 'tease' && this.expressions.has('屑屑眼')
+        ? '屑屑眼'
+        : this.inventory.expressionMap[emotion];
+    this.setExpression(name, now);
+    const gesture = cue.gesture === 'none' && cue.attitude === 'explain' ? 'explain' : cue.gesture;
+    const motionName = this.inventory.gestureMap[gesture];
+    this.startGesture(motionName, now);
     if (window.__avatarStatus) {
       window.__avatarStatus.lastCue = `${cue.emotion}/${cue.gesture}`;
+      window.__avatarStatus.lastAttitude = cue.attitude ?? 'neutral';
       window.__avatarStatus.lastExpression = name ?? 'neutral';
       window.__avatarStatus.lastMotion = motionName ?? 'none';
     }
+  }
+  private setExpression(name: string | undefined, now: number): void {
+    this.mixer.transition(name ?? 'neutral', name ? (this.expressions.get(name) ?? []) : [], now);
+  }
+  private clearPose(): void {
+    this.poses.clear();
+    this.gestureManager.stopAllMotions();
+    this.activeGesture = '';
+    this.posePhase = 'none';
+    this.poseTime = 0;
+  }
+  private startGesture(name: string | undefined, now: number): void {
+    if (!name || this.presentation.reducedMotion || now - this.lastGesture < 1600) return;
+    const motion = this.motions.get(name);
+    if (!motion) return;
+    const definition = this.poseDefinitions.get(name);
+    if (definition) {
+      if (!this.poses.start(definition, now)) return;
+      this.posePhase = 'none';
+    } else {
+      this.poses.clear();
+      this.posePhase = 'none';
+      this.poseTime = 0;
+      this.gestureManager.startMotionPriority(motion, false, 3);
+      this.activeGesture = name;
+    }
+    this.lastGesture = now;
+  }
+  private write(index: number, value: number): void {
+    const min = this.model.getParameterMinimumValue(index);
+    const max = this.model.getParameterMaximumValue(index);
+    if (Number.isFinite(value))
+      this.model.setParameterValueByIndex(index, Math.max(min, Math.min(max, value)));
   }
   hit(x: number, y: number): boolean {
     if (!this.gl || !this.model) return false;
@@ -272,55 +424,93 @@ export class Avatar {
   private draw = (now: number): void => {
     if (this.disposed) return;
     try {
-      const dt = this.previous ? Math.min((now - this.previous) / 1000, 0.05) : 0;
+      const elapsed = this.previous ? Math.max(0, (now - this.previous) / 1000) : 0;
+      const dt = Math.min(elapsed, 0.05);
       this.previous = now;
       this.model.loadParameters();
       if (this.motionManager.isFinished() && this.idle)
         this.motionManager.startMotionPriority(this.idle, false, 1);
-      this.motionManager.updateMotion(this.model, dt);
-      const phase = now / 1000;
-      const blinkPhase = phase % 4.4;
-      const blink = blinkPhase < 0.18 ? Math.abs(blinkPhase / 0.09 - 1) : 1;
+      this.motionManager.updateMotion(this.model, elapsed);
+      if (this.errorUntil && now >= this.errorUntil) this.setState('idle');
+      const pose = this.poses.sample(now);
+      if (pose.phase !== this.posePhase) {
+        this.gestureManager.stopAllMotions();
+        this.poseTime = 0;
+        if (pose.definition && (pose.phase === 'enter' || pose.phase === 'exit')) {
+          const name = pose.phase === 'enter' ? pose.definition.enter : pose.definition.exit;
+          this.gestureManager.startMotionPriority(this.motions.get(name), false, 3);
+          this.activeGesture = name;
+          this.gestureManager.updateMotion(this.model, 0);
+        } else if (pose.phase === 'none') this.activeGesture = '';
+        this.posePhase = pose.phase;
+      }
+      if (pose.definition && (pose.phase === 'hold' || pose.phase === 'exit')) {
+        for (const [id, value] of this.motionInfo.get(pose.definition.enter)?.held ?? []) {
+          const index = this.indexes.get(id);
+          if (index !== undefined) this.write(index, value);
+        }
+      }
+      if (pose.phase === 'enter' || pose.phase === 'exit') {
+        const time = (pose.timeMs ?? 0) / 1000;
+        this.gestureManager.updateMotion(this.model, Math.max(0, time - this.poseTime));
+        this.poseTime = time;
+      } else if (pose.phase === 'none') this.gestureManager.updateMotion(this.model, elapsed);
+      if (pose.phase === 'none' && this.gestureManager.isFinished()) this.activeGesture = '';
+      const acting = this.actor.sample(now, dt);
+      const animated = this.motionInfo.get(this.activeGesture)?.parameters;
+      for (const [channel, range] of Object.entries(this.channels) as [
+        ActingChannel,
+        ParameterRange,
+      ][]) {
+        const id = this.model.getParameterId(range.index) as { getString(): string };
+        if (animated?.has(id.getString())) continue;
+        // DeepSeek forward lean is the negative half of LeanInput's authored range.
+        const amount = channel === 'lean' ? -acting.lean * 0.35 : acting[channel];
+        const target = parameterValue(range, amount);
+        if (channel === 'smile') {
+          const base = this.model.getParameterValueByIndex(range.index);
+          this.write(range.index, base + (target - range.neutral));
+        } else this.write(range.index, target);
+      }
       for (const id of this.blinkIds) {
         const index = this.indexes.get(id);
-        if (index !== undefined) this.model.setParameterValueByIndex(index, blink);
+        if (index !== undefined && !animated?.has(id)) this.write(index, acting.blink);
       }
+      const phase = now / 1000;
       const breath = this.indexes.get('ParamBreath');
-      if (breath !== undefined)
-        this.model.setParameterValueByIndex(breath, 0.5 + Math.sin(phase * 1.8) * 0.35);
-      if (this.state === 'thinking' || this.state === 'working') {
-        const angle = this.indexes.get('ParamAngleZ');
-        if (angle !== undefined)
-          this.model.setParameterValueByIndex(angle, Math.sin(phase * 1.4) * 3, 0.35);
-      }
+      if (breath !== undefined && this.state !== 'blocked')
+        this.write(breath, 0.5 + Math.sin(phase * 1.8) * 0.35);
       this.runtime._physics?.evaluate(this.model, dt);
+      const layers = this.mixer.sample(now);
+      const values = expressionValues(layers, (index) =>
+        this.model.getParameterValueByIndex(index),
+      );
+      for (const [index, value] of values) this.write(index, value);
       const weight = Math.min(
         1,
-        (now - this.expressionStarted) / 200,
-        Math.max(0, (this.expressionUntil - now) / 400),
+        layers.reduce((sum, layer) => sum + layer.weight, 0),
       );
-      for (const parameter of this.expression) {
-        const current = this.model.getParameterValueByIndex(parameter.index);
-        const target =
-          parameter.blend === 'Add'
-            ? current + parameter.value
-            : parameter.blend === 'Multiply'
-              ? current * parameter.value
-              : parameter.value;
-        this.model.setParameterValueByIndex(parameter.index, target, Math.max(0, weight));
-      }
       this.model.update();
       const gl = this.gl;
       if (window.__avatarStatus) {
-        window.__avatarStatus.expressionActive = weight > 0 && this.expression.length > 0;
+        window.__avatarStatus.expressionActive = weight > 0;
         window.__avatarStatus.expressionWeight = Math.max(0, weight);
-        window.__avatarStatus.motionActive = this.motionManager.getCurrentPriority() === 3;
+        window.__avatarStatus.actingPreset = acting.preset;
+        window.__avatarStatus.posePhase = pose.phase;
+        window.__avatarStatus.motionActive = pose.phase !== 'none' || !!this.activeGesture;
       }
       gl.viewport(0, 0, this.canvas.width, this.canvas.height);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       const matrix = new CubismMatrix44();
-      matrix.scale(this.canvas.height / this.canvas.width, 1);
+      const desired = FRAMING[this.presentation.framing];
+      const blend = 1 - Math.exp(-6 * dt);
+      this.framing.scale += (desired.scale - this.framing.scale) * blend;
+      this.framing.y += (desired.y - this.framing.y) * blend;
+      const approach = this.presentation.reducedMotion ? 0 : Math.max(0, acting.lean) * 0.25;
+      const scale = this.framing.scale * (1 + approach);
+      matrix.scale((this.canvas.height / this.canvas.width) * scale, scale);
+      matrix.translateY(this.framing.y - (scale - this.framing.scale) * 0.7);
       matrix.multiplyByMatrix(this.runtime.getModelMatrix());
       const renderer = this.runtime.getRenderer();
       renderer.setMvpMatrix(matrix);

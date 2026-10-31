@@ -11,10 +11,14 @@ interface Window {
     maskGroups?: number;
     maskBuffers?: number;
     lastCue?: string;
+    lastAttitude?: string;
     lastExpression?: string;
     lastMotion?: string;
     expressionActive?: boolean;
     expressionWeight?: number;
     motionActive?: boolean;
+    actingPreset?: string;
+    posePhase?: string;
+    lastPreview?: import('../shared/contracts.js').CharacterPreview;
   };
 }

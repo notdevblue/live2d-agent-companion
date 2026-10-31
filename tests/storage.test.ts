@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { parseSettings } from '../src/shared/validation.js';
 import { JsonFile, CredentialVault, credentialScope } from '../src/main/storage.js';
 
 describe('credential and metadata storage', () => {
@@ -60,6 +61,39 @@ describe('credential and metadata storage', () => {
       await restored.initialize();
       expect(await restored.get(scope)).toBe('private-test-value');
       expect(await restored.get(credentialScope('hermes', 'https://b.example'))).toBe('');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('presentation persistence (FR-SET-001)', () => {
+  it('restores presentation alongside an intentional offscreen position', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'companion-presentation-'));
+    try {
+      const settings = parseSettings({
+        provider: { provider: 'mock', endpoint: '', agentId: 'demo', sessionId: 'demo-session' },
+        jevEnabled: false,
+        jevModel: 'jev-1.14.0',
+        modelPath: '',
+        scale: 1.4,
+        alwaysOnTop: true,
+        clickThrough: true,
+        presentation: {
+          intensity: 'expressive',
+          framing: 'close',
+          positionLocked: true,
+          reducedMotion: true,
+        },
+      });
+      const position = { x: -130, y: 780 };
+      await new JsonFile(dir, 'settings.json').write({ settings, position });
+      const restored = (await new JsonFile(dir, 'settings.json').read()) as {
+        settings: unknown;
+        position: unknown;
+      };
+      expect(parseSettings(restored.settings)).toEqual(settings);
+      expect(restored.position).toEqual(position);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

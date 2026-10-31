@@ -9,16 +9,22 @@
 | 항목 | 구현/실증 | 한계 |
 |---|---|---|
 | Electron | typed IPC, sender/mainFrame 검사, sandbox/contextIsolation, renderer 외부 네트워크 차단 | Windows 실제 창/입력 미검증 |
-| UI/Live2D | 모델만 보이는 투명 Overlay, 별도 채팅/설정, 모니터 사이 드래그·모니터 선택·부분 표시·잡은 상태의 휠 배율·트레이·복구 단축키, 실제 모델 idle/blink/breath/표정/one-shot 모션 | Windows·실제 고 DPI·성능 수락 전 |
+| UI/Live2D | 투명 Overlay, 모니터 이동·부분 표시·휠 배율, 로컬 actor의 시선/고개/몸 연기·표정 crossfade·paired 손 포즈, 강도/구도/배치 잠금/움직임 줄이기/미리보기 | Windows·실제 고 DPI·성능 수락 전. 마우스 시선 추적/쓰다듬기/TTS 없음 |
 | Linux/Sway | Xwayland의 non-focusable Overlay, 입력 전용 XShape로 빈 영역 통과·모델 재진입, 실패 시 전체 입력 복구 | 현재 SwayFX 환경에서 실증. native Wayland 클릭 통과는 미지원 |
 | Core | binding/turn/request 검사, dedupe, lease, reconciling, 승인/취소, 원문 없는 복원 | 원문 히스토리 영구 저장 안 함 |
 | Hermes SSH | 기존 owner의 native control/ticket/WebSocket, 명시적 세션 선택, 전용 테스트 세션 실제 왕복·새 연결 receipt 복구 | canonical Bot Chat 미검증, 실제 진행 중 취소/승인은 계약 테스트만 |
 | Hermes HTTP | Runs/SSE/상태/중단/승인/복구와 테스트 서버 왕복 | 원격 실증 전. API 소유 세션 전용 |
 | Grok Bot | Webhook 인증 제출, 200→accepted/awaiting_result | 실계정 미실증, callback 미구현, 양방향 채팅 미지원 |
-| Jev | Choice emotion/gesture, 최대 800자 구간, 비동기 판단·deadline·confidence·stale gating | 한국어 인사 실증은 전체 품질 평가가 아님 |
+| Jev | 한 요청의 Choice emotion/gesture/선택적 attitude, 최대 800자 구간, 비동기 판단·deadline·confidence·stale gating | 한국어 인사 실증은 전체 품질 평가가 아님. attitude 품질과 transport 검증은 구분 |
 | 인증키 | async safeStorage, 서버별 credential scope, 사용자 `.env` 시작 시 입력 | 현재 headless 환경은 보호 저장소 불가. 앱 보관은 메모리 전용이며 사용자 `.env`는 별도 유지 |
 
 ## 실행·복원 구조
+
+후속 캐릭터 연기 구현(`FR-L2D-005~006`, `FR-DIR-004`, `FR-SET-003`): `acting.ts`는 결정적인 시선/blink와 시간 기반 damping, 생각·설명·쑥스러움·기쁨·장난·안심 반응 및 반복 억제를 담당한다. `performance.ts`는 범위/중립값/physics-output 검사, 표정 crossfade, authored pose의 진입/유지/복귀를 분리한다. `Avatar`는 DeepSeek의 `Angle*`/`Position*`/`LeanInput`을 구동한다. 이전 `ParamAngleZ` 직접 쓰기는 physics에 의해 0으로 덮였지만 현재는 upstream과 최종 출력 모두 변한다. 모든 모델이 같은 리깅을 제공한다고 가정하지 않고 없는/physics 출력인 채널은 생략한다.
+
+표현 설정은 기존 설정 파일에 선택적 `presentation`으로 저장하고 이전 파일에는 기본값을 적용한다. 구도/강도/위치 잠금/움직임 줄이기만 바꾸면 adapter/session과 Overlay를 재생성하지 않는다. paired 손 pose는 1.5초 유지 후 대응 복귀 자산을 사용하며 손목/손가락 endpoint를 함께 보존한다. pose와 clip은 같은 경과 시간을 쓰고 physics의 bounded step과 분리해 느린 프레임의 단계 불일치를 피한다. 일반 사용자 gesture 매핑은 기존 단발 재생으로 fallback한다.
+
+미리보기 IPC는 enum/sender/현재 요청·승인/switching 검사를 거친다. 늦은 character 이벤트가 승인 차단을 풀지 못하도록 renderer는 현재 turn에서 blocked 여부를 파생하고, 승인 종료 뒤 마지막 Director 상태를 복원한다. 이전 대상의 느린 connect는 selection별 pending token으로 격리한다. 자세한 조작은 README와 [상호작용 설계](../ux/INTERACTION_DESIGN.md#구현된-캐릭터-연기와-표현-설정)를 따른다.
 
 루트 [README](../../README.md)의 준비/실행 명령을 따른다. `local-assets/DeepSeek/`와 `vendor/`는 ignored이며 git clone만으로 자산이 준비되지 않는다. SDK는 공식 Framework 5-r.5 commit과 Core 5.3(`core/06`) 해시를 검사한다. 로컬 개발 사용과 배포 라이선스 검토는 구분한다.
 
@@ -59,7 +65,11 @@ npm audit
 
 ## 확인 결과 (2026-10-31)
 
-- TypeScript strict, Prettier 및 production build 통과. Unit/Contract 94개: 전송/SSE·SSH receipt/replay·코어 복구/lease·승인·저장 barrier·지연 판단·모델 경로·credential/endpoint 정규화·`.env` 입력·마스크 용량·입력 영역·드래그 배율·모니터 간 배치 검사. Electron smoke는 실제 form 제출, 모니터 선택 UI/알 수 없는 ID 거절/대화 대상 유지, 새 세션 생성/공급자 변경 뒤 이전 대화·승인 UI 제거도 검사한다.
+- TypeScript strict, Prettier 및 production build 통과. Unit/Contract 116개: 기존 전송/SSE·SSH receipt/replay·복구/lease·승인·저장·지연 판단·모델 경로·인증 입력·렌더 용량·입력 영역·모니터 배치에 더해 actor의 30/60/120fps 일관성, 감정/태도·반복/만료/blocked, expression crossfade, upstream/range 선택, 전체 손 pose endpoint와 진입/유지/복귀, 표현 설정 마이그레이션/저장 검사를 포함한다.
+- 기본 Electron Mock smoke에서 기존 form/모니터/세션 라우팅 외에 `presentationControls`, `previewSafety`, `lockedGesture`, `approvalBlocked`, `approvalResumed`, `pendingSelection` 모두 통과했다. 로컬 미리보기 후 첫 실제 cue의 표정 weight 1·pose 활성, 표현 설정 적용 시 renderer/selection/request/위치 유지, renderer reload 복원, 뒤늦은 character 이벤트의 승인 차단 유지, 이전 느린 connect와 새 선택의 pending token 격리를 검사했다. 고의로 잘못된 IPC를 보내는 거절 로그는 예상된 거절 경로 검사 결과다.
+- 실제 DeepSeek의 로컬 연속 프레임에서 고개 physics 출력이 thinking 중 약 −3.64까지 변하고, 설명 포즈 유지 중 `Movement3=1`과 손목/손가락 endpoint가 보존되며 복귀 뒤 모두 중립으로 돌아오는 것을 확인했다. happy→홍조→땀은 240ms crossfade 가중치가 연속으로 이어졌다. `neutral/none + attitude=tease`도 실제 장난 눈과 고개 연기로 적용됐다. 30fps 간격 시뮬레이션 1,980 draw와 10fps 간격 60 draw를 검사했으며 실시간 GPU FPS 측정은 아니다. 로컬 비교 영상/이미지는 ignored `artifacts/motion-comparison/updated-motion.mp4`, `before-after.png`, 수치 근거는 `.tmp/motion-after/*traces.json`이다.
+- attitude Choice 추가 후 기존에 허용된 Hermes 테스트 세션에서 `.env` 입력으로 실제 한국어 왕복·Jev 판단·새 actor의 happy/손 pose 적용을 다시 확인했다. 관찰된 Jev 왕복은 220ms 한 번이며 전체 지연이나 한국어 attitude 품질 보장은 아니다. 기존 provider 기억·canonical Bot Chat 연속성을 새로 검증한 결과도 아니다.
+- 실제 Sway/Xwayland 앱 프로세스에서 조용함/상반신/배치 잠금/움직임 줄이기를 저장하고, 별도 앱 프로세스로 재실행해 네 필드와 기존 위치·크기 복원을 확인했다. 표현 설정 저장은 selection/request를 유지했고 실제 로컬 shy 미리보기도 확인했다. 검증 후 기존과 같은 기본 연출/전신/잠금 해제/움직임 줄이기 해제로 되돌리고 일반 앱으로 다시 실행했다. 사용자가 정한 부분 오프스크린 위치·배율과 항상 위는 유지했다. 실제 OS 재부팅/재로그인은 수행하지 않았다.
 - npm audit 취약점 0건. CI 자동 실행과 Windows 빌드는 아직 없다.
 - 실제 Electron headless에서 모델 파라미터 509개와 440×680 WebGL 출력, 알파 0인 빈 모서리, renderer Node `require` 접근 불가 및 좁은 preload 브리지 확인.
 - 사용자가 승인한 Hermes `default` 전용 새 테스트 세션에서 delta→최종 본문→원격 receipt 완료를 확인했다. 기존 대화에 테스트 메시지를 넣거나 원격 서비스를 재시작/변경하지 않았다. 새 SSH 클라이언트의 동일 요청 receipt 복구도 통과했다.

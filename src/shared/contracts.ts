@@ -90,9 +90,12 @@ export const EMOTIONS = [
   'concerned',
 ] as const;
 export const GESTURES = ['none', 'wave', 'explain', 'thinking'] as const;
+export const ATTITUDES = ['neutral', 'explain', 'tease', 'shy', 'reassure'] as const;
 export type Emotion = (typeof EMOTIONS)[number];
 export type Gesture = (typeof GESTURES)[number];
+export type Attitude = (typeof ATTITUDES)[number];
 export interface ExpressionDecision {
+  attitude?: Attitude;
   emotion: Emotion;
   gesture: Gesture;
   confidence: number;
@@ -112,10 +115,33 @@ export interface TurnView extends RequestRef {
   approval?: { approvalId: string; summary: string; expiresAt: number };
   expressionStatus?: string;
 }
+export interface PresentationSettings {
+  intensity: 'quiet' | 'normal' | 'expressive';
+  framing: 'full' | 'bust' | 'close';
+  positionLocked: boolean;
+  reducedMotion: boolean;
+}
+export const DEFAULT_PRESENTATION: Readonly<PresentationSettings> = {
+  intensity: 'normal',
+  framing: 'full',
+  positionLocked: false,
+  reducedMotion: false,
+};
+export const CHARACTER_PREVIEWS = [
+  'thinking',
+  'explain',
+  'shy',
+  'tease',
+  'happy',
+  'reset',
+] as const;
+export type CharacterPreview = (typeof CHARACTER_PREVIEWS)[number];
 export type CompanionEvent = (
   | { type: 'turn'; turn: TurnView }
   | { type: 'character'; state: 'idle' | 'thinking' | 'working' | 'error' }
   | { type: 'cue'; cue: CharacterCue }
+  | { type: 'presentation'; settings: PresentationSettings }
+  | { type: 'character.preview'; preset: CharacterPreview }
   | { type: 'overlay-scale'; scale: number }
   | { type: 'overlay-input'; mode: OverlayInputMode; error?: string }
 ) & { selectionId?: string; revision?: number };
@@ -135,6 +161,7 @@ export interface AppSettings {
   clickThrough: boolean;
   expressionMap?: Partial<Record<Emotion, string>>;
   gestureMap?: Partial<Record<Gesture, string>>;
+  presentation?: PresentationSettings;
 }
 export interface ModelInventory {
   url: string;
@@ -179,6 +206,7 @@ export interface CompanionBridge {
   saveSettings(settings: AppSettings): Promise<Bootstrap>;
   storeCredential(provider: 'hermes' | 'grok_bot' | 'jev', value: string): Promise<void>;
   chooseModel(): Promise<Bootstrap>;
+  previewCharacter(preset: CharacterPreview): Promise<void>;
   send(text: string, selectionId: string): Promise<void>;
   cancel(requestId: string): Promise<void>;
   reconcile(requestId: string): Promise<void>;

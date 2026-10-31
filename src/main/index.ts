@@ -28,7 +28,7 @@ import type {
   Capabilities,
   OverlayInputRegion,
 } from '../shared/contracts.js';
-import { unsupportedCapabilities } from '../shared/contracts.js';
+import { DEFAULT_PRESENTATION, unsupportedCapabilities } from '../shared/contracts.js';
 import { OverlayInputState } from '../shared/overlay-input.js';
 import {
   defaultOverlayPosition,
@@ -37,7 +37,7 @@ import {
 } from '../shared/overlay-placement.js';
 import { parseInputRegion } from '../shared/input-region.js';
 import { X11InputShape } from './x11-input.js';
-import { parseSettings } from '../shared/validation.js';
+import { characterPreviewSchema, parseSettings } from '../shared/validation.js';
 import { TurnCoordinator, bindingKey, type CoordinatorMetadata } from '../core/turn-coordinator.js';
 import { MockAdapter } from '../adapters/mock.js';
 import { HermesAdapter } from '../adapters/hermes.js';
@@ -94,6 +94,7 @@ let tray: Tray | undefined;
 let coordinator: TurnCoordinator | undefined;
 let adapter: AgentAdapter | undefined;
 let switching = false;
+let submissionPending: { selectionId: string; token: symbol } | undefined;
 let selectionId = crypto.randomUUID();
 let revision = 0;
 let storageFault = false;
@@ -111,6 +112,7 @@ let settings: AppSettings = {
   scale: 1,
   alwaysOnTop: true,
   clickThrough: true,
+  presentation: { ...DEFAULT_PRESENTATION },
 };
 let settingsFile: JsonFile;
 let pendingFile: JsonFile;
@@ -126,7 +128,7 @@ function emit(event: CompanionEvent): void {
   if (event.type === 'cue') lastCue = event;
   for (const window of [overlay, chat])
     if (window && !window.isDestroyed()) window.webContents.send('companion:event', event);
-  if (event.type !== 'overlay-scale' && event.type !== 'overlay-input') persistPending();
+  if (event.type === 'turn' || event.type === 'character' || event.type === 'cue') persistPending();
 }
 function persistPending(): void {
   if (!coordinator || !pendingFile) return;
@@ -544,6 +546,7 @@ function registerIpc(): void {
       settings.provider.sessionId = created.id;
       await settingsFile.write({ settings, position });
       await configure(true);
+      overlay?.reload();
       return await bootstrap();
     } finally {
       switching = false;
@@ -565,18 +568,32 @@ function registerIpc(): void {
       JSON.stringify(next.provider) !== JSON.stringify(settings.provider) ||
       next.jevEnabled !== settings.jevEnabled ||
       next.jevModel !== settings.jevModel;
+    const mappingsChanged =
+      JSON.stringify(next.expressionMap ?? {}) !== JSON.stringify(settings.expressionMap ?? {}) ||
+      JSON.stringify(next.gestureMap ?? {}) !== JSON.stringify(settings.gestureMap ?? {});
+    const reloadOverlay =
+      runtimeChanged || mappingsChanged || next.clickThrough !== settings.clickThrough;
+    const placementChanged =
+      next.scale !== settings.scale || next.alwaysOnTop !== settings.alwaysOnTop;
     switching = true;
     try {
+      if (next.presentation?.positionLocked) stopOverlayDrag();
       settings = next;
       await settingsFile.write({ settings, position });
-      await loadModel();
+      if (mappingsChanged) await loadModel();
       if (runtimeChanged) await configure(true);
       if (recreateOverlay) {
         overlay?.destroy();
         await createOverlay();
       } else {
-        positionOverlay();
-        overlay?.reload();
+        if (placementChanged) positionOverlay();
+        updateOverlayInput();
+        if (reloadOverlay) overlay?.reload();
+        else
+          emit({
+            type: 'presentation',
+            settings: settings.presentation ?? { ...DEFAULT_PRESENTATION },
+          });
       }
       return await bootstrap();
     } finally {
@@ -609,6 +626,20 @@ function registerIpc(): void {
     }
     return bootstrap();
   });
+  ipcMain.handle('companion:preview', (event, input: unknown) => {
+    trusted(event, true);
+    const preset = characterPreviewSchema.parse(input);
+    const current = coordinator?.current;
+    if (
+      switching ||
+      quitting ||
+      submissionPending?.selectionId === selectionId ||
+      current?.approval ||
+      (current && !['completed', 'failed', 'cancelled', 'interrupted'].includes(current.state))
+    )
+      throw new Error('요청이나 승인 처리가 끝난 뒤 캐릭터를 미리 볼 수 있습니다.');
+    emit({ type: 'character.preview', preset });
+  });
   ipcMain.handle('companion:send', async (event, text: unknown, expectedSelection: unknown) => {
     trusted(event, true);
     if (quitting || switching || storageFault || !coordinator || !adapter)
@@ -620,10 +651,17 @@ function registerIpc(): void {
     const activeAdapter = adapter;
     const activeCoordinator = coordinator;
     const selected = selectionId;
-    await activeAdapter.connect();
-    if (switching || selectionId !== selected || coordinator !== activeCoordinator)
-      throw new Error('대화 대상이 변경되어 전송하지 않았습니다.');
-    await activeCoordinator.send(z.string().trim().min(1).max(32000).parse(text));
+    if (submissionPending?.selectionId === selected) throw new Error('요청 전송을 준비 중입니다.');
+    const submissionToken = Symbol();
+    submissionPending = { selectionId: selected, token: submissionToken };
+    try {
+      await activeAdapter.connect();
+      if (switching || selectionId !== selected || coordinator !== activeCoordinator)
+        throw new Error('대화 대상이 변경되어 전송하지 않았습니다.');
+      await activeCoordinator.send(z.string().trim().min(1).max(32000).parse(text));
+    } finally {
+      if (submissionPending?.token === submissionToken) submissionPending = undefined;
+    }
   });
   const activeRequest = (id: unknown) => {
     if (quitting || switching || !coordinator || id !== coordinator.current?.requestId)
@@ -687,6 +725,8 @@ function registerIpc(): void {
     const x = delta.parse(dx);
     const y = delta.parse(dy);
     if (event.sender !== overlay?.webContents) throw new Error('Overlay 전용 요청입니다.');
+    if (settings.presentation?.positionLocked || switching || quitting)
+      throw new Error('캐릭터 위치가 잠겨 있거나 설정을 변경 중입니다.');
     if (!overlayInputState.dragging)
       throw new Error('캐릭터를 드래그하는 동안만 이동할 수 있습니다.');
     // Use the intended position, rather than a compositor acknowledgement that
@@ -701,7 +741,8 @@ function registerIpc(): void {
     async (event, wheel: unknown, screenX: unknown, screenY: unknown) => {
       trusted(event);
       if (event.sender !== overlay?.webContents) throw new Error('Overlay 전용 요청입니다.');
-      if (switching || quitting) throw new Error('설정 변경 중이거나 앱을 종료하고 있습니다.');
+      if (switching || quitting || settings.presentation?.positionLocked)
+        throw new Error('캐릭터 위치가 잠겨 있거나 설정을 변경 중입니다.');
       const deltaY = z.number().finite().min(-240).max(240).parse(wheel);
       const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
       const cursor = { x: coordinate.parse(screenX), y: coordinate.parse(screenY) };
@@ -723,6 +764,7 @@ function registerIpc(): void {
     try {
       trusted(event);
       if (event.sender !== overlay?.webContents || typeof active !== 'boolean') return;
+      if (active && (settings.presentation?.positionLocked || switching || quitting)) return;
       if (active) {
         const bounds = overlay.getBounds();
         position = { x: bounds.x, y: bounds.y };
@@ -786,9 +828,53 @@ async function runSmoke(): Promise<void> {
     if (await chat?.webContents.executeJavaScript('window.__uiReady === true')) break;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  let previewSafety = true;
+  let presentationControls = true;
+  let pendingSelection = true;
+  if (!smokeHermes) {
+    const beforeSelection = selectionId;
+    const beforeRequest = coordinator?.current?.requestId;
+    const invalidPreset = await chat?.webContents.executeJavaScript(
+      "window.companion.previewCharacter('invalid').then(()=>false,()=>true)",
+    );
+    const overlayRejected = await overlay?.webContents.executeJavaScript(
+      "window.companion.previewCharacter('thinking').then(()=>false,()=>true)",
+    );
+    const previews: string[] = [];
+    for (const preset of ['thinking', 'explain', 'shy', 'tease', 'happy', 'reset']) {
+      await chat?.webContents.executeJavaScript(
+        `document.querySelector('[data-preview="${preset}"]').click()`,
+      );
+      for (let i = 0; i < 40; i++) {
+        if (
+          await overlay?.webContents.executeJavaScript(
+            `window.__avatarStatus?.lastPreview === '${preset}'`,
+          )
+        ) {
+          previews.push(preset);
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+    }
+    previewSafety = Boolean(
+      invalidPreset &&
+      overlayRejected &&
+      previews.length === 6 &&
+      selectionId === beforeSelection &&
+      coordinator?.current?.requestId === beforeRequest &&
+      !lastJudgeMs,
+    );
+  }
   await chat?.webContents.executeJavaScript(
     "document.getElementById('message').value='연결 테스트입니다. 도구를 사용하지 말고, 정말 반갑고 기쁜 마음을 담은 한국어 인사 한 문장만 답해 주세요.';document.getElementById('composer').requestSubmit()",
   );
+  if (!smokeHermes) {
+    const activeRejected = await chat?.webContents.executeJavaScript(
+      "window.companion.previewCharacter('happy').then(()=>false,()=>true)",
+    );
+    previewSafety = Boolean(previewSafety && activeRejected);
+  }
   for (let i = 0; i < 200; i++) {
     if (coordinator?.current?.state === 'completed' && (!smokeJev || lastCue)) break;
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -887,6 +973,138 @@ async function runSmoke(): Promise<void> {
       selectionId === beforeDisplaySelection &&
       coordinator?.current?.requestId === beforeDisplayRequest;
     Object.assign(result, { monitorSelection });
+    const beforePresentationSelection = selectionId;
+    const beforePresentationRequest = coordinator?.current?.requestId;
+    const beforePresentationPosition = structuredClone(position);
+    await overlay?.webContents.executeJavaScript('window.__presentationSentinel = true');
+    await chat?.webContents.executeJavaScript(`
+      for (const [id, value] of [['intensity','quiet'],['framing','bust'],['position-locked',true],['reduced-motion',true]]) {
+        const control = document.getElementById(id);
+        if (typeof value === 'boolean') control.checked = value;
+        else control.value = value;
+        control.dispatchEvent(new Event('change', {bubbles:true}));
+      }
+    `);
+    for (let i = 0; i < 80; i++) {
+      if (
+        settings.presentation?.intensity === 'quiet' &&
+        settings.presentation.framing === 'bust' &&
+        settings.presentation.positionLocked &&
+        settings.presentation.reducedMotion
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    const lockedManipulation = await overlay?.webContents.executeJavaScript(`(async()=>{
+      window.companion.setDragging(true);
+      const move = await window.companion.move(10,10).then(()=>false,()=>true);
+      const resize = await window.companion.resizeOverlay(-120,100,100).then(()=>false,()=>true);
+      return move && resize && document.getElementById('avatar').classList.contains('position-locked') &&
+        window.__presentationSentinel === true;
+    })()`);
+    const persistedPresentation = (await settingsFile.readStrict()) as { settings?: AppSettings };
+    presentationControls = Boolean(
+      lockedManipulation &&
+      !overlayInputState.dragging &&
+      settings.presentation?.intensity === 'quiet' &&
+      settings.presentation.framing === 'bust' &&
+      settings.presentation.positionLocked &&
+      settings.presentation.reducedMotion &&
+      JSON.stringify(persistedPresentation.settings?.presentation) ===
+        JSON.stringify(settings.presentation) &&
+      JSON.stringify(position) === JSON.stringify(beforePresentationPosition) &&
+      selectionId === beforePresentationSelection &&
+      coordinator?.current?.requestId === beforePresentationRequest,
+    );
+    const hitPoint = await overlay?.webContents.executeJavaScript(`(()=>{
+      const canvas = document.getElementById('avatar');
+      const gl = canvas.getContext('webgl'), pixel = new Uint8Array(4);
+      for (let y = Math.floor(canvas.height * .3); y < canvas.height * .7; y += 8) {
+        for (let x = Math.floor(canvas.width * .35); x < canvas.width * .65; x += 8) {
+          gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+          if (pixel[3] > 128) return { x: Math.round(x * innerWidth / canvas.width), y: Math.round((canvas.height-y-1)*innerHeight/canvas.height) };
+        }
+      }
+    })()`);
+    let lockedGesture = false;
+    if (hitPoint && overlay) {
+      await overlay.webContents.executeJavaScript(`
+        window.__lockedPointerEvents = 0;
+        document.getElementById('avatar').addEventListener('pointerdown', ()=>window.__lockedPointerEvents++);
+      `);
+      chat?.hide();
+      const mouse = (type: 'mouseMove' | 'mouseDown' | 'mouseUp', x: number, y: number) =>
+        overlay?.webContents.sendInputEvent({ type, x, y, button: 'left', clickCount: 1 });
+      mouse('mouseMove', hitPoint.x, hitPoint.y);
+      mouse('mouseDown', hitPoint.x, hitPoint.y);
+      mouse('mouseMove', hitPoint.x + 24, hitPoint.y + 24);
+      mouse('mouseUp', hitPoint.x + 24, hitPoint.y + 24);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const stayedHidden = !chat?.isVisible();
+      mouse('mouseMove', hitPoint.x, hitPoint.y);
+      mouse('mouseDown', hitPoint.x, hitPoint.y);
+      mouse('mouseUp', hitPoint.x, hitPoint.y);
+      for (let i = 0; i < 20 && !chat?.isVisible(); i++)
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      lockedGesture = Boolean(
+        stayedHidden &&
+        chat?.isVisible() &&
+        (await overlay.webContents.executeJavaScript('window.__lockedPointerEvents === 2')),
+      );
+      chat?.show();
+    }
+    presentationControls = Boolean(presentationControls && lockedGesture);
+    Object.assign(result, { lockedGesture });
+    // Reload the overlay to verify bootstrap applies persisted values to a new renderer.
+    overlay?.reload();
+    let restoredPresentation = false;
+    for (let i = 0; i < 100; i++) {
+      restoredPresentation = Boolean(
+        await overlay?.webContents.executeJavaScript(
+          "window.__avatarStatus?.loaded && document.getElementById('avatar').classList.contains('position-locked') && document.getElementById('framing').value === 'bust'",
+        ),
+      );
+      if (restoredPresentation) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    presentationControls = Boolean(presentationControls && restoredPresentation);
+    await chat?.webContents
+      .executeJavaScript(
+        `(async()=>{
+      const boot = await window.companion.bootstrap();
+      await window.companion.send('/approval', boot.selectionId);
+      return window.companion.previewCharacter('happy').then(()=>false,()=>true);
+    })()`,
+      )
+      .then((rejected) => {
+        previewSafety = Boolean(previewSafety && rejected);
+      });
+    // A queued director publication must never override a newer approval block.
+    emit({ type: 'character', state: 'working' });
+    const blockedFrame = await overlay?.webContents.executeJavaScript(`new Promise(resolve=>{
+      requestAnimationFrame(()=>requestAnimationFrame(()=>resolve({
+        preset: window.__avatarStatus?.actingPreset, pose: window.__avatarStatus?.posePhase
+      })));
+    })`);
+    const approvalBlocked = blockedFrame?.preset === 'neutral' && blockedFrame?.pose === 'none';
+    await chat?.webContents.executeJavaScript("document.getElementById('allow').click()");
+    let approvalResumed = false;
+    for (let i = 0; i < 80; i++) {
+      approvalResumed = Boolean(
+        await overlay?.webContents.executeJavaScript(
+          "['thinking','working'].includes(window.__avatarStatus?.actingPreset)",
+        ),
+      );
+      if (approvalResumed) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    previewSafety = Boolean(previewSafety && approvalBlocked && approvalResumed);
+    Object.assign(result, { approvalBlocked, approvalResumed });
+    for (let i = 0; i < 80; i++) {
+      if (!coordinator?.current?.approval && coordinator?.current?.state === 'completed') break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    Object.assign(result, { presentationControls, previewSafety });
     const previousSession = settings.provider.sessionId;
     await chat?.webContents.executeJavaScript("document.getElementById('create-session').click()");
     for (let i = 0; i < 100; i++) {
@@ -897,6 +1115,74 @@ async function runSmoke(): Promise<void> {
     const newSessionCleared = await chat?.webContents.executeJavaScript(
       "document.querySelectorAll('#conversation .message').length===0 && document.getElementById('provider-badge').textContent==='MOCK DEMO'",
     );
+    // Delayed connects are selection-scoped: switching targets may submit immediately,
+    // and the old handler's finally must not erase the new target's pending guard.
+    const oldAdapter = adapter!;
+    const oldCoordinator = coordinator;
+    const oldSelection = selectionId;
+    const oldConnect = oldAdapter.connect;
+    let releaseOld!: () => void;
+    let oldConnectStarted = false;
+    const oldGate = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    oldAdapter.connect = async () => {
+      oldConnectStarted = true;
+      await oldGate;
+    };
+    await chat?.webContents.executeJavaScript(`
+      window.__oldPendingSend = window.companion.send('Mock 이전 연결 대기 검사', '${oldSelection}').then(()=>false,()=>true);
+      true;
+    `);
+    for (let i = 0; i < 20 && !oldConnectStarted; i++)
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    await chat?.webContents.executeJavaScript('window.companion.createSession().then(()=>true)');
+    const newSelection = selectionId;
+    const newAdapter = adapter!;
+    const newConnect = newAdapter.connect;
+    let releaseNew!: () => void;
+    let newConnectStarted = false;
+    const newGate = new Promise<void>((resolve) => {
+      releaseNew = resolve;
+    });
+    newAdapter.connect = async () => {
+      newConnectStarted = true;
+      await newGate;
+    };
+    await chat?.webContents.executeJavaScript(`
+      window.__newPendingSend = window.companion.send('Mock 새 연결 대기 검사', '${newSelection}').then(()=>true,()=>false);
+      true;
+    `);
+    for (let i = 0; i < 20 && !newConnectStarted; i++)
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    const newToken = submissionPending?.token;
+    releaseOld();
+    const oldRejected = await chat?.webContents.executeJavaScript('window.__oldPendingSend');
+    const guardOwned =
+      newToken !== undefined &&
+      submissionPending?.token === newToken &&
+      submissionPending.selectionId === newSelection;
+    const pendingPreviewRejected = await chat?.webContents.executeJavaScript(
+      "window.companion.previewCharacter('happy').then(()=>false,()=>true)",
+    );
+    releaseNew();
+    const newSubmitted = await chat?.webContents.executeJavaScript('window.__newPendingSend');
+    oldAdapter.connect = oldConnect;
+    newAdapter.connect = newConnect;
+    pendingSelection = Boolean(
+      oldConnectStarted &&
+      newConnectStarted &&
+      oldRejected &&
+      oldSelection !== newSelection &&
+      guardOwned &&
+      pendingPreviewRejected &&
+      newSubmitted &&
+      !oldCoordinator?.current &&
+      coordinator?.current?.binding.sessionId === settings.provider.sessionId,
+    );
+    for (let i = 0; i < 40 && coordinator?.current?.state !== 'completed'; i++)
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    Object.assign(result, { pendingSelection });
     await chat?.webContents.executeJavaScript(
       "document.getElementById('provider').value='hermes';document.getElementById('endpoint').value='https://example.invalid';document.getElementById('agent-id').value='default';document.getElementById('session-id').value='routing-test';document.getElementById('load-sessions').click()",
     );
@@ -929,6 +1215,9 @@ async function runSmoke(): Promise<void> {
       cueApplied &&
       uiRouting &&
       monitorSelection &&
+      presentationControls &&
+      previewSafety &&
+      pendingSelection &&
       (!smokeJev || (lastCue?.cue.source === 'jev' && renderer.lastCue))
       ? 0
       : 1,
@@ -954,7 +1243,7 @@ app
         if (result.success) position = result.data;
       }
     }
-    if (!stored) {
+    if (!stored && !smoke) {
       try {
         const connection = JSON.parse(
           await readFile(join(root, 'local-assets/connection.json'), 'utf8'),
@@ -974,6 +1263,7 @@ app
           sessionId: `smoke-${Date.now()}`,
         },
         jevEnabled: false,
+        presentation: { ...DEFAULT_PRESENTATION },
       };
     if (smoke && smokeHermes) {
       const connection = JSON.parse(

@@ -1,4 +1,5 @@
 import {
+  ATTITUDES,
   EMOTIONS,
   GESTURES,
   type CharacterCue,
@@ -125,7 +126,12 @@ export class CharacterDirector {
       const valid = this.validDecision(result);
       const cue: CharacterCue = {
         ...(valid
-          ? { emotion: result.emotion, gesture: result.gesture, confidence: result.confidence }
+          ? {
+              emotion: result.emotion,
+              gesture: result.gesture,
+              confidence: result.confidence,
+              ...(result.attitude !== undefined ? { attitude: result.attitude } : {}),
+            }
           : { emotion: 'neutral' as const, gesture: 'none' as const, confidence: 0 }),
         requestId,
         segmentId,
@@ -140,6 +146,7 @@ export class CharacterDirector {
       !!result &&
       EMOTIONS.includes(result.emotion) &&
       GESTURES.includes(result.gesture) &&
+      (result.attitude === undefined || ATTITUDES.includes(result.attitude)) &&
       Number.isFinite(result.confidence) &&
       result.confidence >= this.threshold &&
       result.confidence <= 1

@@ -15,6 +15,8 @@
 | FR-L2D-002 | P0 | idle/blink/breathing 기본 상태와 표현 불가 모션 fallback MUST |
 | FR-L2D-003 | P1 | talking/thinking/working/success 상태 및 사용자 정의 모션 매핑 MUST |
 | FR-L2D-004 | P1 | 여러 표정과 모션 충돌 시 우선순위·전환·인터럽트 제어 MUST |
+| FR-L2D-005 | P1 | 모델의 실제 파라미터 범위·중립값·physics 출력 여부를 검사하고 upstream으로 시선/고개/몸 연기를 구동 MUST. 대응 없는 채널은 생략하며 손/머리카락 physics 출력을 임의로 덮지 않음 |
+| FR-L2D-006 | P1 | 표정 crossfade, 대응 자산이 있는 손 포즈의 진입/유지/복귀, 반복 억제, 중단/승인 시 transient 정리 MUST. 프레임 수가 아닌 시간으로 연출 진행 |
 
 ## 에이전트
 
@@ -46,6 +48,7 @@
 | FR-DIR-001 | P1 | 이벤트→캐릭터 상태 전환을 독립된 Character Director가 담당 MUST |
 | FR-DIR-002 | P1 | 무조건적 LLM 감정 추론 없이 결정적 기본 규칙을 제공 MUST |
 | FR-DIR-003 | P1 | Jev 표현 판단은 명시적으로 켠 경우 표시용 답변의 제한된 구간에만 비동기로 수행 MUST. 텍스트 표시를 막지 않고 확신 부족/timeout은 neutral fallback, 취소·전환·이전 구간의 지연 결과는 폐기 |
+| FR-DIR-004 | P1 | Jev의 선택적 attitude는 제한된 enum으로 검증하고 감정 주제와 말하는 태도를 구분 MUST. confidence를 연출 강도로 사용하지 않으며 실제 모션 타이밍은 로컬에서 처리 |
 
 ## 화면/PC
 
@@ -65,6 +68,7 @@
 |---|---|---|
 | FR-SET-001 | P0 | 에이전트·모델 경로·TTS·캐릭터 상태 매핑 설정 MUST |
 | FR-SET-002 | P0 | 키/토큰은 OS 보호 저장소 사용 MUST |
+| FR-SET-003 | P1 | 연출 강도·전신/상반신/근접 구도·배치 잠금·움직임 줄이기를 저장/복원하고 대화 연결 없이 즉시 적용 MUST. 로컬 미리보기는 진행 중 요청/승인과 충돌하지 않고 외부 호출을 하지 않음 |
 | FR-OBS-001 | P0 | 연결/요청/재시도/오류 상태를 개인 정보 없이 사용자에게 표시 MUST |
 | FR-OBS-002 | P1 | 사용자가 감사 로그/전송 데이터 삭제 가능 MUST |
 

@@ -48,6 +48,11 @@
 - Jev 활성 상태에서 표시용 답변 구간만 판단하며 텍스트 표시가 지연되지 않는다. 판단 timeout/저확신은 neutral, 취소/전환/과거 구간의 지연 결과는 적용하지 않는다(`FR-DIR-003`).
 - 응답 판단은 실제 존재하는 표정/모션에만 매핑하고 idle만 반복한다. 제스처는 one-shot이며 종료 후 기준 상태로 복귀한다. 이 표현 검증은 TTS/립싱크 완료를 뜻하지 않는다.
 - 단일 마스크 버퍼 용량을 넘는 모델에서도 마스크 그룹이 겹치지 않아 얼굴·머리카락·몸의 클리핑이 정상이다. 렌더 파라미터 적용 여부와 실제 출력 이미지 검증을 구분한다.
+- `FR-L2D-005~006`: 실제 DeepSeek에서 thinking의 upstream `AngleZ`와 physics 뒤 `ParamAngleZ` 모두 변하고, 시선·고개·몸 반응이 이어진다. paired 손 포즈는 진입 자산의 손목/손가락 등 전체 endpoint를 유지하고 대응 복귀 자산으로 중립에 돌아온다. 느린 프레임에서도 pose 단계와 clip 시계가 어긋나지 않는다.
+- happy→embarrassed→concerned 전환은 이전 표정과 새 표정의 가중치가 이어지고, 반복 cue는 높은 강도 반응을 계속 처음부터 재시작하지 않는다. cancel/전환/reconciling/승인 뒤 낡은 cue가 살아나지 않는다. 승인 turn 뒤 늦게 오는 character 이벤트도 중립 차단을 해제하지 않으며 승인 종료 뒤 현재 상태로 재개한다.
+- `FR-DIR-004`: Jev 한 요청의 3개 Choice는 visible assistant 구간만 사용한다. attitude 미포함 응답은 기존 판단으로 동작하고, 잘못된 attitude는 거절한다. 낮은 attitude confidence는 attitude만 neutral로 낮추고 다른 고확신 판단을 강제로 폐기하지 않는다. 실제 새 attitude 한국어 품질 검증과 transport/계약 검증은 구분한다.
+- `FR-SET-003`: 표현 설정은 현재 selection/request/창 위치를 유지한 채 저장·적용되고 Overlay 재로딩 없이 반영된다. 구도/강도/잠금/움직임 줄이기는 저장 후 renderer 재로딩과 앱 재실행에서 복원한다. 잠긴 채 드래그하거나 휠을 써도 이동·배율 변경·의도치 않은 채팅 열기가 없으며 단순 클릭은 채팅을 연다. 모니터 선택/위치 복구는 명시적 조작으로 계속 제공한다.
+- 미리보기의 잘못된 enum·Overlay 호출·실제 요청/승인 중 호출은 main에서 거절한다. 미리보기/초기화 직후 첫 실제 cue가 cooldown 때문에 빠지지 않는다. 이전 공급자의 느린 connect가 새 selection의 전송·미리보기를 막거나 새 pending guard를 해제하지 않는다.
 
 ## AC-06 화면 캡처 (`FR-SCR*`)
 
