@@ -67,6 +67,39 @@ afterEach(() => {
 });
 
 describe('Avatar message and background priority — FR-L2D-004/006', () => {
+  it('replaces the previous message hand pose immediately, including none, inside the old cooldown', () => {
+    for (const nextGesture of ['none', 'thinking', 'wave'] as const) {
+      const { avatar, runtime } = setup();
+      avatar.cue(cue);
+      expect(runtime.poses.sample(0).definition?.parameter).toBe('hand');
+      vi.setSystemTime(500);
+      avatar.cue({
+        ...cue,
+        messageId: 'new',
+        segmentId: 2,
+        gesture: nextGesture,
+        attitude: 'laugh',
+      });
+      expect(runtime.actor.sample(500, 0).preset).toBe('laugh');
+      const pose = runtime.poses.sample(500);
+      if (nextGesture === 'none') expect(pose.phase).toBe('none');
+      else
+        expect(pose.definition?.parameter).toBe(nextGesture === 'wave' ? 'greeting-hand' : 'wait');
+      vi.setSystemTime(0);
+    }
+  });
+  it('replaces a waiting pose with automatic laughter without requesting a hand gesture', () => {
+    const { avatar, runtime } = setup();
+    avatar.setState('thinking');
+    vi.setSystemTime(300);
+    avatar.cue({ ...cue, emotion: 'neutral', gesture: 'none', attitude: 'laugh', source: 'jev' });
+    expect(runtime.actor.sample(300, 0)).toMatchObject({ preset: 'laugh', active: true });
+    expect(runtime.poses.sample(300).phase).toBe('none');
+    avatar.setState('working');
+    expect(runtime.actor.sample(300, 0)).toMatchObject({ preset: 'laugh', active: true });
+    avatar.setState('blocked');
+    expect(runtime.actor.sample(300, 0)).toMatchObject({ preset: 'neutral', active: false });
+  });
   it('plays the greeting hand pose for a confident wave even with neutral emotion and attitude', () => {
     const { avatar, runtime } = setup();
     avatar.setState('thinking');

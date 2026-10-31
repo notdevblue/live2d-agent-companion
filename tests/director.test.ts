@@ -11,6 +11,31 @@ afterEach(() => vi.useRealTimers());
 const happy: ExpressionDecision = { emotion: 'happy', gesture: 'none', confidence: 0.9 };
 const flush = () => vi.advanceTimersByTimeAsync(0);
 describe('one decision per actual assistant message (FR-DIR-005)', () => {
+  it('gives messages a local neutral beat without Jev, coalescing and invalidating as usual', async () => {
+    const events: CompanionEvent[] = [];
+    const d = new CharacterDirector({ onEvent: (e) => events.push(e) });
+    d.begin('local');
+    d.append('첫 메시지.', true, 'first');
+    d.append('최신 메시지.', true, 'latest');
+    await flush();
+    expect(events).toMatchObject([
+      {
+        type: 'cue',
+        cue: {
+          requestId: 'local',
+          messageId: 'latest',
+          emotion: 'neutral',
+          gesture: 'none',
+          source: 'fallback',
+        },
+      },
+    ]);
+    d.append('추가 delta.', true, 'latest');
+    d.append('재생하지 않을 메시지.', true, 'cancelled');
+    d.invalidate();
+    await flush();
+    expect(events).toHaveLength(1);
+  });
   it('keeps bounded current request context across progress messages and clears it at request boundaries', async () => {
     const judge = {
       judge: vi.fn(
@@ -122,13 +147,29 @@ describe('one decision per actual assistant message (FR-DIR-005)', () => {
   });
   it('caps calls across many progress messages and drops results after sleep or cancellation', async () => {
     const judge = { judge: vi.fn(async (_text: string, _signal: AbortSignal) => happy) };
-    const d = new CharacterDirector({ judge, onEvent: () => {} });
+    const budgetEvents: CompanionEvent[] = [];
+    const d = new CharacterDirector({ judge, onEvent: (e) => budgetEvents.push(e) });
     d.begin('r');
     for (let i = 0; i < 20; i++) {
       d.append('진행 메시지.', true, String(i));
       await flush();
     }
     expect(judge.judge).toHaveBeenCalledTimes(EXPRESSION_PACING.maxJudgements);
+    expect(budgetEvents).toHaveLength(20);
+    expect(budgetEvents.slice(EXPRESSION_PACING.maxJudgements)).toEqual(
+      Array.from({ length: 20 - EXPRESSION_PACING.maxJudgements }, (_, i) => ({
+        type: 'cue',
+        cue: {
+          requestId: 'r',
+          messageId: String(i + EXPRESSION_PACING.maxJudgements),
+          segmentId: i + EXPRESSION_PACING.maxJudgements + 1,
+          emotion: 'neutral',
+          gesture: 'none',
+          confidence: 0,
+          source: 'fallback',
+        },
+      })),
+    );
     d.invalidate();
     let resolve!: (v: ExpressionDecision) => void;
     const events: CompanionEvent[] = [];

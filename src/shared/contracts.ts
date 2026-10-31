@@ -116,7 +116,7 @@ export const EMOTIONS = [
   'concerned',
 ] as const;
 export const GESTURES = ['none', 'wave', 'explain', 'thinking'] as const;
-export const ATTITUDES = ['neutral', 'explain', 'tease', 'shy', 'reassure'] as const;
+export const ATTITUDES = ['neutral', 'explain', 'tease', 'laugh', 'shy', 'reassure'] as const;
 export type Emotion = (typeof EMOTIONS)[number];
 export type Gesture = (typeof GESTURES)[number];
 export type Attitude = (typeof ATTITUDES)[number];

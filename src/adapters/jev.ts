@@ -35,10 +35,14 @@ const gestureCriteria = {
   thinking: 'Considering a question or uncertainty',
 };
 const attitudeCriteria = {
-  neutral: 'No clear speaker attitude; calm factual delivery',
+  neutral:
+    'No clear speaker attitude; calm factual delivery. A factual acknowledgement or work-status update stays neutral even with a casual ㅋㅋ, ㅎㅎ or lol attached, unless the message itself makes a joke or reacts with amusement.',
   explain:
     'A distinctly teacher-like delivery that deliberately guides the listener through a concept or demonstration. Not an ordinary answer, factual explanation, work update or list of results. This tone does not itself request a hand gesture.',
-  tease: 'The assistant playfully teases or uses gentle banter in its own delivery',
+  tease:
+    'Cheeky, knowingly provocative delivery directed at the listener: a playful jab, mock challenge, smug taunt or mischievous flirt. Choose laugh instead for a lighthearted joke or funny observation shared with the listener.',
+  laugh:
+    'Amused, chuckling delivery: the assistant makes a lighthearted joke, a humorous comparison, or a funny observation and shares the amusement with the listener. Casual Korean joking with ㅋㅋ or ㅎㅎ fits here even without saying that something is funny. The message must contain humor or an amused reaction; factual acknowledgements and work-status updates with a casual laughter marker belong to neutral. Describing, quoting or requesting laughter is not itself amused delivery.',
   shy: 'The assistant itself sounds bashful, self-conscious or modestly affectionate',
   reassure: 'The assistant warmly reassures, comforts or encourages the listener',
 };

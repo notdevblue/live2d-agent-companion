@@ -3,6 +3,7 @@ import { HermesAdapter } from '../src/adapters/hermes.js';
 import { GrokBotAdapter } from '../src/adapters/grok.js';
 import { JevJudge } from '../src/adapters/jev.js';
 import { CharacterDirector } from '../src/core/character-director.js';
+import { ActingController } from '../src/renderer/acting.js';
 import { endpoint, jsonBody, sseFrames } from '../src/adapters/transport.js';
 import {
   ATTITUDES,
@@ -264,6 +265,39 @@ function decision(options: readonly string[], choice: string, confidence: number
   };
 }
 describe('TypeSafe Jev expression choices', () => {
+  it('delivers confident shared laughter through Director to the existing actor in one call', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      json({
+        answers: {
+          emotion: decision(EMOTIONS, 'happy', 0.5),
+          gesture: decision(GESTURES, 'none', 0.98),
+          attitude: decision(ATTITUDES, 'laugh', 0.94),
+        },
+      }),
+    );
+    const actor = new ActingController();
+    const onEvent = vi.fn();
+    const director = new CharacterDirector({
+      judge: new JevJudge({ token: async () => 'fixture', fetch: fetcher }),
+      onEvent: (event) => {
+        onEvent(event);
+        if (event.type === 'cue') actor.cue(event.cue, 0);
+      },
+    });
+    director.begin('laughter-request', 'ㅋㅋ 그런듯');
+    director.append('타이밍 놓치면 맞장구만 치는 애 됨 ㅋㅋ', true, 'laughter-message');
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledOnce());
+    expect(onEvent.mock.calls[0]![0].cue).toMatchObject({
+      emotion: 'neutral',
+      gesture: 'none',
+      attitude: 'laugh',
+      source: 'jev',
+      confidence: 0.94,
+    });
+    expect(actor.sample(0, 0)).toMatchObject({ preset: 'laugh', active: true });
+    expect(fetcher).toHaveBeenCalledOnce();
+    director.invalidate();
+  });
   it('sends the current user request and assistant reply as separate data fields in one judgement', async () => {
     const fetcher = vi.fn<typeof fetch>(async (_input, init) => {
       const body = JSON.parse(String(init?.body));

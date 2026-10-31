@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ActingController, type ActingFrame, type ActingPreset } from '../src/renderer/acting.js';
+import { ATTITUDES, EMOTIONS, GESTURES } from '../src/shared/contracts.js';
 
 const motionKeys = ['headX', 'headY', 'headZ', 'bodyX', 'bodyY', 'lean', 'gazeX', 'gazeY'] as const;
 function advance(actor: ActingController, end: number, fps = 60, start = 0): ActingFrame {
@@ -13,6 +14,32 @@ function magnitude(frame: ActingFrame): number {
 }
 
 describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
+  it.each(
+    EMOTIONS.flatMap((emotion) =>
+      ATTITUDES.flatMap((attitude) => GESTURES.map((gesture) => ({ emotion, attitude, gesture }))),
+    ),
+  )('renders and expires every supported combination: $emotion/$attitude/$gesture', (decision) => {
+    const actor = new ActingController();
+    const cue = { ...decision, requestId: 'audit', messageId: 'm', segmentId: 1 };
+    expect(actor.cue(cue, 0)).toBe(true);
+    const frame = advance(actor, 1100);
+    expect(frame.active).toBe(true);
+    expect(frame.emotion).toBe(decision.emotion);
+    expect(frame.gesture).toBe(decision.gesture);
+    for (const key of [
+      ...motionKeys,
+      'eyeL',
+      'eyeR',
+      'eyeSmile',
+      'smile',
+      'expressionWeight',
+    ] as const) {
+      expect(Number.isFinite(frame[key])).toBe(true);
+      expect(Math.abs(frame[key])).toBeLessThanOrEqual(1);
+    }
+    expect(actor.cue(cue, 1200)).toBe(false);
+    expect(advance(actor, 5500, 30, 1100)).toMatchObject({ active: false, preset: 'neutral' });
+  });
   it('varies successive semantic beats while rejecting duplicate segments and resetting to neutral', () => {
     const actor = new ActingController();
     const cue = {
@@ -221,6 +248,37 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
           ...motionKeys,
         ] as const)
           expect(frame[key]).toBeCloseTo(frames[0]![key], 7);
+    }
+  });
+
+  it('uses the existing laugh performance for automatic cues, then releases and blocks it', () => {
+    for (const fps of [30, 60, 120]) {
+      const actor = new ActingController();
+      const preview = new ActingController();
+      const cue = {
+        requestId: 'r',
+        messageId: 'm',
+        segmentId: 1,
+        emotion: 'neutral',
+        gesture: 'none',
+        attitude: 'laugh',
+      } as const;
+      expect(actor.cue(cue, 0)).toBe(true);
+      preview.preview('laugh', 0);
+      const frame = advance(actor, 1100, fps);
+      const reference = advance(preview, 1100, fps);
+      expect(frame).toMatchObject({ preset: 'laugh', attitude: 'laugh', gesture: 'none' });
+      for (const key of ['eyeL', 'eyeR', 'eyeSmile', 'smile', ...motionKeys] as const)
+        expect(frame[key]).toBeCloseTo(reference[key], 7);
+      expect(frame.eyeL).toBeLessThan(0.2);
+      expect(frame.eyeR).toBeLessThan(0.2);
+      expect(frame.smile).toBeGreaterThan(0.8);
+      expect(actor.cue(cue, 1200)).toBe(false);
+      expect(advance(actor, 4600, fps, 1100)).toMatchObject({ preset: 'neutral', active: false });
+      expect(actor.cue({ ...cue, messageId: 'next', segmentId: 2 }, 4700)).toBe(true);
+      actor.setState('blocked', 4800);
+      expect(actor.sample(4800, 0)).toMatchObject({ preset: 'neutral', active: false, smile: 0 });
+      expect(actor.cue({ ...cue, messageId: 'blocked', segmentId: 3 }, 4900)).toBe(false);
     }
   });
 

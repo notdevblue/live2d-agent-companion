@@ -83,6 +83,8 @@ submitting, accepted, streaming, awaiting_result, cancel_requested, reconciling 
 
 현재 `TurnView.messages`는 `messageId/text/completed`의 순서 있는 배열이며 `text` 집계는 기존 호출과 호환하기 위해 유지한다. 말풍선/로컬 표시 cache는 requestId+messageId로 구분한다. `cue.messageId`는 실제 assistant 메시지 하나에, segmentId는 현재 요청의 메시지 순서에 대응한다. 같은 메시지를 문장별로 다시 판단하거나 큐에 쌓지 않는다. 새 메시지는 이전 미적용 판단을 취소하고 애니메이션 종료를 기다리지 않으며, 같은 메시지/복구 텍스트는 재적용하지 않는다. 본문/호출/수집·판단 기한은 shared `EXPRESSION_PACING`을 따른다.
 
+`cue.attitude`의 허용값은 `neutral/explain/tease/laugh/shy/reassure`다. Jev 비활성화 또는 요청당 8회 판단 이후에는 같은 메시지 식별·수집·무효화 규칙으로 `source=fallback, emotion=neutral, gesture=none, confidence=0`을 발행한다. 외부 판단이나 임의의 감정은 추가하지 않는다. 새 메시지의 다른 손 포즈 또는 none은 이전 메시지의 손을 즉시 정리하며, 같은 손동작의 반복 억제와 동일 메시지 중복 거절은 유지한다.
+
 `character.state` = `idle | thinking | talking | listening | working | success | error`; `expression` / `motion`은 모델 호환성 검사 후 유효한 매핑으로 축소된다. Audio playback 상태가 실제 입 움직임 시간의 기준이며 text delta 도착 자체가 lip-sync를 켜지 않는다.
 
 ## 승인 데이터

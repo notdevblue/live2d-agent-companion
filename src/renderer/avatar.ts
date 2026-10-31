@@ -374,9 +374,13 @@ export class Avatar {
   cue(cue: CharacterCue): void {
     const now = performance.now();
     if (!this.actor.cue(cue, now)) return;
+    const motionName = this.inventory.gestureMap[cue.gesture];
+    const previousMotion = this.poses.sample(now).definition?.enter ?? this.activeGesture;
     // A configured waiting clip must not keep owning head/hand channels or
-    // consume the cooldown of the actual message gesture.
-    if (this.stateGesture) {
+    // consume the cooldown of the actual message gesture. A new message also
+    // replaces an incompatible hand pose, including an explicit gesture=none.
+    // Interrupt rather than seeking into the authored exit from a partial entry.
+    if (this.stateGesture || (previousMotion && previousMotion !== motionName)) {
       this.clearPose();
       this.lastGesture = -Infinity;
       this.lastGestureName = '';
@@ -390,7 +394,6 @@ export class Avatar {
         : this.inventory.expressionMap[emotion];
     this.setExpression(name, now, reactionDuration(this.actor.sample(now, 0).preset));
     // Delivery tone does not override an explicit "no physical gesture" decision.
-    const motionName = this.inventory.gestureMap[cue.gesture];
     this.startGesture(motionName, now);
     if (window.__avatarStatus) {
       window.__avatarStatus.lastCue = `${cue.emotion}/${cue.gesture}`;

@@ -82,7 +82,7 @@ export class CharacterDirector {
 
   /** One representative decision per visible assistant message; never a sentence replay queue. */
   append(text: string, flush = false, messageId?: string): void {
-    if (!this.enabled || !this.options.judge) return;
+    if (!this.enabled) return;
     const id = messageId ?? this.messageId ?? 'answer';
     if (this.emitted.has(id) || this.judged.has(id)) return;
     if (id !== this.messageId) {
@@ -127,9 +127,7 @@ export class CharacterDirector {
   private schedule(): void {
     const judge = this.options.judge;
     const messageId = this.messageId;
-    if (!this.enabled || !judge || !messageId || !this.pending.trim() || this.judged.has(messageId))
-      return;
-    if (this.judgements >= EXPRESSION_PACING.maxJudgements) return;
+    if (!this.enabled || !messageId || !this.pending.trim() || this.judged.has(messageId)) return;
     clearTimeout(this.wake);
     this.wake = undefined;
     const text = this.pending.trim();
@@ -158,7 +156,13 @@ export class CharacterDirector {
     });
     const inference = Promise.resolve()
       .then(() => {
-        if (controller.signal.aborted) return undefined;
+        // Local delivery beats remain available without Jev or after its call budget.
+        if (
+          controller.signal.aborted ||
+          !judge ||
+          this.judgements >= EXPRESSION_PACING.maxJudgements
+        )
+          return undefined;
         this.judgements++;
         return judge.judge(text, controller.signal, context);
       })

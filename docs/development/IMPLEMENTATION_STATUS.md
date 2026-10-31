@@ -20,6 +20,15 @@
 | Jev | 메시지당 대표 Choice emotion/gesture/선택적 attitude 1회, 800자·요청당 8회·짧은 수집/판단 기한, 문장 재생 큐 없음 | 진행 응답의 빈도/감정 품질은 모델·작업에 따라 다름 |
 | 인증키 | async safeStorage, 서버별 credential scope, 사용자 `.env` 시작 시 입력 | 현재 headless 환경은 보호 저장소 불가. 앱 보관은 메모리 전용이며 사용자 `.env`는 별도 유지 |
 
+## 전체 표현 조사와 수정 (2026-11-01)
+
+- `FR-DIR-004`: 눈웃음 `laugh`는 로컬 미리보기에는 있었지만 자동 attitude 후보에는 없었다. 기존 한 번의 Choice에 laugh를 추가하고 함께 웃는 농담과 상대를 능청스럽게 놀리는 tease를 구분했다. 사용자 제시 대사의 재평가는 이전 tease .98 → laugh .84였고, 원래 대화의 저장된 판단을 복원한 결과는 아니다. 기쁨·슬픔·놀람·부끄러움·걱정·중립, 웃음·장난·수줍음·안심·교육적 설명, none/wave/explain/thinking과 대조 사례를 포함한 한국어 예문 14개를 최종 기준으로 각 1회 평가해 목표 채널을 확인했다. 복합 말투와 확신도 fallback이 있으므로 전체 정확도 보장은 아니다. 웃음과 장난의 구분을 조정하며 실행한 예비 평가와 최종 평가는 ignored `.tmp/laugh-check/*judge-result.json`, `initial-result.json`, `second-result.json`에 분리했다. Hermes prompt 재전송은 하지 않았다.
+- `FR-L2D-004/006`, `FR-DIR-005`: 새 메시지의 gesture none/다른 손동작을 받아도 이전 메시지 손 포즈가 유지되거나 전역 cooldown이 새 동작을 막았다. 승인된 새 cue가 다른 손동작을 요청하면 기존 pose·clip을 정리하고 다음 draw의 저장된 중립 기준에서 시작한다. 진입 도중 완성된 endpoint/exit로 점프하지 않으며 같은 손동작의 반복 억제와 자연 종료 복귀는 유지한다. 실제 SDK에서 진입 500ms·유지 1800ms 각각 none/wave/thinking으로 바꾼 6개 전환 모두 이전 검지 selector가 사라지고 새 반응이 즉시 적용됐다.
+- `FR-DIR-005`: judge 없음/8회 판단 한도에서 append/schedule이 cue까지 생략하던 원인을 수정했다. 같은 수집·메시지 중복·generation·유효시간 검사로 neutral/none fallback을 발행하고 외부 판단 예산은 늘리지 않는다. Jev 없는 동일 batch의 마지막 메시지, 중복/취소 및 20개 메시지 중 8회 판단+12개 로컬 반응을 검사했다.
+- 감정 6×말투 6×제스처 4의 **144개 actor 조합**을 범위·유한값·중복·만료 검사했다. 실제 DeepSeek/SDK에서는 기본 의미 경로 14개·미리보기 14개(초기화 포함)·표정 파일 23개·모션 8개의 **59개 장면**을 각각 12개 시점에서 draw하고 파라미터 범위·표정/actor/paired pose 종료를 확인했다. 메모리의 놀람 합성은 별도의 로컬 표정으로 존재한다. 출력 이미지 두 묶음도 비교했다. 이는 144개 모든 조합의 SDK 이미지 품질, 모든 프레임의 동작 품질, 실시간 GPU FPS/CPU 또는 Windows 검증이 아니다. 근거는 `tests/acting.test.ts`, `adapters.test.ts`, `avatar.test.ts`, `director.test.ts`와 ignored `.tmp/laugh-check/full-model-result.json`, `semantic-gallery.png`, `asset-gallery.png`다.
+- 특수 눈 artwork 소유권과 유효한 사용자 매핑은 보존했다. 기본 happy의 `＞＜` 때문에 happy+laugh는 일반 감은 눈 대신 만화 눈으로 웃고, happy+tease의 윙크가 가릴 수 있다. 로컬 미리보기와 동일하다고 주장하지 않으며 자동/미리보기/사용자 매핑 경로 전수표와 적용·복원 방법은 [전체 표현 점검](../integrations/LIVE2D_TTS.md#전체-표현-점검-2026-11-01)에 통합했다.
+- 단위/계약 검사 **379개**, typecheck, 전체 format 검사, build와 외부 AI 없는 Electron Mock desktop 검사가 통과했다. 동시 진행 중인 별도 UI 변경은 이번 수정의 커밋에서 제외한다. 실제 Sway 앱의 새 프로세스에서 production renderer의 laugh → explain 손 → laugh 전환, Overlay 재로딩 후 모델 로드, 기존 연결/표현 설정 보존을 확인했다. 이 앱 검증의 provider prompt/Jev 호출은 0회다. 이후 일반 실행 경로로 다시 실행했다. OS 재부팅/재로그인은 수행하지 않았다. 비공개 근거는 ignored `.tmp/laugh-check/native-result.json`, `desktop.log`다.
+
 ## 실행·복원 구조
 
 후속 캐릭터 연기 구현(`FR-L2D-005~006`, `FR-DIR-004`, `FR-SET-003`): `acting.ts`는 결정적인 시선/단일·이중 blink와 시간 기반 damping, 감정·생각/설명 제스처의 조합, 반응별 시간 구조·제한된 변주 및 반복 억제를 담당한다. 좌우 눈·눈웃음·눈썹·볼/삐죽은 지원되는 upstream 얼굴 파라미터로 합성하며 로컬 미리보기는 초기화 포함 14종이다. `performance.ts`는 범위/중립값/physics-output 검사, 표정 crossfade, authored pose의 진입/유지/복귀를 분리한다. `Avatar`는 DeepSeek의 `Angle*`/`Position*`/`LeanInput`을 구동한다. 이전 `ParamAngleZ` 직접 쓰기는 physics에 의해 0으로 덮였지만 현재는 upstream과 최종 출력 모두 변한다. 모든 모델이 같은 리깅을 제공한다고 가정하지 않고 없는/physics 출력인 채널은 생략한다.
