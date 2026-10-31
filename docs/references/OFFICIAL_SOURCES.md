@@ -5,7 +5,7 @@
 | 공급자 | 공식 문서 | 이 프로젝트에서 확인한 내용 |
 |---|---|---|
 | Grok Bot | https://docs.x.ai/grok-bot/skills-routines-and-automations | Routine Webhook POST + Bearer; HTTP 200은 run accepted, completed 아님; 호출 제한. **양방향 chat API/callback 공식 보장 없음.** |
-| Grok Bot | https://docs.x.ai/grok-bot/create-and-manage-bots | 개별 Bot 생성/관리 개념(경로가 변경될 수 있어 구현 전에 재확인) |
+| Grok Bot | https://docs.x.ai/grok-bot/bots | 개별 Bot 생성/관리 개념(경로가 변경될 수 있어 구현 전에 재확인) |
 | Hermes | https://hermes-agent.nousresearch.com/docs/developer-guide/programmatic-integration | HTTP/SSE, TUI JSON-RPC (stdio/WebSocket), ACP, method/event 목록 및 server request handshake |
 | Hermes Bot Mode | https://hermes-agent.nousresearch.com/docs/user-guide/bot-mode | Bot은 프로필이며 canonical Bot Chat을 유지; 외부 클라이언트가 기존 Chat을 지정하는 방법은 별도 실증 필요 |
 | Hermes Profiles | https://hermes-agent.nousresearch.com/docs/user-guide/profiles | profile별 환경/기억/세션/인증 분리 |
