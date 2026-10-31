@@ -66,6 +66,15 @@ afterEach(() => {
 });
 
 describe('Avatar message and background priority — FR-L2D-004/006', () => {
+  it('keeps an explanatory tone without inventing a hand pose when the gesture is none', () => {
+    const { avatar, runtime } = setup();
+    avatar.cue({ ...cue, gesture: 'none', attitude: 'explain' });
+    expect(runtime.actor.sample(0, 0).preset).toBe('explain');
+    expect(runtime.poses.sample(0).phase).toBe('none');
+    vi.setSystemTime(2000);
+    avatar.cue({ ...cue, segmentId: 2, messageId: 'next', attitude: 'explain' });
+    expect(runtime.poses.sample(2000).definition?.parameter).toBe('hand');
+  });
   it('replaces a waiting asset with the message pose without its cooldown suppressing the cue', () => {
     const { avatar, runtime } = setup();
     avatar.setState('thinking');

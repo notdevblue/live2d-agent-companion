@@ -66,6 +66,8 @@ npm audit
 
 ## 확인 결과 (2026-11-01)
 
+- `FR-DIR-004`: Jev가 설명을 넓게 선택하던 Choice 기준과, `gesture=none`을 설명 말투만으로 손 포즈로 승격하던 renderer 경로를 수정했다. 일반 답변/진행 보고는 none을 기본으로, 명확한 시연·교육 강조만 explain 후보로 두며 말투와 물리 제스처를 분리한다. 실제 Jev에 같은 한국어 예문 6개를 전후 각 한 번씩 평가했다. 수정 전 진행/결과/사실 답변 3개 모두 explain이었으나 수정 후 확인/진행/결과/사실 4개는 모두 none이었다. 직접 예제로 대조하며 가르치는 예문은 explain을 유지했고 일반 단계 안내는 확신 부족으로 none이었다. 표본별 단발 결과이며 전체 한국어 정확도/비율 보장은 아니다. 원문 대화 대신 합성 예문만 사용했으며 Hermes 제출/세션 변경은 없었다. 근거는 ignored `.tmp/explain-check/before-result.json`, `after-result.json`이다. 실제 DeepSeek/SDK fixture에서도 일반 예문과 설명 말투만 있는 입력의 손 selector가 0/pose none, 명시적 설명 제스처는 selector 1/pose 활성임을 확인했다(`.tmp/explain-check/model-result.json`). 전체 검사 175개·typecheck·format·build·Electron Mock 검사가 통과했고 최신 앱을 재실행해 기존 설정·위치 보존과 프로세스 실행을 확인했다. OS 재부팅/재로그인은 하지 않았다.
+
 - `FR-DIR-005`: streaming도 thinking으로 매핑하고 도구 상태 변화가 actor reaction·표정 mixer·paired pose를 초기화하던 경로를 수정했다. streaming은 도구 작업이 없으면 idle, 같은 요청의 배경 상태 변화는 메시지 반응을 보존하고 반응 중 생각 포즈와의 합성을 멈춘다. 새 요청 경계는 renderer에서 명시적으로 reset하며 승인/복구/취소/오류는 계속 즉시 정리한다. 단위 검사는 메시지 연기 중 상태 변화 전후 동일 궤적과 자연 종료 뒤 최신 working 복귀를 비교한다. 실제 DeepSeek/SDK 로컬 fixture에서도 thinking→메시지 explain 손 포즈→working→thinking→idle 전환의 포즈/표정 유지, 자연 복귀와 승인 차단 즉시 정리, 짧은 놀람 뒤 긴 손 복귀 동작 완주를 확인했다. 사용자 thinking 자산은 메시지 도착 시 교체되고 이전 대기 clip의 cooldown이 실제 제스처를 막지 않는다. 근거는 `tests/avatar.test.ts`, `acting.test.ts`, `director.test.ts`와 ignored `.tmp/request-recovery/motion-result.json`이다.
 
 - `FR-AG-012`/`AC-02`/`E-019`: 30초 무이벤트 뒤 타이머를 지우고 수동 조회만 기다리던 원인을 수정했다. 원래 요청의 자동 조회·재시작 복원, 미확인 최초+5회 backoff, 진행 확인 시 감시 재개와 승인 만료의 별도 처리를 추가했다. 이벤트 replay가 만료돼도 receipt로 진행을 확인하며 snapshot의 살아 있는 승인도 복원한다. 중복/낡은 요청 조회·dispose 뒤 타이머·원격 terminal 증거 없는 lease 해제를 회귀 검사했다.

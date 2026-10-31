@@ -16,6 +16,8 @@
 
 **2026-10-31 구현 범위:** 사용자 요청으로 초기 통합에 Jev를 포함했다. 결정적 기본 상태와 별개로 TypeSafe Choice 질문 3개(emotion/gesture/attitude)를 한 번에 보내며 최대 800자 구간·판단 제한 시간·확신 임계값·최신 구간 검사로 제어한다. attitude는 `neutral/explain/tease/shy/reassure`이며 문장의 주제 대신 말하는 태도를 판단한다. 기존 attitude 없는 응답도 지원한다. confidence는 불확실성이지 움직임의 강도가 아니다. 텍스트 UI는 판단을 기다리지 않는다. 실패/낮은 확신은 neutral/none이며 중단·전환·복구 snapshot은 지연 판단/재판단을 차단한다. 이는 아래 TTS 구현을 뜻하지 않는다.
 
+**2026-11-01 설명 과다 보정:** gesture의 `none`은 일반 대화·진행/결과 보고·사실 답변과 대부분의 설명에서 기본이다. `explain`은 예제/대조/단계를 직접 짚어 가르치는 명확한 강조에만 사용하도록 Choice 기준을 좁혔다. 설명 말투(`attitude=explain`)는 손동작이 아니므로 `gesture=none`을 설명 손 포즈로 승격하지 않는다. 인위적 랜덤 동작이나 추가 판단 호출은 넣지 않았다.
+
 DeepSeek-chan은 `.model3.json`에 표정/모션 참조가 없어 `Exp3/`, `Animation/`을 안전하게 수집해 로컬 manifest에 보충한다. 사용자 모델 원본은 수정하지 않는다. Jev 기본 매핑에는 옷/체형/소품 토글을 넣지 않으며 사용자 설정으로 실제 존재하는 표정/모션을 매핑한다. idle만 loop로 설정하고 제스처는 one-shot이며 매 프레임 기준 파라미터를 복원해 영구 토글을 피한다.
 
 기본 매핑의 누락을 막기 위해 `thinking → @companion/thinking`, `surprised → @companion/surprised`를 제공한다. 이는 모델 파일 이름이 아닌 앱 로컬 연기 ID다. 생각은 기존 시선·고개 연기를 재사용하며, 놀람은 지원되는 눈·눈썹·입 파라미터의 실제 중립값/범위 안에서 합성하고 physics 출력·없는 채널은 생략한다. 저장된 사용자 자산 매핑과 명시적인 빈 값은 보존한다. 생각 미리보기·응답 대기 진입·답변의 gesture 판단은 같은 thinking 매핑을 참조한다.

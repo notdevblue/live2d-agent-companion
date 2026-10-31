@@ -389,8 +389,8 @@ export class Avatar {
         ? '屑屑眼'
         : this.inventory.expressionMap[emotion];
     this.setExpression(name, now, reactionDuration(this.actor.sample(now, 0).preset));
-    const gesture = cue.gesture === 'none' && cue.attitude === 'explain' ? 'explain' : cue.gesture;
-    const motionName = this.inventory.gestureMap[gesture];
+    // Delivery tone does not override an explicit "no physical gesture" decision.
+    const motionName = this.inventory.gestureMap[cue.gesture];
     this.startGesture(motionName, now);
     if (window.__avatarStatus) {
       window.__avatarStatus.lastCue = `${cue.emotion}/${cue.gesture}`;
