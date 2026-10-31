@@ -266,6 +266,8 @@ VTube Studio 공식 [모델 설정](https://github.com/DenchiSoft/VTubeStudio/wi
 
 ### Kitty 기준 채팅·설정 (2026-11-01)
 
-상단 브랜드·설정 아이콘은 캐릭터 우클릭/트레이 메뉴와 중복이어서 제거한다. 메시지는 반복되는 큰 박스 대신 내용 너비와 얇은 좌/우 구분선을 사용하고 label 아래 3px·본문 6×9px·메시지 사이 12px로 정리한다. 긴 본문은 가용 폭을 사용하며 Markdown code/table은 내부에서 스크롤한다. 입력칸은 한 줄·28px에서 최대 132px까지 커지고 첨부/전송 버튼은 32px다.
+상단 브랜드·설정 아이콘은 캐릭터 우클릭/트레이 메뉴와 중복이어서 제거한다. 메시지는 반복되는 큰 박스 대신 내용 너비와 얇은 좌/우 구분선을 사용하고 label 아래 3px·본문 6×9px·메시지 사이 12px로 정리한다. 긴 본문은 가용 폭을 사용하며 Markdown code/table은 내부에서 스크롤한다. 입력칸은 한 줄·32px에서 최대 120px까지 커지고 첨부/전송 버튼은 32px다.
 
 실제 Kitty의 마지막 include는 Ubuntu Mono·배경 #1E191F·글자 #E1DBD1·강조 #88D4CC·불투명도 .80을 선택하고 기본 font_size는 11pt다. 앱은 해당 글꼴과 D2Coding fallback·색·Linux 배경 alpha를 사용한다. root/글자 전체 opacity를 낮추지 않고 모델 Overlay는 그대로 투명하게 유지한다. 후속 blur 보완은 SwayFX effects.conf의 Companion class+dialog 규칙을 사용하며, 기존 Kitty 규칙과 전역 blur 강도는 유지한다. 이는 현재 값을 반영한 앱 테마이며 Kitty 설정을 상시 감시하거나 파일 내용을 앱에 복제하지 않는다.
+
+문자 ＋/↑는 폰트 fallback의 기준선·글자 상자 차이 때문에 입력문과 다른 높이로 보였다. 두 아이콘을 같은 24 viewBox·18px SVG로 바꾸고 32px 버튼 안에 중앙 배치한다. textarea는 22px line-height·상하 5px padding으로 한 줄 32px, 다섯 줄 120px를 사용하며 실제 CSS min/max에서 자동 높이를 계산한다. 상태/중단은 같은 11px 글꼴·16px line-height·20px 컨트롤을 사용한다. 설정의 필드·버튼과 첨부 삭제/checkbox도 각 행의 중심을 맞추고 hidden 속성은 display 규칙보다 우선한다.

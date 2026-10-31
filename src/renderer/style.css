@@ -22,6 +22,9 @@
 * {
   box-sizing: border-box;
 }
+[hidden] {
+  display: none !important;
+}
 html,
 body {
   margin: 0;
@@ -34,11 +37,16 @@ textarea {
   font: inherit;
 }
 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  line-height: 20px;
   cursor: pointer;
   border: 1px solid var(--border);
   background: var(--control);
   border-radius: 0;
-  padding: 7px 10px;
+  padding: 5px 10px;
   color: inherit;
 }
 button:hover {
@@ -62,6 +70,12 @@ textarea {
   padding: 8px;
   outline: none;
 }
+input:not([type='checkbox']):not([type='range']),
+select {
+  min-height: 32px;
+  padding: 5px 8px;
+  line-height: 20px;
+}
 input:focus,
 select:focus,
 textarea:focus {
@@ -69,7 +83,10 @@ textarea:focus {
   box-shadow: none;
 }
 input[type='checkbox'] {
-  width: auto;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex-shrink: 0;
   accent-color: var(--accent);
 }
 input[type='range'] {
@@ -280,6 +297,7 @@ footer {
   align-items: center;
   gap: 12px;
   text-align: left;
+  justify-content: flex-start;
   border-color: transparent;
   background: transparent;
   padding: 10px;
@@ -308,11 +326,11 @@ footer {
   background: transparent;
   box-shadow: none;
   font-size: 1rem;
-  padding: 2px 4px;
-  min-height: 28px;
-  max-height: 132px;
+  padding: 5px 4px;
+  min-height: 32px;
+  max-height: 120px;
   overflow-y: auto;
-  line-height: 1.5;
+  line-height: 22px;
 }
 #message:focus-visible {
   outline: none;
@@ -334,13 +352,24 @@ footer {
   display: flex;
   justify-content: space-between;
   gap: 5px;
-  margin-top: 5px;
-  min-height: 14px;
-  line-height: 1.4;
-  font-size: 10px;
+  margin-top: 4px;
+  min-height: 20px;
+  line-height: 16px;
+  font-size: 11px;
   color: var(--muted);
   flex-wrap: wrap;
   align-items: center;
+}
+.composer-meta > span {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+}
+.composer-meta .text-button {
+  min-height: 20px;
+  padding: 2px 4px;
+  font-size: inherit;
+  line-height: inherit;
 }
 .composer-meta > span:last-child {
   display: flex;
@@ -449,7 +478,7 @@ summary {
   margin: 12px 0 6px;
 }
 .preview-buttons button {
-  padding: 8px;
+  padding: 5px 8px;
   font-size: 12px;
 }
 
@@ -573,8 +602,8 @@ select option {
 
 /* Explicit local file drafts; only blob URLs created from selected images are previewed. */
 #attach {
-  flex: 0 0 30px;
-  width: 30px;
+  flex: 0 0 32px;
+  width: 32px;
   height: 32px;
   padding: 0;
   background: transparent;
@@ -613,8 +642,13 @@ select option {
   overflow-wrap: anywhere;
 }
 .attachment button {
-  flex: 0 0 26px;
-  padding: 1px;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  line-height: 1;
+  font-size: 16px;
+  padding: 0;
   color: var(--muted);
   background: transparent;
 }
@@ -630,4 +664,19 @@ select option {
   .preview-buttons {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+#composer button svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+#settings .section-heading {
+  align-items: center;
+}
+#settings .section-heading .text-button {
+  min-height: 32px;
+  line-height: 20px;
+  padding: 5px;
 }

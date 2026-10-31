@@ -49,21 +49,30 @@ export async function checkPanelLayout(
         const row=conversation.querySelector('.message.user .message-text');
         const compact=row.getBoundingClientRect().width<innerWidth/2;
         input.value='첫 번째 줄';input.dispatchEvent(new Event('input',{bubbles:true}));const short=input.getBoundingClientRect().height;
+        const bounds=id=>document.getElementById(id).getBoundingClientRect(),middle=r=>r.top+r.height/2;
+        const attach=bounds('attach'),sendShort=bounds('send'),textShort=bounds('message');
+        const icons=[...document.querySelectorAll('#composer button svg')].map(node=>node.getBoundingClientRect());
+        const aligned=attach.width===32&&attach.height===32&&sendShort.width===32&&sendShort.height===32&&textShort.height===32&&Math.abs(middle(attach)-middle(sendShort))<0.6&&Math.abs(middle(textShort)-middle(sendShort))<0.6&&icons.length===2&&icons.every(r=>r.width===18&&r.height===18)&&Math.abs(middle(icons[0])-middle(icons[1]))<0.6;
+        const stop=document.getElementById('stop'),status=document.getElementById('turn-status'),wasHidden=stop.hidden;
+        stop.hidden=false;const footerAligned=Math.abs(middle(stop.getBoundingClientRect())-middle(status.getBoundingClientRect()))<0.6;stop.hidden=wasHidden;const hiddenActions=!wasHidden||stop.getBoundingClientRect().height===0;
+
         input.value=Array(14).fill('여러 줄의 입력을 확인해.').join('\\n');input.dispatchEvent(new Event('input',{bubbles:true}));const tall=input.getBoundingClientRect().height;
         const send=document.getElementById('send').getBoundingClientRect(),footer=document.querySelector('#chat footer').getBoundingClientRect();
         const fit=document.documentElement.scrollWidth<=innerWidth&&footer.bottom<=innerHeight+1&&send.bottom<=innerHeight&&send.right<=innerWidth&&conversation.clientHeight>100;
         const styles=getComputedStyle(document.getElementById('chat'));
-        return {noHeader:!document.querySelector('#chat header'),compact,fit,autoGrow:tall>short&&tall<=133,scrollable:conversation.scrollHeight>conversation.clientHeight,
+        return {noHeader:!document.querySelector('#chat header'),compact,aligned,footerAligned,hiddenActions,multilineAligned:Math.abs(send.bottom-input.getBoundingClientRect().bottom)<0.6,fit,autoGrow:tall>short&&tall<=120,scrollable:conversation.scrollHeight>conversation.clientHeight,
           font:styles.fontFamily.startsWith('"Ubuntu Mono"'),background:styles.backgroundColor==='rgba(30, 25, 31, 0.8)'};
       })()`);
       const settingsFit = await settings.webContents.executeJavaScript(`(()=>{
         const panel=document.getElementById('settings');const style=getComputedStyle(panel);
-        return document.documentElement.scrollWidth<=innerWidth&&panel.scrollHeight>panel.clientHeight&&style.backgroundColor==='rgba(30, 25, 31, 0.8)'&&style.fontFamily.startsWith('"Ubuntu Mono"');
+        const row=document.querySelector('#settings .button-row'),buttons=[...row.querySelectorAll('button')].map(b=>b.getBoundingClientRect());
+        const aligned=buttons.every(b=>b.height===32)&&Math.abs(buttons[0].top-buttons[1].top)<0.6;
+        return aligned&&document.documentElement.scrollWidth<=innerWidth&&panel.scrollHeight>panel.clientHeight&&style.backgroundColor==='rgba(30, 25, 31, 0.8)'&&style.fontFamily.startsWith('"Ubuntu Mono"');
       })()`);
       checks.push({ width, height, zoom: factor, ...conversation, settingsFit });
       if (width === 470) {
         await chat.webContents.executeJavaScript(
-          "document.getElementById('message').value='메시지를 입력하는 공간';document.getElementById('message').dispatchEvent(new Event('input',{bubbles:true}))",
+          "(()=>{const input=document.getElementById('message'),status=document.getElementById('turn-status'),stop=document.getElementById('stop');window.__layoutMeta={text:status.textContent,hidden:stop.hidden};input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();status.textContent='응답 수신 중';stop.hidden=false;})()",
         );
         await chat.webContents.executeJavaScript(
           "document.getElementById('conversation').scrollTop=0;new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))",
@@ -73,6 +82,9 @@ export async function checkPanelLayout(
         await writeFile(
           join(artifacts, 'compact-settings-smoke.png'),
           (await settings.webContents.capturePage()).toPNG(),
+        );
+        await chat.webContents.executeJavaScript(
+          "document.getElementById('turn-status').textContent=window.__layoutMeta.text;document.getElementById('stop').hidden=window.__layoutMeta.hidden;delete window.__layoutMeta",
         );
       }
     }

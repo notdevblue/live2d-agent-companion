@@ -84,8 +84,11 @@ function requestActive(): boolean {
 }
 function updateComposer(): void {
   const message = element<HTMLTextAreaElement>('message');
+  const messageStyle = getComputedStyle(message);
+  const minimum = Number.parseFloat(messageStyle.minHeight) || 32;
+  const maximum = Number.parseFloat(messageStyle.maxHeight) || 120;
   message.style.height = 'auto';
-  message.style.height = `${Math.max(28, Math.min(132, message.scrollHeight))}px`;
+  message.style.height = `${Math.max(minimum, Math.min(maximum, message.scrollHeight))}px`;
   const local =
     !attachments?.count &&
     parseChatCommand(element<HTMLTextAreaElement>('message').value).type !== 'text';
