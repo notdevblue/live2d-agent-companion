@@ -1,6 +1,6 @@
 # 기술 리스크, 실증 계획 및 열린 질문
 
-**상태:** Open · 아래 실험들은 아직 수행되지 않았다. 결과가 없는 항목에 '성공' 표시 금지.
+**상태:** Open / 부분 실증 · 결과가 없는 항목에 '성공' 표시 금지. 2026-10-31에 Hermes SSH의 전용 새 세션 왕복·receipt 복구와 로컬 모델 렌더/실제 Jev 판단을 확인했다. 이것은 HTTP 실증·기존 canonical Bot Chat·Grok·Windows 실험의 완료가 아니다. 수행 범위와 증거는 [IMPLEMENTATION_STATUS](../development/IMPLEMENTATION_STATUS.md)를 따른다.
 
 ## 위험 레지스터
 

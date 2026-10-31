@@ -21,7 +21,7 @@ This document is normative for AI coding agents (Codex, Claude Code, etc.) worki
 - Screen capture and PC manipulation are separate, opt-in capabilities. Never perform an action on the user's machine without a scoped authorization decision.
 - Secrets belong in OS credential storage or an equivalent secured local facility, never in source, logs, or prompts.
 - Live2D SDK Core and third-party model assets have separate licenses. Do not commit them without verified rights.
-- Never infer a feature is implemented because a specification describes it. As of 2026-10-31 this is a docs-first repository.
+- Never infer implementation from a specification. As of 2026-10-31 an initial vertical slice exists; read `docs/development/IMPLEMENTATION_STATUS.md` for implemented/tested scope and limitations.
 - New or changed behavior requires a test/acceptance update and linked evidence.
 
 ## Working conventions

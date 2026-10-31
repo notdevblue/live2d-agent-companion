@@ -1,6 +1,6 @@
 # 문서 허브
 
-> **문서 기준일:** 2026-10-31 · **프로젝트 상태:** 설계/기술검증 전 · **대상 플랫폼:** Windows 11 우선
+> **문서 기준일:** 2026-10-31 · **프로젝트 상태:** 초기 통합 구현/부분 실증 · **대상 플랫폼:** Windows 11 우선(실제 Windows 검증 전)
 
 이 저장소는 기존 Grok Bot 앱의 개별 Bot과 Hermes Agent Bot을 Live2D 데스크톱 캐릭터에 연결하는 프로젝트다. 이 문서의 MUST는 **요구사항**이지 현재 제공 기능이 아니다.
 
@@ -15,9 +15,9 @@
 | `integrations/` | 외부 서비스별 실제 연결·제약·검증 | [GROK_BOT](integrations/GROK_BOT.md), [HERMES_AGENT](integrations/HERMES_AGENT.md), [LIVE2D_TTS](integrations/LIVE2D_TTS.md) |
 | `platform/` | Windows 창, 화면 캡처, 입력 제어 | [WINDOWS_DESKTOP](platform/WINDOWS_DESKTOP.md) |
 | `ux/` | 사용자 흐름과 캐릭터 반응 설계 | [INTERACTION_DESIGN](ux/INTERACTION_DESIGN.md) |
-| `planning/` | 단계별 개발 순서, 리스크, 아키텍처 결정 | [ROADMAP](planning/ROADMAP.md), [RISKS_AND_SPIKES](planning/RISKS_AND_SPIKES.md), [ADR-0001](planning/adrs/0001-adapter-boundary.md), [ADR-0002](planning/adrs/0002-approval-boundary.md), [ADR-0003](planning/adrs/0003-request-recovery-and-approvals.md) |
+| `planning/` | 단계별 개발 순서, 리스크, 아키텍처 결정 | [ROADMAP](planning/ROADMAP.md), [RISKS_AND_SPIKES](planning/RISKS_AND_SPIKES.md), [ADR-0001](planning/adrs/0001-adapter-boundary.md), [ADR-0002](planning/adrs/0002-approval-boundary.md), [ADR-0003](planning/adrs/0003-request-recovery-and-approvals.md), [ADR-0004](planning/adrs/0004-integrated-companion-and-jev.md) |
 | `testing/` | 단위/통합/E2E 검증 계획 | [TEST_STRATEGY](testing/TEST_STRATEGY.md) |
-| `development/` | 코드 구조, 변경 절차, PR 기준 | [REPO_CONVENTIONS](development/REPO_CONVENTIONS.md) |
+| `development/` | 구현 상태·검증 범위·실행 방법, 코드 구조·기여 기준 | [IMPLEMENTATION_STATUS](development/IMPLEMENTATION_STATUS.md), [REPO_CONVENTIONS](development/REPO_CONVENTIONS.md) |
 | `references/` | 공식 자료, 검증일, 링크 | [OFFICIAL_SOURCES](references/OFFICIAL_SOURCES.md) |
 
 루트 `AGENTS.md`는 모든 AI 개발 에이전트의 진입점이다.

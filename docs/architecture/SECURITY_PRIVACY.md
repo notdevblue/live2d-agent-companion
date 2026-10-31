@@ -9,6 +9,9 @@
 3. Grok/Hermes/TTS의 네트워크 응답과 Grok Callback은 미검증 입력으로 취급.
 4. 사용자 승인(authority)은 main의 PermissionBroker만 발행·검증.
 5. 공급자 도구 승인과 로컬 OS 입력 승인은 별도이며 서로 대체할 수 없다.
+6. Jev는 표현 판단 전용 외부 수신자다. 사용자가 켠 경우 표시용 assistant 답변 구간만 전송하며 기억/이력·도구 입출력·reasoning·인증키·모델 자산은 state에 넣지 않는다. 판단은 허용된 캐릭터 표정/제스처로만 매핑하며 PC 실행 권한을 발행하지 않는다.
+
+현재 초기 구현은 화면 캡처/PC 실행 IPC 자체를 제공하지 않는다. 인증키는 main의 async safeStorage로 보호하며 Linux의 `basic_text` 또는 암호화 불가 상태에서는 디스크 저장 없이 메모리만 사용한다. SSH 일회성 gateway ticket은 원격 프로세스 메모리에만 두고 로컬에는 전달하지 않는다.
 
 ## 권한 등급
 

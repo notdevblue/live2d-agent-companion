@@ -39,3 +39,10 @@ credentials.json
 Thumbs.db
 .idea/
 .vscode/
+
+# Downloaded runtime SDK and local acceptance evidence (never redistributed)
+vendor/
+artifacts/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]

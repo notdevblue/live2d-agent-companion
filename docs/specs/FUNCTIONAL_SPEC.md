@@ -44,6 +44,7 @@
 | FR-TTS-005 | P1 | 텍스트/문장 단위 스트리밍과 안전한 오디오 큐 SHOULD |
 | FR-DIR-001 | P1 | 이벤트→캐릭터 상태 전환을 독립된 Character Director가 담당 MUST |
 | FR-DIR-002 | P1 | 무조건적 LLM 감정 추론 없이 결정적 기본 규칙을 제공 MUST |
+| FR-DIR-003 | P1 | Jev 표현 판단은 명시적으로 켠 경우 표시용 답변의 제한된 구간에만 비동기로 수행 MUST. 텍스트 표시를 막지 않고 확신 부족/timeout은 neutral fallback, 취소·전환·이전 구간의 지연 결과는 폐기 |
 
 ## 화면/PC
 

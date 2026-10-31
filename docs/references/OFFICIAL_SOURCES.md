@@ -16,6 +16,9 @@
 | Electron 창 | https://www.electronjs.org/docs/latest/tutorial/custom-window-styles | `frame: false`, `transparent: true`. 투명 영역 클릭 통과는 자동 제공되지 않으며 투명 창 리사이즈에 제약이 있음 |
 | Electron 입력 | https://www.electronjs.org/docs/latest/api/base-window#winsetignoremouseeventsignore-options | 창 전체 mouse event 무시 및 Windows mousemove forwarding 옵션. 모델별 hit-test 조합은 별도 PoC 필요 |
 | Cubism Web 모델 | https://docs.live2d.com/en/cubism-sdk-manual/model-web/ | `.model3.json` 참조에 따라 모델/텍스처를 로드하고 WebGL 렌더러를 구성하는 공식 흐름 |
+| TypeSafe Jev | https://docs.typesafe.ai/api/system-one | state와 typed questions의 API, Choice 기반 표현 판단 |
+| TypeSafe Choice | https://docs.typesafe.ai/primitives/choice | choice/probabilities/confidence의 구조. 한국어 표현 품질은 앱 실증과 별도 |
+| Hermes 소스 | https://github.com/NousResearch/hermes-agent | native control/interactive ticket/session authority 프로토콜. 앱 SSH 실증 버전 `6b5df79671` |
 
 ## 증거 등급
 

@@ -12,7 +12,13 @@
 
 ## Character Director
 
-대화 본문(사용자에게 보여주는 안전한 텍스트), 원격 tool lifecycle, TTS 재생 상태, 클릭/드래그 이벤트를 입력으로 받은 별도 상태 머신. 1단계는 **결정적 규칙**만 적용; 감정 추론 LLM은 선택적, 사용자 설정 ON 후 추가.
+대화 본문(사용자에게 보여주는 안전한 텍스트), 원격 tool lifecycle, TTS 재생 상태, 클릭/드래그 이벤트를 입력으로 받는 별도 상태 머신이다. 기본 상태는 결정적 규칙으로 제어하고 의미에 따른 표정/제스처는 사용자가 켠 Jev 판단을 사용한다. TTS 재생 상태 입력은 후속 범위다.
+
+**2026-10-31 구현 범위:** 사용자 요청으로 초기 통합에 Jev를 포함했다. 결정적 기본 상태와 별개로 TypeSafe Choice 질문 2개(emotion/gesture)를 한 번에 보내며 최대 800자 구간·판단 제한 시간·확신 임계값·최신 구간 검사로 제어한다. 텍스트 UI는 판단을 기다리지 않는다. 실패/낮은 확신은 neutral/none이며 중단·전환·복구 snapshot은 지연 판단/재판단을 차단한다. 이는 아래 TTS 구현을 뜻하지 않는다.
+
+DeepSeek-chan은 `.model3.json`에 표정/모션 참조가 없어 `Exp3/`, `Animation/`을 안전하게 수집해 로컬 manifest에 보충한다. 사용자 모델 원본은 수정하지 않는다. Jev 기본 매핑에는 옷/체형/소품 토글을 넣지 않으며 사용자 설정으로 실제 존재하는 표정/모션을 매핑한다. idle만 loop로 설정하고 제스처는 one-shot이며 매 프레임 기준 파라미터를 복원해 영구 토글을 피한다.
+
+Framework 5-r.5는 Core 5.3(`core/06`)과 함께 고정했다. 예전 Core legacy URL은 API 시그니처가 달라 모델 로드에 실패했으므로 사용하지 않는다. 모션에는 EyeBlink/LipSync effect ID 목록을 명시적으로 초기화한다. 공식 SDK의 타입은 renderer의 좁은 runtime 어댑터로 감싸며 ignored SDK 원본 자체의 타입 검사는 앱 typecheck 범위 밖이다.
 
 예: `request accepted → thinking`; `tool.started → working`; `audio.playing → talking`; `turn.completed + audio ended → idle`; `turn.failed → brief error → idle`.
 

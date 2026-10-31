@@ -16,7 +16,8 @@ Electron main / Local Orchestrator
  ├─ Agent Router ──────┬─ HermesAdapter ── Hermes API / gateway
  │                     └─ GrokBotAdapter ── webhook + optional callback relay
  ├─ Event Bus + Turn State Machine
- ├─ Character Director ───────────────> Live2D Renderer
+ ├─ Character Director ── optional Jev Judge ─> TypeSafe System One
+ │        └──────────────────────────> Live2D Renderer
  ├─ Speech Orchestrator ─ TTS Provider ─> Audio Player / LipSync
  ├─ Permission Broker ── Capture / PC Tool Executors
  ├─ Settings / OS credential store / optional SQLite
@@ -28,7 +29,7 @@ Electron main / Local Orchestrator
 - **Renderer:** 캐릭터 캔버스, 자막/채팅, 상태 뷰, 키보드 UX; 직접 FS/exec/OS 권한 없음.
 - **Preload:** 최소 typed IPC만 노출; 요청 이름·페이로드·송신 origin 검증.
 - **Main:** 에이전트 실행 제어, 네트워크 자격증명, 시스템 권한, 로컬 도구, 데이터 저장.
-- **External:** Hermes Gateway/API, Grok Bot Webhook 및 선택한 callback relay, TTS 공급자. 모두 불신 네트워크 경계.
+- **External:** Hermes Gateway/API, Grok Bot Webhook 및 선택한 callback relay, 선택적으로 활성화한 TypeSafe Jev, 후속 TTS 공급자. 모두 불신 네트워크 경계.
 - **Optional relay:** Grok Bot이 송신할 수 있는 외부 HTTPS 수신점; 로컬 OS 권한을 가지지 않으며 결과만 전달.
 
 ## 애플리케이션 컴포넌트
@@ -53,7 +54,7 @@ Electron main / Local Orchestrator
 2. TurnCoordinator가 논리 입력의 `turn_id`와 제출 시도의 유일한 `request_id`를 생성·저장하고 세션 lease 획득 후 adapter에 전달.
 3. Adapter가 공급자 이벤트를 정규화 (`EVENT_SCHEMA.md`).
 4. 상태 머신이 중복·순서·종결 상태 검증 후 UI 이벤트 전파.
-5. Director는 UI 용도의 의미·상태만 받아 캐릭터 행동 결정.
+5. Director는 결정적 상태 규칙을 적용하고 사용자가 켠 경우 표시용 답변 구간만 Jev에 비동기 전달한다. 결과를 허용된 모델 표정/제스처로 매핑하며 텍스트 표시를 기다리게 하지 않는다.
 6. SpeechOrchestrator는 사용자에게 보여지는 완료/안전한 텍스트에만 TTS 생성.
 7. 사용자가 전환·중단하면 모든 후속 메시지는 원래 세션으로만 라우팅.
 8. 연결 끊김·로컬 timeout·재시작은 `reconciling`으로 두고 기존 원격 실행에 재구독한다. 원격 종료/미접수 확인 전 lease를 유지한다. 공급자 승인 선택은 adapter 응답 경로로만 전달하고 로컬 PC 권한과 분리한다.

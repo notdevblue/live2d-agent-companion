@@ -1,6 +1,6 @@
 # 테스트 및 검증 전략
 
-**상태:** Planned · 현재 코드는 없으며 테스트 실행 결과도 없다.
+**상태:** 초기 Unit/Contract 및 Linux headless 통합 검사 구현. 현재 결과/재현은 [IMPLEMENTATION_STATUS](../development/IMPLEMENTATION_STATUS.md) 참조. 아래 전체 계획을 통과했다는 의미는 아니다.
 
 ## 테스트 피라미드
 
@@ -61,4 +61,4 @@ E-012~018은 [ADR-0003](../planning/adrs/0003-request-recovery-and-approvals.md)
 
 ## CI 목표(미구현)
 
-추후 `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`를 단일 CI 단계에 넣는 방안을 제안. 아직 패키지/스크립트가 없으므로 이 명령이 실행 가능하다고 가정하지 않는다.
+현재 `npm run typecheck`, `npm test`, `npm run build`, `npm run test:desktop`이 있다. CI 자동 실행은 아직 없다. desktop 검사는 모델/SDK를 준비한 뒤 실행하며 기본은 Mock 응답+명시적 표현 fixture이다. 실제 Hermes/Jev 검사는 별도 로컬 연결 설정과 비밀 입력으로만 수행하며 CI fixture로 키/자산을 업로드하지 않는다.

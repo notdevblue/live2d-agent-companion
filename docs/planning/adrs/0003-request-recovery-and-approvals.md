@@ -21,7 +21,7 @@
 - [STATE_AND_STORAGE](../../architecture/STATE_AND_STORAGE.md): Turn/Request/SessionLease 구분과 재시작 복원.
 - [ACCEPTANCE_CRITERIA](../../specs/ACCEPTANCE_CRITERIA.md), [TEST_STRATEGY](../../testing/TEST_STRATEGY.md): 수락 조건과 회귀 시나리오.
 
-첫 구현은 [ROADMAP의 core PoC](../ROADMAP.md#첫-구현-권장-core-poc)로 이 계약을 실증한다. 외부 공급자 capability나 기존 Bot Chat 연속성을 검증했다고 간주하지 않는다.
+이 계약은 core 회귀 테스트로 실증하고 첫 사용자 완료 범위는 [ROADMAP의 통합 흐름](../ROADMAP.md)을 따른다(후속 ADR-0004). 계약 테스트 통과만으로 외부 공급자 capability나 기존 Bot Chat 연속성을 검증했다고 간주하지 않는다.
 
 ## Consequences
 
@@ -37,6 +37,6 @@
 
 ## 검증 범위와 남은 증거
 
-2026-10-31에 문서 간 계약·요구사항·수락 조건을 대조하고 별도 읽기 전용 재검토를 수행했다. 저장소의 Markdown 28개에서 상대 링크/앵커 39개와 JSON 예시 3개를 검사해 오류 0건, `git diff --check` 통과를 확인했다. 변경 근거는 이 ADR과 같은 커밋의 계약/수락 조건/로드맵 diff다. 현재 실행 코드/테스트가 없으며 E-012~018은 **계획**이다. 실제 네트워크 재접속·앱 재시작·Hermes 왕복·Windows 동작은 검증하지 않았다.
+2026-10-31 최초 문서 개정에서 계약·요구사항·수락 조건을 대조하고 별도 읽기 전용 재검토를 수행했다. 당시 Markdown 28개의 상대 링크/앵커 39개와 JSON 예시 3개는 오류 0건, `git diff --check`는 통과했다. 당시에는 실행 코드가 없어 E-012~018은 계획이었다. 이후 구현/실제 검증 결과는 [IMPLEMENTATION_STATUS](../../development/IMPLEMENTATION_STATUS.md)로 추적하며 Windows 검증과 구분한다.
 
 외부 근거: [Hermes Programmatic Integration](https://hermes-agent.nousresearch.com/docs/developer-guide/programmatic-integration)의 server request 응답 및 `open_requests`/`inflight` 복원 설명. 공급자 기능과 앱의 구현 증거는 구분한다.

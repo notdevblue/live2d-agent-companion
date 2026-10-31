@@ -4,6 +4,8 @@
 
 ## 공급자 공식 연결 수단
 
+**2026-10-31 앱 구현:** HTTP 어댑터와 SSH/native gateway 어댑터가 있다. 실제 검증은 실행 중인 owner에 SSH로 붙은 전용 새 테스트 세션이다. API 전용 HTTP 세션은 계약 테스트만 통과했으며 canonical Bot Chat의 동일성은 어느 경로에서도 완료로 표시하지 않는다.
+
 - **API Server:** HTTP + SSE. `POST /v1/chat/completions`, `POST /v1/responses`, `POST /v1/runs`, `GET /v1/runs/{id}/events` 등.
 - **TUI Gateway:** JSON-RPC over stdio 또는 WebSocket. `prompt.submit`, `session.list`, `session.resume`, `session.interrupt` 등.
 - **ACP:** IDE/ACP 호스트에 적합한 stdio JSON-RPC; 본 앱의 rich host에는 Gateway를 우선 고려.
@@ -46,6 +48,16 @@ Hermes Bot Mode의 Bot은 프로필이며, 별도 기억/스킬/설정을 가지
 - 서로 다른 host의 동명 Bot 충돌 방지.
 
 ## 권한/비밀 및 원격 호스트
+
+### 현재 구현한 SSH 경로
+
+`ssh://user@host` + 프로필 + 사용자가 선택한 session ID로 접속한다. 고정된 SSH 명령으로 Python stdlib 브리지를 실행하고 원격 프로필의 `gateway.sock`에서 native identify와 일회성 interactive ticket을 얻어 기존 owner의 WebSocket에 접속한다. ticket은 원격 메모리에서만 사용한다. gateway/서비스 시작·정지·설정 변경이나 외부 포트 개방은 하지 않는다.
+
+`session.resume`은 원문 이력을 생략하고, bridge는 reasoning/도구 입출력/내부 transcript를 로컬로 넘기지 않는다. 사용자에게 보이는 assistant 메시지와 도구 lifecycle/승인 요약만 정규화한다. 제출은 session authority admission/receipt와 연결하고 terminal receipt를 확인해야 완료한다. 재접속 replay가 누락됐으면 snapshot을 사용하거나 미확정으로 유지하며 새 prompt를 보내지 않는다.
+
+세션 목록은 메타데이터만 조회하고 기존 ID를 사용자가 명시적으로 고른다. 테스트 전용 새 세션 생성은 별도 버튼이며 도구 목록을 비워 만든다. 이는 기존 Bot Chat 생성/연결 성공으로 간주하지 않는다. 실제 확인한 Hermes 소스 버전은 `6b5df79671`이며 다른 버전은 계약 검증이 필요하다.
+
+### 주소와 인증
 
 Gateway/API 주소·인증 정보는 main에서만. HTTPS/WSS 또는 보호된 local socket을 기본. 모델/프로필 등 선택은 capabilities와 permissions에 따라 달라지며, Agent Companion이 Hermes의 파일/쉘 권한을 자동으로 상속하지 않는다.
 

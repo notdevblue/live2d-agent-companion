@@ -1,6 +1,6 @@
 # 코드/저장소 기여 규칙
 
-**상태:** Proposed · 현재 문서 전용 저장소, 아래 경로는 **미래 제안**.
+**상태:** 초기 구현은 단일 npm 패키지의 `src/{shared,core,adapters,main,preload,renderer}`와 `tests/`, `scripts/`다. 아래 모노레포 경로는 필요 시 분리할 미래 제안이며 현재 구조가 아니다.
 
 ## 예상 모노레포 구조
 

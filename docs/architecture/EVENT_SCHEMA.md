@@ -6,36 +6,37 @@
 
 ~~~json
 {
-  "schema_version": 1,
-  "event_id": "evt-unique",
-  "turn_id": "turn-uuid",
-  "request_id": "req-uuid",
-  "provider": "hermes",
-  "connection_id": "local-main",
-  "agent_id": "profile:coder",
-  "session_id": "opaque-provider-session",
-  "sequence": 5,
-  "occurred_at": "2026-10-31T00:00:00.000Z",
+  "schemaVersion": 1,
+  "eventId": "evt-unique",
+  "turnId": "turn-uuid",
+  "requestId": "req-uuid",
+  "binding": {
+    "provider": "hermes",
+    "connectionId": "local-main",
+    "agentId": "default",
+    "sessionId": "opaque-provider-session",
+    "continuity": "unverified"
+  },
   "type": "message.delta",
-  "payload": {"text": "안녕"}
+  "payload": {"text": "안녕", "messageId": "message-1"}
 }
 ~~~
 
-`event_id`는 같은 이벤트 재전송을 구별하는 키, `sequence`는 공급자별로 보장되지 않는 경우 어댑터가 정렬하여 부여한다. origin 서버의 ordering guarantee가 없다면 adapter buffering과 terminal gating이 필요.
+위 형식은 현재 `src/shared/contracts.ts`의 `AgentEvent`와 런타임 validator를 따른다. `eventId`는 중복 처리 방지 키다. 공급자의 sequence/epoch는 각 어댑터 내부에서 재생/누락 검증에 사용하며 공통 이벤트에 임의 ordering guarantee를 추가하지 않는다. Main→renderer 이벤트는 selectionId/revision으로 전환·초기화 중 오래된 전달을 차단한다. 아래 표의 payload는 개념 설명이며 실제 필드 타입은 shared 계약이 기준이다.
 
-턴 이벤트는 `provider + connection_id + agent_id + session_id + turn_id + request_id`로 검증한다. `turn_id`는 논리적 입력, `request_id`는 개별 제출 시도이며 재전송에서도 이전 요청의 이벤트를 새 요청으로 바꾸지 않는다. 연결 전용 `connection.changed`에는 turn/request/agent/session 필드를 요구하지 않고 provider/connection으로 라우팅한다.
+턴 이벤트는 전체 binding + turnId + requestId로 검증한다. 문서에서 사용하는 turn_id/request_id는 각각 코드의 turnId/requestId에 대응한다. 연결 상태는 현재 Bootstrap의 capabilities/connectionError로 제공하며 `connection.changed`는 후속 이벤트 제안이다.
 
 ## 표준 이벤트 종류
 
 | type | payload 필드(개념) | UX 의미 |
 |---|---|---|
-| `turn.submitted` | content hash, requestId | 입력 접수 |
+| `turn.submitted` (후속 제안) | content hash, requestId | 현재는 core의 submitting TurnView로 입력 접수 표시 |
 | `turn.accepted` | remoteRunId? | 공급자가 실행 수락, **완료 아님** |
 | `turn.awaiting_result` | deadline? | 비동기 결과 대기 |
 | `turn.reconciling` | reason: disconnect/timeout/restart | 원격 상태 확인 중, 종료 아님 |
 | `turn.resumed` | state: accepted/streaming/awaiting_result/cancel_requested | 기존 원격 실행 복원 |
-| `message.delta` | text | 텍스트 스트리밍 |
-| `message.complete` | text?, messageId? | 해당 메시지 확정 |
+| `message.delta` | text, messageId | 텍스트 스트리밍 |
+| `message.complete` | text, messageId | 해당 메시지 확정 |
 | `message.snapshot` | messageId, text | 복구된 누적 본문으로 기존 메시지를 교체 |
 | `tool.started` | toolId, name, safeDescription | 도구 수행 표시 |
 | `tool.completed` | toolId, outcome | 도구 결과 표시 |
