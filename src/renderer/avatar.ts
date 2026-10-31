@@ -476,10 +476,9 @@ export class Avatar {
         const index = this.indexes.get(id);
         if (index !== undefined && !animated?.has(id)) this.write(index, acting.blink);
       }
-      const phase = now / 1000;
-      const breath = this.indexes.get('ParamBreath');
-      if (breath !== undefined && this.state !== 'blocked')
-        this.write(breath, 0.5 + Math.sin(phase * 1.8) * 0.35);
+      const breath = this.ranges.get('ParamBreath');
+      if (breath && this.state !== 'blocked' && !animated?.has('ParamBreath'))
+        this.write(breath.index, breath.min + (breath.max - breath.min) * acting.breath);
       this.runtime._physics?.evaluate(this.model, dt);
       const layers = this.mixer.sample(now);
       const values = expressionValues(layers, (index) =>

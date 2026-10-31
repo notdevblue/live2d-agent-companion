@@ -18,7 +18,7 @@ export interface ActingOptions {
   intensity: 'quiet' | 'normal' | 'expressive';
   reducedMotion: boolean;
 }
-/** Rotations, lean and gaze are normalized [-1,1]; blink (1=open), smile
+/** Rotations, lean and gaze are normalized [-1,1]; blink (1=open), breath, smile
  * and expressionWeight are [0,1]. These are local model inputs, never window offsets. */
 export interface ActingFrame {
   headX: number;
@@ -30,6 +30,7 @@ export interface ActingFrame {
   gazeX: number;
   gazeY: number;
   blink: number;
+  breath: number;
   smile: number;
   preset: ActingPreset;
   active: boolean;
@@ -201,6 +202,7 @@ export class ActingController {
     const weight = reaction ? this.envelope(now - reaction.started) : 0;
     return {
       ...this.pose,
+      breath: this.state === 'blocked' ? 0.5 : 0.5 + this.breathWave(now) * 0.38 * this.scale(),
       preset: reaction?.preset ?? this.base(),
       active: !!reaction,
       expressionWeight: weight,
@@ -234,6 +236,14 @@ export class ActingController {
   private envelope(age: number): number {
     return smooth(age / 450) * smooth((DURATION - age) / 1100);
   }
+  private breathWave(now: number): number {
+    // A 4.8s relaxed cycle: shorter inhale, longer exhale, zero speed at either end.
+    // Keep the clock independent of cues/resets so starting a reaction never restarts a breath.
+    const phase = (((now % 4800) + 4800) % 4800) / 4800;
+    return phase < 0.42
+      ? -Math.cos((Math.PI * phase) / 0.42)
+      : Math.cos((Math.PI * (phase - 0.42)) / 0.58);
+  }
   private advance(now: number, dt: number): void {
     while (now >= this.gazeAt) {
       this.gazeIndex++;
@@ -265,7 +275,7 @@ export class ActingController {
     follow('headY', this.pose.gazeY * 0.45 + blend(base.headY, target.headY) * scale, 4.5);
     follow('headZ', blend(base.headZ, target.headZ) * scale, 4);
     follow('bodyX', this.pose.headX * 0.3, 2.1);
-    follow('bodyY', this.pose.headY * 0.2, 2.1);
+    follow('bodyY', this.pose.headY * 0.2 + this.breathWave(now) * 0.065 * scale, 2.1);
     follow('lean', blend(base.lean, target.lean) * scale, 2.5);
     follow('smile', blend(base.smile, target.smile), 6);
     const blinkAge = now - this.blinkAt;
