@@ -60,7 +60,7 @@ const scenes = [
   {
     name: 'explain',
     gesture: 'explain',
-    times: [500, 1300, 2000, 5500, 7500, 8000, 10000, 15000, 16200],
+    times: [500, 1300, 2000, 2400, 2800, 2900, 5500, 7500, 8000, 10000, 15000, 16200],
   },
   {
     name: 'wave',
@@ -87,8 +87,18 @@ const scenes = [
   ...['sad', 'concerned', 'angry', 'confused', 'reassure', 'wave'].map((preview) => ({
     name: `preview-${preview}`,
     preview,
-    times: preview === 'angry' ? [1000, 3900, 4150, 4200] : [1000],
+    times:
+      preview === 'angry'
+        ? [1000, 3900, 4150, 4200]
+        : preview === 'wave'
+          ? [1000, 2500, 2632, 2633, 2783, 2933, 3650, 4200]
+          : [1000],
   })),
+  {
+    name: 'preview-explain',
+    preview: 'explain',
+    times: [2200, 2400, 2600, 2749, 2750, 2800, 2900, 3000, 3200, 4199, 4200],
+  },
   { name: 'petting', petting: true, times: [500, 1400, 1800] },
   { name: 'petting-left', petting: true, focusDirection: -1, times: [500, 600, 1800] },
   { name: 'petting-right', petting: true, focusDirection: 1, times: [500, 600, 1800] },
@@ -265,6 +275,13 @@ void app.whenReady().then(async () => {
       const js = (source: string): Promise<any> => window!.webContents.executeJavaScript(source);
       result.mappings = await js(`expressionAcceptance.setup(${JSON.stringify(inventory)})`);
       for (const scene of mode === 'before' ? leanScenes : scenes) {
+        assert.ok(
+          scene.times.every(
+            (time, index) =>
+              Number.isFinite(time) && time >= 0 && (!index || time > scene.times[index - 1]!),
+          ),
+          `${scene.name}: capture times must increase strictly`,
+        );
         const samples = await js(`expressionAcceptance.run(${JSON.stringify(scene)})`);
         result[mode][scene.name] = samples;
         for (const sample of samples) {
@@ -416,6 +433,65 @@ void app.whenReady().then(async () => {
       sample('idle-life', 3000).values.ParamAngleX *
         sample('idle-life', 3000).values.ParamEyeBallX <
         -0.1 && sample('idle-life', 3000).frame.headX * sample('idle-life', 3000).frame.gazeX < 0,
+    );
+    check(
+      'held laughter and sulking retain opposing head tilts without inventing a hand',
+      sample('happy-laugh', 8000).values.ParamAngleZ > sample('happy', 8000).values.ParamAngleZ &&
+        sample('angry', 8000).values.ParamAngleZ < -5 &&
+        sample('happy-laugh', 8000).values.Movement2 === 0 &&
+        sample('angry', 8000).values.Movement2 === 0,
+    );
+    check(
+      'explain adds one early arm accent while preserving selectors and fingers',
+      sample('explain', 2400).values.Param41 > sample('explain', 2000).values.Param41 + 0.03 &&
+        sample('explain', 2900).values.Param41 < sample('explain', 2000).values.Param41 &&
+        [2400, 2800, 2900].every(
+          (time) =>
+            sample('explain', time).values.Movement3 === 1 &&
+            Math.abs(
+              sample('explain', time).values.Param36 - sample('explain', 2000).values.Param36,
+            ) < 0.001 &&
+            Math.abs(
+              sample('explain', time).values.Param42 - sample('explain', 2000).values.Param42,
+            ) < 0.001,
+        ),
+    );
+    check(
+      'short explain preview joins its actual early held arm overlay at return entry',
+      sample('preview-explain', 2749).status.posePhase === 'hold' &&
+        sample('preview-explain', 2750).status.posePhase === 'exit' &&
+        // The original pair's Param41 endpoint is .702 -> .700; allow that
+        // measured asset difference plus one millisecond of natural motion.
+        Math.abs(
+          sample('preview-explain', 2750).values.Param41 -
+            sample('preview-explain', 2749).values.Param41,
+        ) < 0.003 &&
+        sample('preview-explain', 4200).status.posePhase === 'none' &&
+        Math.abs(sample('preview-explain', 4200).values.Movement3) < 0.001,
+    );
+    check(
+      'short greeting preview joins its partially relaxed hold without a return pop',
+      sample('preview-wave', 2632).status.posePhase === 'hold' &&
+        sample('preview-wave', 2633).status.posePhase === 'exit' &&
+        Math.abs(
+          sample('preview-wave', 2633).values.Param62 - sample('preview-wave', 2632).values.Param62,
+        ) < 0.002 &&
+        Math.abs(sample('preview-wave', 3650).values.Movement2) < 0.001 &&
+        sample('preview-wave', 3650).status.posePhase === 'none',
+    );
+    check(
+      'optional torso roll reaches authored physics during idle and respects reduced motion',
+      idleSpan('idle-life', 'ParamBodyAngleZ') > 2 &&
+        idleSpan('idle-life-reduced', 'ParamBodyAngleZ') <
+          idleSpan('idle-life', 'ParamBodyAngleZ') * 0.25 &&
+        Math.abs(sample('happy-laugh', 8000).values.PositionZ) > 2 &&
+        Math.abs(sample('happy-laugh', 8000).values.ParamBodyAngleZ) > 1,
+    );
+    check(
+      'direct affection also owns the bounded torso roll and releases it with contact',
+      sample('petting-right', 600).values.PositionZ > 1 &&
+        sample('petting-right', 600).values.ParamBodyAngleZ < -0.5 &&
+        Math.abs(sample('petting-right', 1800).frame.bodyZ) < 0.3 * 0.65,
     );
     check(
       'afterglow expires within budget',

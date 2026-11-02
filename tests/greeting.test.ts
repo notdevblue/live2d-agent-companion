@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { greetingValues, handAttentionValues } from '../src/renderer/greeting.js';
-import type { ParameterRange, PoseFrame } from '../src/renderer/performance.js';
+import { PoseSequence, type ParameterRange, type PoseFrame } from '../src/renderer/performance.js';
 
 const definition = {
   enter: '默认手切举手',
@@ -115,6 +115,39 @@ describe('finite authored hand attention', () => {
     expect(sampleAttention(11250)).toEqual(rest);
     expect(sampleAttention(15000)).toEqual(rest);
   });
+  it('gives the explain hand one finite early point without touching selectors or fingers', () => {
+    const index = all.get('Param41')!.index;
+    expect(sampleAttention(2000, explain)).toEqual(new Map());
+    const lift = sampleAttention(2500, explain);
+    expect([...lift.keys()]).toEqual([index]);
+    expect(lift.get(index)).toBeGreaterThan(0.2);
+    for (const time of [2900, 2950, 3000, 3200]) {
+      const lowered = sampleAttention(time, explain).get(index)!;
+      expect(lowered).toBeLessThan(0.2);
+      expect(lowered).toBeGreaterThan(0.1);
+    }
+    const reduced = sampleAttention(2500, explain, 0.65 * 0.18).get(index)!;
+    expect(reduced - 0.2).toBeCloseTo((lift.get(index)! - 0.2) * 0.18, 7);
+    expect(sampleAttention(2500, explain, 0)).toEqual(new Map());
+  });
+
+  it('joins early and mid-accent returns from the actual last held overlay without a pop', () => {
+    for (const age of [1650, 2350, 2500, 2750, 2950, 3500, 5700, 10200]) {
+      const sequence = new PoseSequence();
+      sequence.start(explain, 0, age - explain.enterMs);
+      const sample = (at: number) =>
+        handAttentionValues(sequence.sample(at), all, new Set(), () => 0.2, 0.65).get(
+          all.get('Param41')!.index,
+        ) ?? 0.2;
+      const before = sample(age - 0.001),
+        first = sample(age);
+      expect(Math.abs(first - before)).toBeLessThan(0.000001);
+      const midway = sample(age + 150);
+      expect(Math.abs(midway - 0.2)).toBeLessThanOrEqual(Math.abs(first - 0.2));
+      expect(sample(age + 300)).toBe(0.2);
+    }
+  });
+
   it('joins the original exit smoothly within its first three hundred milliseconds', () => {
     for (const def of [definition, explain]) {
       const rest = sampleAttention(8000, def);

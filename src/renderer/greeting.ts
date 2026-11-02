@@ -136,16 +136,28 @@ export function handAttentionValues(
       return new Map();
   }
   const scale = Number.isFinite(intensity) ? clamp(intensity) : 0;
-  const age = definition.enterMs + pose.timeMs!;
-  const relax =
-    pose.phase === 'hold' ? smooth((age - 2500) / 1000) : 1 - smooth(pose.timeMs! / 300);
+  // Join the actual last held overlay, even when a short preview returns in
+  // the middle of its relaxation/point. Older callers without timing retain
+  // the fully relaxed return baseline.
+  const age =
+    pose.phase === 'hold'
+      ? definition.enterMs + pose.timeMs!
+      : Number.isFinite(pose.heldMs)
+        ? definition.enterMs + Math.max(0, pose.heldMs!)
+        : Infinity;
+  const returning = pose.phase === 'exit' ? 1 - smooth(pose.timeMs! / 300) : 1;
+  const relax = smooth((age - 2500) / 1000);
   const beat = (start: number): number =>
-    pose.phase === 'hold' ? smooth((age - start) / 400) * smooth((start + 1650 - age) / 600) : 0;
+    smooth((age - start) / 400) * smooth((start + 1650 - age) / 600);
+  // One finite early point; a mid-point return uses the actual hold timing above.
+  const point = smooth((age - 2250) / 180) * smooth((2900 - age) / 300);
   const offset =
     ((greeting ? -0.2 : -0.12) * relax +
+      (explaining ? 0.1 : 0) * point +
       (greeting ? 0.1 : 0.075) * beat(5100) +
       (greeting ? 0.085 : 0.06) * beat(9600)) *
-    scale;
+    scale *
+    returning;
   if (Math.abs(offset) < 1e-8) return new Map();
   const range = parameters.get(greeting ? 'Param62' : 'Param41')!;
   const base = current(range.index);
