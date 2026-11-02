@@ -128,7 +128,9 @@
 
 ### Grok 시각 연기 검토 (`FR-L2D-009`)
 
-- 지원 모델의 torso roll은 PositionZ 등 검증된 upstream으로 구동하고 physics 출력을 직접 쓰지 않는다. 기존 시계의 고개를 지연해 따라가며 actor 강도별±.3 한도, 진행 중 강도/움직임 줄이기 변경의 즉시 제한·clear/blocked/reset을 검사한다. 미지원/physics-owned 입력과 IDLE 자체의 authored roll은 보존한다. 실제 MOC의 어깨/허리 변화·손 합성·root/MVP/호흡 보존과 authored IDLE 대조를 확인한다.
+- 지원 모델의 torso roll은 PositionZ 등 검증된 upstream으로 구동하고 physics 출력을 직접 쓰지 않는다. idle·명시적 gesture는 기존 시계의 고개를 지연해 따라가며 actor 강도별±.3 한도, 진행 중 강도/움직임 줄이기 변경의 즉시 제한·clear/blocked/reset을 검사한다. 미지원/physics-owned 입력과 IDLE 자체의 authored roll은 보존한다. 실제 MOC의 어깨/허리 변화·손 합성·root/MVP/호흡 보존과 authored IDLE 대조를 확인한다.
+- gesture-none의 기본 변주 bodyX/Z 목표는 happy .10/.04, happy/neutral laugh −.26/.28, shy 또는 embarrassed laugh .24/−.28, angry −.44/.22이며 다른 변주는 방향을 반전한다. 기존 accent+maintenance 합계(상한1)로 혼합하고 강도별 X±.5/Z±.3·2.1/s 추종을 유지한다.30/60/120fps·강도/접근성·clear/blocked/reset·원래 기한과 다른 actor 필드/명시적 gesture·대상 밖 말투의 보존을 검사한다. 실제 SDK의 어깨/상체 변화·손 없음과 기존 입 연기 보존을 확인하며, reduced shy-laugh의8초 입 열림만1e−6 미만으로 검사한다.
+- 첫 authored IDLE의 PositionX/ParamBodyAngleX 또는 PositionZ/ParamBodyAngleZ가 있으면 해당 procedural binding을 생략한다. 원본 모델을 편집하지 않는 메모리 상수 X=5/Z=5 대조로 expressive/reduced의 네 감정과0~3초 보존을 확인하고 다른 rig/별칭·모든 시각 검증으로 확대하지 않는다. 기존 의도는 원래 기한에 끝나되 보간 잔차가 남을 수 있으므로16.2초 즉시 baseline 일치를 요구하지 않고18.2초 근접 복귀를 별도 검사한다. 닫힌 입의 지수 잔차 허용값1e−6과 fixture의 유효 segment ID를 명시하며 실패/수정 근거는 [검토 문서](../ux/GROK_VTUBER_REVIEW.md#현재-검증영상적용과-복원)에 남긴다.
 - 짧은 인사/설명 preview의 실제1500ms hold 끝에서도 손 overlay가 점프하지 않도록 현재 유지 시각을 원본 exit 첫300ms에 연결한다. 중간 강조/이완 도중 복귀를 실제 PoseSequence와 MOC 경계에서 확인한다. 설명의 원본 끝값 .002 차이는 자산 허용값에 포함하고 완전한 subpixel 연속으로 주장하지 않는다. 새 early point도 같은 경로로 복귀하며 selector·손가락·물리 출력과 원래 기한은 보존한다.
 
 - happy cue의 저장 눈 아트는2300ms 수명/400ms fade 뒤 기존 열린 기쁨 얼굴을 드러낸다. confused1400/laugh1200/tease1100ms의 기존 우선순위·자산 이름/명시적 빈 값은 유지한다. custom 눈과 함께 선택한 표시·나머지 자산 파라미터의 원래 층/수명을 보존하는지 검사하며 실제 MOC에서 강조 후 일반 눈으로의 복귀를 확인한다.
