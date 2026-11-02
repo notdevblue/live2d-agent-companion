@@ -39,15 +39,28 @@ const scenes = [
     attitude: 'laugh',
     times: [1000, 8000, 15600],
   },
-  { name: 'concerned-tease', emotion: 'concerned', attitude: 'tease', times: [1000, 8000, 16200] },
-  { name: 'explain', gesture: 'explain', times: [500, 2000, 8000, 15000, 16200] },
-  { name: 'wave', gesture: 'wave', times: [500, 2000, 8000, 15000, 16200] },
+  {
+    name: 'concerned-tease',
+    emotion: 'concerned',
+    attitude: 'tease',
+    times: [700, 1000, 1400, 8000, 16200],
+  },
+  {
+    name: 'explain',
+    gesture: 'explain',
+    times: [500, 1300, 2000, 5500, 7500, 8000, 10000, 15000, 16200],
+  },
+  {
+    name: 'wave',
+    gesture: 'wave',
+    times: [500, 700, 1050, 1400, 2000, 5500, 8000, 10000, 15000, 16200],
+  },
   {
     name: 'saved-happy',
     emotion: 'happy',
     attitude: 'laugh',
     savedHappy: true,
-    times: [1000, 8000],
+    times: [700, 1000, 1400, 8000],
   },
   { name: 'clear', emotion: 'happy', gesture: 'explain', clearAt: 8050, times: [8000, 8100] },
   {
@@ -58,13 +71,15 @@ const scenes = [
     times: [1000, 8000, 16200],
   },
   { name: 'angry', emotion: 'angry', times: [1000, 8000, 16200] },
-  { name: 'confused', emotion: 'confused', times: [1000, 8000, 16200] },
+  { name: 'confused', emotion: 'confused', times: [1000, 1200, 1250, 1600, 8000, 16200] },
   ...['sad', 'concerned', 'angry', 'confused', 'reassure', 'wave'].map((preview) => ({
     name: `preview-${preview}`,
     preview,
     times: [1000],
   })),
-  { name: 'petting', petting: true, times: [500, 1600] },
+  { name: 'petting', petting: true, times: [500, 1400, 1800] },
+  { name: 'petting-left', petting: true, focusDirection: -1, times: [500, 600, 1800] },
+  { name: 'petting-right', petting: true, focusDirection: 1, times: [500, 600, 1800] },
 ];
 
 void app.whenReady().then(async () => {
@@ -174,19 +189,29 @@ void app.whenReady().then(async () => {
         sample('embarrassed-laugh', 1000).values.EyeSmile > 0.05,
     );
     check(
-      'sweat and tease eye art overlap',
-      sample('concerned-tease', 1000).values.key13 > 0.5 &&
-        sample('concerned-tease', 1000).values.key6 > 0.5,
+      'worried teasing keeps its sweat without the deadpan eye artwork',
+      sample('concerned-tease', 700).values.key13 > 0.5 &&
+        sample('concerned-tease', 700).values.key6 === 0,
+    );
+    check(
+      'tease eye art releases independently of the sweat marking',
+      sample('concerned-tease', 1400).values.key6 === 0 &&
+        sample('concerned-tease', 1400).values.key13 > 0.5,
     );
     check(
       'saved key5 mapping wins',
-      sample('saved-happy', 1000).values.key5 > 0.5 &&
-        sample('saved-happy', 1000).values.EyeSmile === 0,
+      sample('saved-happy', 700).values.key5 > 0.5 &&
+        sample('saved-happy', 700).values.EyeSmile === 0,
+    );
+    check(
+      'saved laugh eye artwork releases without changing the saved mapping',
+      sample('saved-happy', 1400).values.key5 === 0,
     );
     check(
       'semantic face remains at eight seconds',
       sample('happy', 8000).values.ParamMouthForm > 0 &&
-        sample('happy', 8000).values.ParamMouthOpenY > 0.01,
+        sample('happy', 8000).values.ParamMouthOpenY > 0.1 &&
+        sample('happy', 8000).values.ParamEyeLOpen < 0.6,
     );
     check(
       'afterglow expires within budget',
@@ -212,13 +237,35 @@ void app.whenReady().then(async () => {
           !done.idleParameters.includes(id) && Math.abs(done.handValues[id] - Number(value)) > 0.02,
       );
       const heldEndpoints = held.handEndpoints[held.pose.definition.enter].enter;
-      check(
-        `${scene} complete authored hold endpoints`,
-        Object.entries(heldEndpoints).every(
-          ([id, value]) => Math.abs(held.handValues[id] - Number(value)) < 0.02,
-        ),
-      );
+      if (scene === 'wave') {
+        check(
+          'greeting holds an open palm instead of the authored chest endpoint',
+          held.values.Param60 > 0.4 &&
+            held.values.Param60 < 0.65 &&
+            held.values.Param61 > 0.08 &&
+            held.values.Param62 < -0.05,
+        );
+        check(
+          'greeting sweeps actual upstream joints before resting',
+          Math.abs(sample('wave', 700).values.Param61 - sample('wave', 1050).values.Param61) >
+            0.05 && Math.abs(sample('wave', 1400).values.Param61 - held.values.Param61) > 0.03,
+        );
+      } else
+        check(
+          `${scene} relaxes only the verified forearm while preserving fingers and selectors`,
+          Object.entries(heldEndpoints).every(
+            ([id, value]) =>
+              id === 'Param41' || Math.abs(held.handValues[id] - Number(value)) < 0.02,
+          ) && held.values.Param41 < Number(heldEndpoints.Param41) - 0.05,
+        );
       check(`${scene} authored hand return endpoints`, errors.length === 0);
+      const joint = scene === 'wave' ? 'Param62' : 'Param41';
+      check(
+        `${scene} has two finite partial lifts from the relaxed hold`,
+        sample(scene, 5500).values[joint] - held.values[joint] > 0.03 &&
+          sample(scene, 10000).values[joint] - held.values[joint] > 0.03 &&
+          sample(scene, 5500).values[joint] > sample(scene, 10000).values[joint],
+      );
     }
     check(
       'cue clear removes residue and hand',
@@ -239,18 +286,66 @@ void app.whenReady().then(async () => {
         sample('angry', 1000).values.Mouthpucker > 0,
     );
     check(
+      'angry mouth reads as a frown and never opens during its residue',
+      sample('angry', 1000).values.ParamMouthForm < -0.9 &&
+        sample('angry', 8000).values.ParamMouthForm < -0.7 &&
+        sample('angry', 8000).values.ParamMouthOpenY === 0,
+    );
+    check(
       'confused special eyes own the eye shape',
       sample('confused', 1000).values.key3 > 0.5 && sample('confused', 1000).values.EyeSmile === 0,
+    );
+    check(
+      'confused eye artwork is a brief accent, not a long sticker',
+      sample('confused', 1600).values.key3 === 0,
+    );
+    check(
+      'confused eye return switches drawings without partial gray artwork',
+      [1200, 1250].every((time) => [0, 1].includes(sample('confused', time).values.key3)),
+    );
+    check(
+      'explain head responds at hand entry and once during its long hold',
+      sample('explain', 1300).frame.headY < sample('explain', 2000).frame.headY - 0.03 &&
+        sample('explain', 7500).frame.headY < sample('explain', 8000).frame.headY - 0.03,
     );
     check(
       'local petting produces smile and independent release',
       sample('petting', 500).petting.weight > 0.5 &&
         sample('petting', 500).values.EyeSmile > 0.1 &&
-        sample('petting', 1600).petting.weight === 0,
+        sample('petting', 1800).petting.weight === 0,
     );
     check(
       'petting zone selects only the upper model silhouette',
       sample('petting', 500).petting.headHit && !sample('petting', 500).petting.lowerHit,
+    );
+    check(
+      'petting adds only the saved blush and a visible local tilt',
+      sample('petting', 500).values.key7 > 0.1 && sample('petting', 500).beforePhysics.AngleZ > 1,
+    );
+    check(
+      'petting briefly retains affection after release and then returns',
+      sample('petting', 1400).status.pettingWeight > 0.03 &&
+        sample('petting', 1400).values.key7 > 0.02 &&
+        sample('petting', 1800).values.key7 === 0,
+    );
+    check(
+      'local contact direction reaches actual head and eye inputs',
+      sample('petting-left', 600).values.AngleX < -2 &&
+        sample('petting-right', 600).values.AngleX > 2 &&
+        sample('petting-left', 600).values.ParamEyeBallX < -0.1 &&
+        sample('petting-right', 600).values.ParamEyeBallX > 0.1,
+    );
+    check(
+      'contact head direction survives the model physics',
+      sample('petting-left', 600).values.ParamAngleX < -1 &&
+        sample('petting-right', 600).values.ParamAngleX > 1,
+    );
+    check(
+      'contact direction releases without keeping the blush or direct input active',
+      ['petting-left', 'petting-right'].every(
+        (scene) =>
+          sample(scene, 1800).status.pettingWeight === 0 && sample(scene, 1800).values.key7 === 0,
+      ),
     );
     result.leanComparison = leanScenes.map(({ name }) => {
       const before = result.before[name][0],

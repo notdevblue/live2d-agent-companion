@@ -22,10 +22,12 @@ import {
   SURPRISED_EXPRESSION,
   THINKING_MOTION,
 } from '../shared/model-mappings.js';
-import { PettingController, pettingBounds, type PettingBounds } from './petting.js';
+import { PettingController, applyPetting, pettingBounds, type PettingBounds } from './petting.js';
+import { greetingValues, handAttentionValues } from './greeting.js';
 import {
   actingChannels,
   expressionValues,
+  selectEyeArtwork,
   ExpressionMixer,
   parameterValue,
   surprisedExpression,
@@ -36,6 +38,7 @@ import {
   type ActingChannel,
   type ExpressionParameter,
   type ExpressionTarget,
+  type ExpressionLayer,
   type ParameterRange,
   type PoseDefinition,
 } from './performance.js';
@@ -113,6 +116,8 @@ export class Avatar {
   private actor = new ActingController();
   private petting = new PettingController();
   private pettingRegion?: PettingBounds;
+  private pettingFocus = { x: 0, y: 0 };
+  private pettingLook = { x: 0, y: 0 };
   private mixer = new ExpressionMixer();
   private poses = new PoseSequence();
   private poseDefinitions = new Map<string, PoseDefinition>();
@@ -375,10 +380,21 @@ export class Avatar {
       const name =
         preset === 'heart' && this.expressions.has('爱心眼')
           ? '爱心眼'
-          : preset === 'tease' && this.expressions.has('屑屑眼')
-            ? '屑屑眼'
-            : this.inventory.expressionMap[emotion];
-      this.setExpression(name, now, reactionDuration(preset));
+          : this.inventory.expressionMap[emotion];
+      this.setExpression(
+        name,
+        now,
+        reactionDuration(preset),
+        0,
+        [],
+        preset === 'confused'
+          ? 1400
+          : preset === 'laugh'
+            ? 1200
+            : preset === 'tease'
+              ? 1100
+              : undefined,
+      );
       const motion =
         preset === 'grass'
           ? '狗尾草切换出来'
@@ -431,16 +447,23 @@ export class Avatar {
     const extras: string[] = [];
     if (cue.attitude === 'shy' && this.inventory.expressionMap.embarrassed)
       extras.push(this.inventory.expressionMap.embarrassed);
-    if (
-      cue.attitude === 'tease' &&
-      this.actor.sample(now, 0).variant === 0 &&
-      this.expressions.has('屑屑眼')
-    )
-      extras.push('屑屑眼');
     const preset = this.actor.sample(now, 0).preset;
     const duration = reactionDuration(preset);
     const lifetime = reactionLifetime(preset, cue.stage ?? 'semantic');
-    this.setExpression(name, now, duration, lifetime - duration, extras);
+    this.setExpression(
+      name,
+      now,
+      duration,
+      lifetime - duration,
+      extras,
+      cue.emotion === 'confused'
+        ? 1400
+        : cue.attitude === 'laugh'
+          ? 1200
+          : cue.attitude === 'tease'
+            ? 1100
+            : undefined,
+    );
     // Delivery tone does not override an explicit "no physical gesture" decision.
     this.startGesture(motionName, now, lifetime);
     if (window.__avatarStatus) {
@@ -469,6 +492,7 @@ export class Avatar {
     holdMs: number,
     afterglowMs = 0,
     extras: readonly string[] = [],
+    eyeDurationMs?: number,
   ): void {
     const eyes = new Set(['key3', 'key4', 'key5', 'key6'].map((id) => this.indexes.get(id)));
     const markings = new Set(['key2', 'key7', 'key13'].map((id) => this.indexes.get(id)));
@@ -489,15 +513,58 @@ export class Avatar {
       const markingParameters = parameters.filter((p) => markings.has(p.index));
       const rest = parameters.filter((p) => !eyes.has(p.index) && !markings.has(p.index));
       if (eyeParameters.length) {
-        targets.push({ name: `${asset}:eyes`, parameters: eyeParameters, afterglowWeight: 0 });
+        targets.push({
+          name: `${asset}:eyes`,
+          parameters: eyeParameters,
+          afterglowWeight: 0,
+          ...(eyeDurationMs === undefined ? {} : { durationMs: eyeDurationMs, fadeOutMs: 400 }),
+        });
         eyeOwner ||= eyeParameters.some((p) => p.value > 0);
       }
       if (markingParameters.length)
-        targets.push({ name: `${asset}:markings`, parameters: markingParameters });
-      if (rest.length) targets.push({ name: asset, parameters: rest, afterglowWeight: 0 });
+        targets.push({
+          name: `${asset}:markings`,
+          parameters: markingParameters,
+          afterglowWeight: markingParameters.some(
+            (p) =>
+              p.value > 0 &&
+              (p.index === this.indexes.get('key7') || p.index === this.indexes.get('key13')),
+          )
+            ? 0.95
+            : 0.4,
+        });
+      if (rest.length)
+        targets.push({
+          name: asset,
+          parameters: rest,
+          ...(asset === ANGRY_EXPRESSION
+            ? { durationMs: 1800, fadeOutMs: 600, afterglowWeight: 1 }
+            : { afterglowWeight: 0 }),
+        });
       for (const p of parameters) owned.add(p.index);
     }
     this.mixer.transitionMany(targets, now, holdMs, { afterglowMs, afterglowWeight: 0.4 });
+  }
+  private pettingMarks(
+    weight: number,
+    animated: ReadonlySet<string> = new Set(),
+  ): ExpressionLayer[] {
+    if (
+      !Number.isFinite(weight) ||
+      !this.presentation.pettingEnabled ||
+      weight <= 0 ||
+      this.state === 'blocked' ||
+      this.state === 'error'
+    )
+      return [];
+    const name = this.inventory.expressionMap.embarrassed;
+    if (!name || this.physicsOutputs.has('key7') || animated.has('key7')) return [];
+    const parameters = (this.expressions.get(name) ?? []).filter(
+      (p) => p.index === this.indexes.get('key7') && p.value > 0,
+    );
+    return parameters.length
+      ? [{ name: `${name}:petting`, parameters, weight: Math.min(1, weight) * 0.9 }]
+      : [];
   }
   private clearPose(): void {
     this.stateGesture = false;
@@ -563,11 +630,22 @@ export class Avatar {
   beginPetting(): boolean {
     if (!this.presentation.pettingEnabled || this.state === 'blocked' || this.state === 'error')
       return false;
+    this.pettingFocus = { x: 0, y: 0 };
+    this.pettingLook = { x: 0, y: 0 };
     this.petting.begin(performance.now());
     return true;
   }
-  strokePetting(distance: number): void {
-    this.petting.stroke(distance, performance.now());
+  strokePetting(distance: number, x?: number, y?: number): void {
+    if (!this.petting.stroke(distance, performance.now())) return;
+    const r = this.pettingRegion;
+    if (r && r.width > 0 && r.height > 0 && Number.isFinite(x) && Number.isFinite(y)) {
+      this.pettingFocus = {
+        // The silhouette includes wide hair/arms. A stroke over the central
+        // half still needs a readable look; this is a response gain, not anatomy.
+        x: Math.max(-1, Math.min(1, ((x! - r.x) / r.width - 0.5) * 4)),
+        y: Math.max(-1, Math.min(1, (0.5 - (y! - r.y) / r.height) * 2)),
+      };
+    }
   }
   endPetting(immediate = false): void {
     if (immediate) this.petting.clear();
@@ -643,18 +721,36 @@ export class Avatar {
         this.lastGesture = -Infinity;
         this.lastGestureName = '';
       }
-      const acting = this.actor.sample(now, dt);
+      let acting = this.actor.sample(now, dt);
+      if (acting.gesture === 'wave' && !this.presentation.reducedMotion)
+        for (const [index, value] of greetingValues(
+          pose,
+          this.ranges,
+          this.physicsOutputs,
+          (index) => this.model.getParameterValueByIndex(index),
+          { quiet: 0.35, normal: 0.65, expressive: 1 }[this.presentation.intensity],
+        ))
+          this.write(index, value);
+      if (
+        (acting.gesture === 'wave' || acting.gesture === 'explain') &&
+        !this.presentation.reducedMotion
+      )
+        for (const [index, value] of handAttentionValues(
+          pose,
+          this.ranges,
+          this.physicsOutputs,
+          (index) => this.model.getParameterValueByIndex(index),
+          { quiet: 0.35, normal: 0.65, expressive: 1 }[this.presentation.intensity],
+        ))
+          this.write(index, value);
       const petWeight =
         this.petting.sample(now) *
         { quiet: 0.35, normal: 0.65, expressive: 1 }[this.presentation.intensity] *
         (this.presentation.reducedMotion ? 0.18 : 1);
-      if (petWeight > 0) {
-        acting.smile = Math.max(acting.smile, 0.85 * petWeight);
-        acting.eyeSmile = Math.max(acting.eyeSmile, 0.9 * petWeight);
-        acting.eyeL *= 1 - petWeight * 0.35;
-        acting.eyeR *= 1 - petWeight * 0.35;
-        acting.headZ += 0.08 * petWeight;
-      }
+      const petFollow = 1 - Math.exp(-8 * dt);
+      this.pettingLook.x += (this.pettingFocus.x - this.pettingLook.x) * petFollow;
+      this.pettingLook.y += (this.pettingFocus.y - this.pettingLook.y) * petFollow;
+      if (petWeight > 0) acting = applyPetting(acting, petWeight, this.pettingLook);
       const animated = this.motionInfo.get(this.activeGesture)?.parameters;
       for (const [channel, range] of Object.entries(this.channels) as [
         ActingChannel,
@@ -675,10 +771,18 @@ export class Avatar {
         if (index !== undefined && !animated?.has(id) && !this.physicsOutputs.has(id))
           this.write(index, (this.ranges.get(id)?.neutral ?? 1) * acting.blink);
       }
-      const layers = this.mixer.sample(
-        now,
-        { quiet: 0.35, normal: 0.65, expressive: 1 }[this.presentation.intensity] *
-          (this.presentation.reducedMotion ? 0.18 : 1),
+      const layers = selectEyeArtwork(
+        this.mixer.sample(
+          now,
+          { quiet: 0.35, normal: 0.65, expressive: 1 }[this.presentation.intensity] *
+            (this.presentation.reducedMotion ? 0.18 : 1),
+        ),
+        new Set(
+          ['key3', 'key4', 'key5', 'key6'].flatMap((id) => {
+            const index = this.indexes.get(id);
+            return index === undefined ? [] : [index];
+          }),
+        ),
       );
       // Special eye artwork owns its shape. Do not add a competing procedural wink.
       const specialEyes = layers.some(
@@ -714,6 +818,16 @@ export class Avatar {
       const values = expressionValues(expressionLayers, (index) =>
         this.model.getParameterValueByIndex(index),
       );
+      // Direct affection uses the user's blush marking only. Use the larger
+      // contribution instead of stacking it on an already-blushing message.
+      const petValues = expressionValues(this.pettingMarks(petWeight, animated), (index) =>
+        this.model.getParameterValueByIndex(index),
+      );
+      for (const [index, value] of petValues)
+        values.set(
+          index,
+          Math.max(values.get(index) ?? this.model.getParameterValueByIndex(index), value),
+        );
       for (const [index, value] of values) this.write(index, value);
       // Facial expressions contain physics inputs too (brows, cheeks, eyes).
       this.runtime._physics?.evaluate(this.model, dt);

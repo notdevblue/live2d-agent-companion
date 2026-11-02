@@ -15,6 +15,14 @@ let render = true;
 let beforePhysics: Record<string, number> = {};
 const parameters = [
   'LeanInput',
+  'AngleX',
+  'AngleY',
+  'AngleZ',
+  'ParamAngleY',
+  'ParamAngleX',
+  'ParamAngleZ',
+  'ParamEyeBallX',
+  'ParamEyeBallY',
   'EyeSmile',
   'ParamEyeLOpen',
   'ParamEyeROpen',
@@ -25,6 +33,13 @@ const parameters = [
   'Mouthpucker',
   'Movement2',
   'Movement3',
+  'Param62',
+  'Param59',
+  'Param60',
+  'Param61',
+  'Param36',
+  'Param41',
+  'Param42',
   'key2',
   'key3',
   'key4',
@@ -158,7 +173,16 @@ const api = {
           avatar.clearCue(cue);
           cleared = true;
         }
-        if (scene.petting && clock - start <= 600) avatar.strokePetting(12);
+        if (scene.petting && clock - start <= 600) {
+          const region = avatar.pettingRegion;
+          if (scene.focusDirection && region && clock - start > 500)
+            avatar.strokePetting(
+              12,
+              region.x + region.width * (0.5 + 0.25 * scene.focusDirection),
+              region.y + region.height * 0.5,
+            );
+          else avatar.strokePetting(12);
+        }
         if (scene.petting && clock - start === 650) avatar.endPetting();
         render = clock === target;
         if (render) avatar.regionAt = -Infinity;

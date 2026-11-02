@@ -44,6 +44,9 @@ function setup() {
     indexes: Map<string, number>;
     petting: { sample: (now: number) => number };
     pettingRegion?: { x: number; y: number; width: number; height: number };
+    pettingFocus: { x: number; y: number };
+    pettingMarks: (weight: number, animated?: ReadonlySet<string>) => ExpressionLayer[];
+    physicsOutputs: Set<string>;
   };
   for (const [name, parameter] of [
     ['waiting', 'wait'],
@@ -273,10 +276,11 @@ describe('semantic expression afterglow — FR-L2D-004/006/007', () => {
         .sample(1700)
         .map((l) => l.name)
         .sort(),
-    ).toEqual(['sweat:markings', '屑屑眼:eyes'].sort());
+    ).toEqual(['sweat:markings']);
+    expect(runtime.mixer.sample(2200).map((l) => l.name)).toEqual(['sweat:markings']);
     const residue = runtime.mixer.sample(9000, 0.65);
     expect(residue.map((l) => l.name)).toEqual(['sweat:markings']);
-    expect(residue[0]!.weight).toBeCloseTo(0.26);
+    expect(residue[0]!.weight).toBeCloseTo(0.6175);
   });
   it('allows multiple markings, filters automatic props, and preserves explicitly selected assets', () => {
     const { avatar, runtime } = avatarWithMaps({ concerned: 'sweat', embarrassed: 'custom-blush' });
@@ -300,10 +304,50 @@ describe('semantic expression afterglow — FR-L2D-004/006/007', () => {
         .some((p) => p.index === runtime.indexes.get('clothes')),
     ).toBe(true);
   });
-  it('gives a saved primary eye precedence over automatic teasing', () => {
+  it('preserves saved primary eye art while procedural teasing owns its own eyelids', () => {
     const { avatar, runtime } = avatarWithMaps({ happy: '＞＜' });
     avatar.cue({ ...cue, gesture: 'none', attitude: 'tease' });
     expect(runtime.mixer.sample(700).map((l) => l.name)).toEqual(['＞＜:eyes']);
+  });
+  it('softens the generated angry accent into a bounded facial residue', () => {
+    const { avatar, runtime } = avatarWithMaps({ angry: '@companion/angry' });
+    runtime.expressions.set('@companion/angry', [{ index: 50, value: -1, blend: 'Overwrite' }]);
+    avatar.cue({ ...cue, emotion: 'angry', gesture: 'none', stage: 'semantic' });
+    expect(runtime.mixer.sample(1000, 0.65)[0]?.weight).toBeCloseTo(1);
+    expect(runtime.mixer.sample(2200, 0.65)[0]?.weight).toBeCloseTo(0.65);
+    expect(runtime.mixer.sample(8000, 0.65)[0]?.weight).toBeCloseTo(0.65);
+    expect(runtime.mixer.sample(16200, 0.65)).toEqual([]);
+  });
+  it('keeps saved laugh eye art as a short accent without overwriting its configured mapping', () => {
+    const { avatar, runtime } = avatarWithMaps({ happy: '＞＜', embarrassed: 'blush' });
+    avatar.cue({ ...cue, gesture: 'none', attitude: 'laugh' });
+    expect(runtime.mixer.sample(700).map((l) => l.name)).toEqual(['＞＜:eyes']);
+    expect(runtime.mixer.sample(1400)).toEqual([]);
+    expect((avatar as unknown as { inventory: ModelInventory }).inventory.expressionMap.happy).toBe(
+      '＞＜',
+    );
+    vi.setSystemTime(2000);
+    avatar.cue({ ...cue, messageId: 'second', segmentId: 2, emotion: 'confused', gesture: 'none' });
+  });
+  it('allows only the saved blush marker in direct petting and preserves custom props and authored ownership', () => {
+    const { avatar, runtime } = avatarWithMaps({ embarrassed: 'custom-blush' });
+    expect(runtime.pettingMarks(0.65)).toEqual([]);
+    avatar.configure({
+      intensity: 'normal',
+      framing: 'bust',
+      positionLocked: false,
+      reducedMotion: false,
+      pettingEnabled: true,
+    });
+    const marks = runtime.pettingMarks(0.65);
+    expect(marks[0]?.weight).toBeCloseTo(0.585);
+    expect(marks[0]?.parameters.map((p) => p.index)).toEqual([runtime.indexes.get('key7')]);
+    expect(runtime.pettingMarks(0.65, new Set(['key7']))).toEqual([]);
+    runtime.physicsOutputs.add('key7');
+    expect(runtime.pettingMarks(0.65)).toEqual([]);
+    runtime.physicsOutputs.clear();
+    avatar.setState('blocked');
+    expect(runtime.pettingMarks(0.65)).toEqual([]);
   });
   it('holds the authored hand through the residue and completes its return inside the finite lifetime', () => {
     const { avatar, runtime } = faceSetup();
@@ -339,9 +383,8 @@ describe('semantic expression afterglow — FR-L2D-004/006/007', () => {
       segmentId: 2,
     } as const;
     avatar.cue(semantic);
-    expect(runtime.mixer.sample(8000, 0.65)).toMatchObject([
-      { name: 'blush:markings', weight: 0.26 },
-    ]);
+    expect(runtime.mixer.sample(8000, 0.65)).toMatchObject([{ name: 'blush:markings' }]);
+    expect(runtime.mixer.sample(8000, 0.65)[0]!.weight).toBeCloseTo(0.6175);
     vi.setSystemTime(8000);
     avatar.cue(semantic);
     expect(runtime.mixer.sample(13800)).toEqual([]);
@@ -406,5 +449,24 @@ describe('Avatar petting opt-in and interruption — FR-L2D-008', () => {
       expect(runtime.petting.sample(300)).toBe(0);
       if (boundary === 'blocked' || boundary === 'error') expect(avatar.beginPetting()).toBe(false);
     }
+  });
+  it('normalizes only supplied local stroke coordinates and resets focus on a new contact', () => {
+    const { avatar, runtime } = setup();
+    avatar.configure(settings);
+    runtime.pettingRegion = { x: 10, y: 20, width: 100, height: 200 };
+    avatar.beginPetting();
+    avatar.strokePetting(12, 110, 20);
+    expect(runtime.pettingFocus).toEqual({ x: 1, y: 1 });
+    avatar.strokePetting(12, NaN, 40);
+    expect(runtime.pettingFocus).toEqual({ x: 1, y: 1 });
+    avatar.strokePetting(200, 10, 220);
+    expect(runtime.pettingFocus).toEqual({ x: 1, y: 1 });
+    avatar.strokePetting(12, 10, 220);
+    expect(runtime.pettingFocus).toEqual({ x: -1, y: -1 });
+    avatar.endPetting();
+    avatar.strokePetting(12, 110, 20);
+    expect(runtime.pettingFocus).toEqual({ x: -1, y: -1 });
+    avatar.beginPetting();
+    expect(runtime.pettingFocus).toEqual({ x: 0, y: 0 });
   });
 });

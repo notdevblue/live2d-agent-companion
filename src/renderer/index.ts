@@ -643,7 +643,7 @@ async function overlayMode(): Promise<void> {
         petY = event.clientY;
         if (!event.shiftKey || !canPet() || !avatar?.pettingHit(event.clientX, event.clientY))
           finishDrag();
-        else avatar.strokePetting(distance);
+        else avatar.strokePetting(distance, event.clientX, event.clientY);
         return;
       }
       if (Math.abs(event.screenX - startX) + Math.abs(event.screenY - startY) > 3) moved = true;
