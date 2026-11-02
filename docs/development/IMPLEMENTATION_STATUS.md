@@ -22,7 +22,7 @@
 
 ## Grok의 VTuber 시각 검토와 개선 (2026-11-03)
 
-현재 코드 기준은 `15c37eb`이다. 조사 원문·공식 영상 링크 전달·채택/기각·전체 점수와 적용/복원은 [Grok 검토·반영](../ux/GROK_VTUBER_REVIEW.md)을 따른다. 초기 연기 기여도 단독 점수는60→57→57→63→60/100, 기존 그림을 포함한 완료 종합 평가는60→58→72→72→74→69→74/100이었다. 직전 검토 `b2f1401`의69점은69초 자료의 주관적 시각 의견이며, 직전74점은59초 자료의 `3a0fef4`에 대한 의견이다. 유지 얼굴·눈/고개 독립 복귀를 보강한 현재 `15c37eb`도 같은69초 조건에서74/100으로 종료 조건에 못 미쳤다. 몸통의 실제 구동 경로와 자세 대비는 후속 검증 중이다. 평가 범위·프레임 간격·전신 크기·관찰 길이의 변경을 구분하고 코드 효과만의 상승치로 합치지 않는다.
+현재 코드 기준은 `4771977`이다. 조사 원문·공식 영상 링크 전달·채택/기각·전체 점수와 적용/복원은 [Grok 검토·반영](../ux/GROK_VTUBER_REVIEW.md)을 따른다. 초기 연기 기여도 단독 점수는60→57→57→63→60/100, 기존 그림을 포함한 완료 종합 평가는60→58→72→72→74→69→74/100이었다. 직전 검토 `b2f1401`의69점은69초 자료의 주관적 시각 의견이며, 직전74점은59초 자료의 `3a0fef4`에 대한 의견이다. 유지 얼굴·눈/고개 독립 복귀를 보강한 직전 `15c37eb`도 같은69초 조건에서74/100으로 종료 조건에 못 미쳤다. 현재는 몸통 구동과 자세 대비·짧은 손 복귀를 보강하고 재검토 중이다. 평가 범위·프레임 간격·전신 크기·관찰 길이의 변경을 구분하고 코드 효과만의 상승치로 합치지 않는다.
 
 `FR-L2D-004/006/008/009`를 실제 기본 renderer에 통합했다. 감정별 유지 얼굴과 두 변주, 부끄러움/걱정→지연 웃음/wink, 혼란의 회피/젖힘→호기심 기울임, 화남의 측면 자세·음수 닫힌 입·실제 normal 눈 열림 .4025를 제공한다. 특수 눈은 짧은 강조 뒤 단일 그림의 표시 소유권으로 돌아오고 홍조/땀과 독립된다. 시선→고개→지연된 상체를 실제 rig로 보정했고 기쁨/웃음은 한 번 다가왔다 안정한다. 기존 lean 경로의 국소 zoom/anchor는 의도적으로 변하지만 ambient offsetY/호흡·OS 창 위치/저장 배율은 유지한다. `gesture=none`에서 감정만으로 팔을 자동으로 올리지 않는다. 기존 불규칙 대기 슬롯의 고개→지연 상체 이동과 손 없는 순수 기쁨/웃음의1.85~3.7초 청자 확인 시선·비스듬한 유지 자세를 추가했다.
 
@@ -30,17 +30,21 @@
 
 기쁨과 웃음이 같은 유지 미소로 수렴하고 닫힌 입0을 공통 최소 .12가 덮던 원인도 수정했다. neutral acknowledge의 기존 입 목표는 명시적으로 보존하며, 실제8초 기쁨 눈 .844/입 .117과 웃음 눈 .467/입 약0/입꼬리 .52를 확인했다. 대기는 눈의 반대 방향 복귀와 측면 고개/지연 상체 목표를 분리하고 같은 불규칙 시계·기존 clamp/속도·Y/호흡·rootY를 유지한다. MOC13자세의 홍채 이동과 실제 PNG 근거는 검토 문서를 따른다.
 
+현재 MOC의 별도 몸통 roll 입력 `PositionZ`가 actor에 없던 원인을 확인해 지연된 bodyZ를 연결했다. 강도별 actor±.3 한도·진행 중 접근성 즉시 제한, physics 출력/기존 IDLE 곡선 소유권을 보호한다. 직접 접촉도 같은 envelope로 roll을 보간한다. 실제5자세·기존/상수5 authored IDLE·normal/expressive 손과 reduced 조합을 대조했다. 웃음/토라짐의 반대 자세와 설명의 두 번째 짧은 강조도 추가했다. root/MVP·호흡·창 위치/배율 증폭이 아니다.
+
+짧은 preview 손의 기본1500ms hold를 무시하고 복귀 때 완전 이완을 가정하던 overlay를 `heldMs`로 실제 마지막 유지 시각부터 합류하게 수정했다. 실제1ms 손 변화는 explain48.92→2.10px·wave14.23→.031px다. explain의 원본 자산 끝값 차이에 따른 미세 불연속은 남아 있으며 subpixel 연속이라고 주장하지 않는다. 수락 허용값과 원인 분리 진단은 검토 문서를 따른다.
+
 ### 현재 검증·영상
 
-- **571개 unit/contract**, typecheck·format·build·외부 AI 없는 Mock Electron 검사를 통과했다. 192조합·30/60/120fps·강도/접근성·저장 매핑/빈 선택·손 복귀·clear/승인·12초·종료 직전 페이드를 포함한다. 잘못된 sender/enum과 요청 중 미리보기 거절 로그는 Mock의 예상 결과다.
-- 실제 SDK/SwiftShader **56개 수락 검사·165개 현재 PNG**(after162/before3)의 체크포인트마다 509개 parameter 범위 오류/외부 요청 0을 확인했다. 실제 눈 그림·입·손/최종 endpoint·접촉 방향·강도·종료 직전을 검사한다. 화남 16100/16150/16200ms의 실제 눈 열림은 약 .99184/.99647/1이며, 8초 .4025·입 열림0은 보존했다. `artifacts/grok-review/round-12-expression-results.json`과 `artifacts/expression-afterglow/`가 근거다. 50ms 시뮬레이션·지정 rasterize이며 실시간 FPS/CPU 검사가 아니다.
+- **578개 unit/contract**, typecheck·format·build·외부 AI 없는 Mock Electron 검사를 통과했다. 192조합·30/60/120fps·강도/접근성·저장 매핑/빈 선택·손 복귀·clear/승인·12초·종료 직전 페이드를 포함한다. 잘못된 sender/enum과 요청 중 미리보기 거절 로그는 Mock의 예상 결과다.
+- 실제 SDK/SwiftShader **62개 수락 검사·186개 현재 PNG**(after183/before3)의 체크포인트마다 509개 parameter 범위 오류/외부 요청 0을 확인했다. 실제 눈 그림·입·손/최종 endpoint·접촉 방향·강도·종료 직전을 검사한다. 화남 16100/16150/16200ms의 실제 눈 열림은 약 .99184/.99647/1이며, 8초 .4025·입 열림0은 보존했다. `artifacts/grok-review/round-13-expression-results.json`과 `artifacts/expression-afterglow/`가 근거다. 50ms 시뮬레이션·지정 rasterize이며 실시간 FPS/CPU 검사가 아니다.
 - 실제 MOC의 별도 정점/PNG 비교로 시선의 직접 binding, 고개/몸 upstream, 초기 감정 몸 반응과 종료 경계를 확인했다. scalar 값만 바뀐 상태를 연기 완료로 판단하지 않는다. 정점 변화량·고정 root 비교와 국소 접근의 MVP 변화를 [검토 문서](../ux/GROK_VTUBER_REVIEW.md#고개상체의-실제-구동-경로-확인)에 구분해 기록했다.
-- `artifacts/grok-review/story-12-comparison.mp4`는 **69초·1120×900·20fps·1380 paired frame**다. 한 Avatar/actor가 이어지며 22개 앱 소스·실제 import 해시를 고정했다. 각 측 509개 parameter의 1500회 검사에서 범위 오류0·접촉62/62 alpha 적중·외부 요청0이다. 이벤트/해시는 `story-12-results.json`에 있다. **합성 cue·로컬 미리보기·무음**이며 실제 provider/IPC 대화 촬영이 아니다. 입력 위치용 시연 고리는 제품 효과가 아니므로 모델 crop에서 제거했다. 긴 의미 손/복귀의 별도 기존 자료는 `round-05-comparison.mp4`(167.5초/3350 paired frame)로 보존한다.
-- 실제 Sway/Xwayland 새 앱 프로세스의 production renderer에서 설정 UI20종·켜기 저장/reload·Shift stroke/창 위치 불변·해제·활성 petting→승인 즉시 정리·의미 여운 손 hold·낡은/정확한 clear·renderer reload·원래 설정 해시 보존을 확인했다. 이후 정상 `~/.local/bin/live2d-companion` 런처의 PID 생존/설정 보존을 확인했다. ignored `.tmp/afterglow-native/round-12-result.json`(2026-11-03 05:00 KST, `approvalActiveBefore:true`)이 근거이며 provider/Jev 호출은0이다. 테스트의 배경 JS 조회 중에도 제한된 획 입력을 지속해 실제 활성 반응에서 승인을 검사했다. 고정 wall-time의 캐시 조회 대신 해제 수신+기한 이후 실제 프레임을 기다리도록 검사기를 보강했다(캐시 약1초 지연 관찰). 물리 마우스·OS 재부팅/재로그인은 하지 않았다.
+- `artifacts/grok-review/story-13-comparison.mp4`는 **69초·1120×900·20fps·1380 paired frame**다. 한 Avatar/actor가 이어지며 22개 앱 소스·실제 import 해시를 고정했다. 각 측 509개 parameter의 1500회 검사에서 범위 오류0·접촉62/62 alpha 적중·외부 요청0이다. 이벤트/해시는 `story-13-results.json`에 있다. **합성 cue·로컬 미리보기·무음**이며 실제 provider/IPC 대화 촬영이 아니다. 입력 위치용 시연 고리는 제품 효과가 아니므로 모델 crop에서 제거했다. 긴 의미 손/복귀의 별도 기존 자료는 `round-05-comparison.mp4`(167.5초/3350 paired frame)로 보존한다.
+- 실제 Sway/Xwayland 새 앱 프로세스의 production renderer에서 설정 UI20종·켜기 저장/reload·Shift stroke/창 위치 불변·해제·활성 petting→승인 즉시 정리·의미 여운 손 hold·낡은/정확한 clear·renderer reload·원래 설정 해시 보존을 확인했다. 이후 정상 `~/.local/bin/live2d-companion` 런처의 PID 생존/설정 보존을 확인했다. ignored `.tmp/afterglow-native/round-13-result.json`(2026-11-03 05:36 KST, `approvalActiveBefore:true`)이 근거이며 provider/Jev 호출은0이다. 테스트의 배경 JS 조회 중에도 제한된 획 입력을 지속해 실제 활성 반응에서 승인을 검사했다. 고정 wall-time의 캐시 조회 대신 해제 수신+기한 이후 실제 프레임을 기다리도록 검사기를 보강했다(캐시 약1초 지연 관찰). 물리 마우스·OS 재부팅/재로그인은 하지 않았다.
 
 ### 적용·복원
 
-적용은 현재 checkout에서 `npm run build` 후 앱 종료·같은 기본 런처 재실행이다. 별도 시험용 실행 경로나 서비스는 없다. 현재 유지 얼굴/시선 변경만 복원하려면 `15c37eb`를 revert하고 build·기본 런처로 재실행한다. 전체 Grok 개선은 `15c37eb`→`b2f1401`→`7e7e0b2`→`3a0fef4`→`9754202`→`28a9420`→`bdce55e`→`116e1b9`를 이 순서로 revert하며(최신→과거) 해당 문서 버전도 맞춘다. `29b85f0`의 설정 schema와 호환되어 개인 연결/세션/매핑·위치/배율을 이관하지 않는다. SDK·모델·영상/프레임·개인 설정·Grok 원문 세션은 공개 Git에 넣지 않는다. 초기 감정 추가 이전으로 더 복원할 때는 아래 별도 절차를 따른다.
+적용은 현재 checkout에서 `npm run build` 후 앱 종료·같은 기본 런처 재실행이다. 별도 시험용 실행 경로나 서비스는 없다. 현재 몸통/손 복귀 변경만 복원하려면 `4771977`→`22a2f2d`를 순서대로 revert하고 build·기본 런처로 재실행한다. 전체 Grok 개선은 `4771977`→`22a2f2d`→`15c37eb`→`b2f1401`→`7e7e0b2`→`3a0fef4`→`9754202`→`28a9420`→`bdce55e`→`116e1b9`를 이 순서로 revert하며(최신→과거) 해당 문서 버전도 맞춘다. `29b85f0`의 설정 schema와 호환되어 개인 연결/세션/매핑·위치/배율을 이관하지 않는다. SDK·모델·영상/프레임·개인 설정·Grok 원문 세션은 공개 Git에 넣지 않는다. 초기 감정 추가 이전으로 더 복원할 때는 아래 별도 절차를 따른다.
 
 ## 감정 여운·추가 감정·쓰다듬기 (2026-11-02)
 

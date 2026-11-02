@@ -54,6 +54,10 @@ paired 손은 진입/복귀 클립 시간을 전체 의미 반응 기한에서 �
 
 유지 얼굴은 순수 기쁨의 밝은 열린 눈과 웃음 뒤 닫힌 입의 미소로 분리한다. 유지 입 목표0을 공통 최소값이 덮지 않으며 neutral acknowledge의 작은 입 목표는 별도로 보존한다. 대기에서는 같은 불규칙 gaze 슬롯의 눈 먼저 이동→반대 방향 복귀와 측면 고개/지연 상체 목표를 분리한다. 새 시계·발화 운동·breath/rootY 증폭은 없다. 실제 MOC 캘리브레이션과 적용 근거는 위 검토 문서를 따른다.
 
+현재 모델의 `PositionZ`는 physics를 통해 흉곽·허리를 기울인다. bodyZ는 고개를 같은 시계에서 지연 추적하며 actor 강도별±.3으로 제한하고, 접근성 설정 변경 시 현재 값도 즉시 줄인다. physics 출력이나 IDLE이 소유한 roll은 덮지 않는다. 직접 접촉도 같은 가중치로 몸통을 보간한다. 실제 모델·authored IDLE 대조 근거와 모델별 한계는 검토 문서를 따른다.
+
+짧은 preview paired 손은 기본1500ms hold라 긴 semantic 반응과 복귀 시각이 다르다. `PoseFrame.heldMs`로 실제 hold 종료 시각을 전달하고 handAttention의 이완/point 전체를 그 시각부터 원본 exit 첫300ms에 합류시킨다. metadata 없는 기존 호출은 종전 완전 이완 baseline을 사용한다. 직접 petting의 별도 reverse 경로는 이 overlay를 우회한다. 원본 explain pair의 작은 endpoint 차이는 남아 있음을 검토/수락 근거에 기록했다.
+
 ### 직접 쓰다듬기의 선택적 손 반응 (2026-11-03)
 
 기본 꺼짐의 직접 입력에만 기존 `PoseSequence`와 원본 가슴 손 pair를 함께 사용한다. 8px의 위치/알파 적중, idle·빈 손 소유권, 기본 wave 매핑, 정확한 7개 비물리 입력/endpoint와 진입1133ms·복귀1017ms를 모두 확인한다. 사용자 다른/빈 매핑·reducedMotion·늦은 접촉이면 몸/얼굴만 반응한다. 새 MotionManager나 의미 감정→자동 팔 연결은 없다.
