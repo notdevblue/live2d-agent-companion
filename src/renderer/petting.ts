@@ -65,6 +65,11 @@ export class PettingController {
   private release?: { at: number; until: number; weight: number };
   private carry?: { at: number; until: number; weight: number };
 
+  /** The pointer owns a contact even before enough travel starts its response. */
+  get contactHeld(): boolean {
+    return this.held;
+  }
+
   begin(now: number): void {
     this.end(now);
     // Keep one immutable old curve. A no-stroke recontact cannot recycle its

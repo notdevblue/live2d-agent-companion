@@ -3,6 +3,24 @@ import { PettingController, applyPetting, pettingBounds } from '../src/renderer/
 import { ActingController } from '../src/renderer/acting.js';
 
 describe('explicit local petting — FR-L2D-008', () => {
+  it('exposes held contact before the stroke threshold without starting or extending a response', () => {
+    const pet = new PettingController();
+    expect(pet.contactHeld).toBe(false);
+    pet.begin(0);
+    expect(pet.contactHeld).toBe(true);
+    pet.stroke(3, 20);
+    expect(pet.sample(200)).toBe(0);
+    expect(pet.timing()).toBeUndefined();
+    pet.end(200);
+    expect(pet.contactHeld).toBe(false);
+    pet.begin(300);
+    pet.stroke(8, 320);
+    expect(pet.timing()?.cap).toBe(12300);
+    expect(pet.contactHeld).toBe(true);
+    expect(pet.timing()?.cap).toBe(12300);
+    pet.clear();
+    expect(pet.contactHeld).toBe(false);
+  });
   it('adds a readable local head tilt and downward gaze while preserving the cue and window-independent motion', () => {
     const frame = new ActingController().sample(0, 0);
     const pet = applyPetting(frame, 0.65);

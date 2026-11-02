@@ -38,6 +38,49 @@ const scenes = [
     reducedMotion: true,
     times: [2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000],
   },
+  {
+    name: 'idle-expressive',
+    idle: true,
+    intensity: 'expressive',
+    times: [10000, 11000, 11300, 11700, 12500, 13000, 13500, 14100, 15000, 17000],
+  },
+  ...[
+    { name: 'idle-expressive-reduced', intensity: 'expressive', reducedMotion: true },
+    { name: 'idle-expressive-custom', intensity: 'expressive', customWave: true },
+    { name: 'idle-expressive-empty', intensity: 'expressive', emptyWave: true },
+    { name: 'idle-normal-long', intensity: 'normal' },
+    { name: 'idle-quiet-long', intensity: 'quiet' },
+    { name: 'idle-working', intensity: 'expressive', state: 'working' },
+  ].map((options) => ({ ...options, idle: true, times: [11000, 12500, 14100, 17000] })),
+  {
+    name: 'active-none-expressive',
+    emotion: 'happy',
+    intensity: 'expressive',
+    times: [11000, 12500, 14100, 16000],
+  },
+  {
+    name: 'idle-approval',
+    idle: true,
+    intensity: 'expressive',
+    stateChangeAt: 12600,
+    stateChange: 'blocked',
+    times: [12500, 12600, 13000],
+  },
+  {
+    name: 'idle-contact',
+    idle: true,
+    intensity: 'expressive',
+    pettingAvailable: true,
+    handContact: true,
+    noPointerUp: true,
+    strokeFromMs: 12000,
+    strokeUntilMs: 15000,
+    pettingActions: [
+      { at: 12000, type: 'begin' },
+      { at: 15000, type: 'end' },
+    ],
+    times: [11900, 12000, 12500, 13000, 14000, 14100, 14500, 15000, 16100],
+  },
   { name: 'happy', emotion: 'happy', times: [300, 1000, 2000, 3000, 8000, 16200] },
   {
     name: 'happy-laugh',
@@ -492,6 +535,57 @@ void app.whenReady().then(async () => {
       sample('petting-right', 600).values.PositionZ > 1 &&
         sample('petting-right', 600).values.ParamBodyAngleZ < -0.5 &&
         Math.abs(sample('petting-right', 1800).frame.bodyZ) < 0.3 * 0.65,
+    );
+    check(
+      'expressive idle uses one locally owned chest gesture with no semantic cue',
+      sample('idle-expressive', 11000).values.Movement2 === 0 &&
+        !!sample('idle-expressive', 12500).status.localIdleGesture &&
+        sample('idle-expressive', 12500).values.Movement2 > 0.9 &&
+        !sample('idle-expressive', 12500).frame.active &&
+        sample('idle-expressive', 12500).frame.gesture === 'none' &&
+        !sample('idle-expressive', 14100).status.localIdleGesture &&
+        Math.abs(sample('idle-expressive', 14100).values.Movement2) < 0.001,
+    );
+    check(
+      'idle hands respect reduced motion, normal and quiet intensity, saved mapping and active work',
+      [
+        'idle-expressive-reduced',
+        'idle-expressive-custom',
+        'idle-expressive-empty',
+        'idle-normal-long',
+        'idle-quiet-long',
+        'idle-working',
+      ].every((name) =>
+        result.after[name].every(
+          (entry: any) =>
+            !entry.status.localIdleGesture && Math.abs(entry.values.Movement2) < 0.001,
+        ),
+      ),
+    );
+    check(
+      'active semantic none never starts the independent idle hand',
+      result.after['active-none-expressive'].every(
+        (entry: any) =>
+          entry.frame.active &&
+          !entry.status.localIdleGesture &&
+          Math.abs(entry.values.Movement2) < 0.001,
+      ),
+    );
+    check(
+      'an approval immediately clears the locally owned idle hand',
+      !!sample('idle-approval', 12500).status.localIdleGesture &&
+        !sample('idle-approval', 12600).status.localIdleGesture &&
+        Math.abs(sample('idle-approval', 12600).values.Movement2) < 0.001,
+    );
+    check(
+      'contact during an idle hand keeps its old deadline and remains body-only for that touch',
+      !!sample('idle-contact', 12500).status.localIdleGesture &&
+        sample('idle-contact', 12500).status.pettingWeight > 0.5 &&
+        !sample('idle-contact', 12500).petting.poseOwned &&
+        !sample('idle-contact', 14100).status.localIdleGesture &&
+        sample('idle-contact', 14500).status.pettingWeight > 0.5 &&
+        Math.abs(sample('idle-contact', 14500).values.Movement2) < 0.001 &&
+        !sample('idle-contact', 14500).petting.poseOwned,
     );
     check(
       'afterglow expires within budget',

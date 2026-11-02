@@ -1200,6 +1200,28 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     }
   });
 
+  it('exposes the existing gaze slot without restarting its clock or consuming a reaction', () => {
+    const paths = [30, 60, 120].map((fps) => {
+      const actor = new ActingController();
+      expect(actor.gazeSlotId).toBe(0);
+      advance(actor, 600, fps);
+      expect(actor.gazeSlotId).toBe(0);
+      advance(actor, 1400, fps, 600);
+      const slot = actor.gazeSlotId;
+      expect(slot).toBeGreaterThan(0);
+      expect(actor.gazeSlotId).toBe(slot);
+      actor.cue({ emotion: 'happy', gesture: 'none' }, 1400);
+      advance(actor, 10000, fps, 1400);
+      expect(actor.sample(10000, 0).active).toBe(true);
+      expect(actor.gazeSlotId).toBeGreaterThan(slot);
+      const result = actor.gazeSlotId;
+      actor.reset(10000);
+      expect(actor.gazeSlotId).toBe(0);
+      return result;
+    });
+    expect(paths).toEqual([paths[0], paths[0], paths[0]]);
+  });
+
   it('keeps idle posture slots continuous, deterministic through frame gaps and bounded by accessibility', () => {
     for (const [intensity, reducedMotion, scale] of [
       ['normal', false, 0.65],

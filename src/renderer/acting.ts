@@ -215,6 +215,11 @@ export class ActingController {
   private blinkIndex = 0;
   private variants = new Map<ActingPreset, number>();
 
+  /** Existing gaze-clock identity for local idle choreography; reading it spends no beat. */
+  get gazeSlotId(): number {
+    return this.gazeIndex;
+  }
+
   configure(options: ActingOptions): void {
     this.options = { ...options };
     // Changing accessibility options also limits the current pose immediately.

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ModelInventory } from '../src/shared/contracts.js';
-import type { ActingFrame } from '../src/renderer/acting.js';
+import type { ActingController, ActingFrame } from '../src/renderer/acting.js';
+import { applyPetting, type PettingController } from '../src/renderer/petting.js';
 import {
   PoseSequence,
   type ParameterRange,
@@ -899,5 +900,319 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
       expect(runtime.poses.sample(100).phase).toBe('none');
       vi.setSystemTime(0);
     }
+  });
+
+  describe('independent local idle chest gesture', () => {
+    function idleSetup() {
+      const base = touchSetup();
+      const runtime = base.runtime as typeof base.runtime & {
+        actor: ActingController;
+        petting: PettingController;
+        localIdleGesture: boolean;
+        idleGazeSlot: number;
+        idleParameters: ReadonlySet<string>;
+        stateGesture: boolean;
+        clearPose: () => void;
+        updateIdleGesture: (now: number, acting: ActingFrame, pose: PoseFrame) => void;
+        idleGestureFrame: (acting: ActingFrame, pose: PoseFrame) => ActingFrame;
+      };
+      base.avatar.configure({ ...settings, intensity: 'expressive' });
+      let previous = 0;
+      const tick = (now: number) => {
+        vi.setSystemTime(now);
+        const pose = runtime.poses.sample(now);
+        const acting = runtime.actor.sample(now, Math.min(1, (now - previous) / 1000));
+        previous = now;
+        runtime.updateIdleGesture(now, acting, pose);
+        return runtime.poses.sample(now);
+      };
+      const forceEdges = () => {
+        let slot = 0;
+        vi.spyOn(runtime.actor, 'gazeSlotId', 'get').mockImplementation(() => slot);
+        return (next: number, now = next * 100) => {
+          slot = next;
+          return tick(now);
+        };
+      };
+      return { ...base, runtime, tick, forceEdges };
+    }
+    it('uses one existing gaze edge in four with the original 2750ms pair and no semantic cooldown', () => {
+      const { runtime, forceEdges, definition } = idleSetup();
+      const edge = forceEdges();
+      runtime.lastGesture = 123;
+      runtime.lastGestureName = 'previous-semantic-hand';
+      for (const slot of [0, 1, 2, 3]) expect(edge(slot).phase).toBe('none');
+      expect(edge(4)).toMatchObject({ phase: 'enter', timeMs: 0, definition });
+      expect(runtime.localIdleGesture).toBe(true);
+      expect(runtime.actor.sample(400, 0)).toMatchObject({ active: false, gesture: 'none' });
+      expect(edge(4, 1533).phase).toBe('hold');
+      expect(edge(4, 2133)).toMatchObject({ phase: 'exit', timeMs: 0, heldMs: 600 });
+      expect(edge(4, 3150).phase).toBe('none');
+      expect(runtime.localIdleGesture).toBe(false);
+      expect(edge(4, 3300).phase).toBe('none');
+      expect(runtime.lastGesture).toBe(123);
+      expect(runtime.lastGestureName).toBe('previous-semantic-hand');
+      expect(runtime.petPose).toBe(false);
+      expect(edge(8, 4000).phase).toBe('enter');
+    });
+    it('consumes edges while ineligible and never borrows an active none cue or another owner', () => {
+      for (const gate of [
+        'normal',
+        'quiet',
+        'reduced',
+        'active-none',
+        'thinking',
+        'working',
+        'blocked',
+        'error',
+        'pose',
+        'motion',
+        'manager',
+        'state-owner',
+        'contact',
+        'residue',
+        'pet-owner',
+      ] as const) {
+        vi.setSystemTime(0);
+        const { avatar, runtime, forceEdges, definition, stroke } = idleSetup();
+        const edge = forceEdges();
+        if (gate === 'normal' || gate === 'quiet')
+          avatar.configure({ ...settings, intensity: gate });
+        if (gate === 'reduced')
+          avatar.configure({ ...settings, intensity: 'expressive', reducedMotion: true });
+        if (gate === 'active-none') avatar.cue({ ...cue, gesture: 'none' });
+        if (['thinking', 'working', 'blocked', 'error'].includes(gate)) avatar.setState(gate);
+        if (gate === 'pose') runtime.poses.start({ ...definition, enter: 'other-owner' }, 0);
+        if (gate === 'motion') runtime.activeGesture = 'other-owner';
+        if (gate === 'manager') vi.mocked(runtime.gestureManager.isFinished).mockReturnValue(false);
+        if (gate === 'state-owner') runtime.stateGesture = true;
+        if (gate === 'contact') avatar.beginPetting(); // even zero travel owns contact
+        if (gate === 'residue') {
+          avatar.beginPetting();
+          vi.setSystemTime(20);
+          avatar.strokePetting(10); // body response without located authored hand
+          vi.setSystemTime(200);
+          avatar.endPetting();
+        }
+        if (gate === 'pet-owner') {
+          avatar.beginPetting();
+          stroke(20);
+        }
+        edge(4, 400);
+        expect(runtime.localIdleGesture, gate).toBe(false);
+        expect(runtime.idleGazeSlot).toBe(4);
+        avatar.reset();
+        vi.mocked(runtime.gestureManager.isFinished).mockReturnValue(true);
+        avatar.configure({ ...settings, intensity: 'expressive' });
+        expect(edge(4, 500).phase, gate).toBe('none');
+        expect(edge(8, 1000).phase, gate).toBe('enter');
+      }
+    });
+    it('respects canonical/blank/custom mappings and the shared seven-input validation', () => {
+      for (const gate of [
+        'custom',
+        'blank',
+        'missing',
+        'physics',
+        'range',
+        'endpoint',
+        'clip',
+      ] as const) {
+        vi.setSystemTime(0);
+        const { runtime, forceEdges, definition } = idleSetup();
+        const edge = forceEdges();
+        if (gate === 'custom') runtime.inventory.gestureMap.wave = 'custom';
+        if (gate === 'blank') delete runtime.inventory.gestureMap.wave;
+        if (gate === 'missing') runtime.ranges.delete('Param59');
+        if (gate === 'physics') runtime.physicsOutputs.add('Param60');
+        if (gate === 'range') runtime.ranges.get('Param62')!.neutral = 0.1;
+        if (gate === 'endpoint') runtime.motionInfo.get(definition.enter)!.held.set('Param59', 0.8);
+        if (gate === 'clip') runtime.motions.delete(definition.exit);
+        expect(edge(4).phase, gate).toBe('none');
+        expect(runtime.localIdleGesture).toBe(false);
+        expect(runtime.lastGesture).toBe(-Infinity);
+      }
+    });
+    it('preserves dedicated authored idle arm ownership while allowing shared selectors and explicit hands', () => {
+      for (const id of ['Movement2', 'Param59', 'Param60', 'Param61', 'Param62']) {
+        vi.setSystemTime(0);
+        const { avatar, runtime, forceEdges, stroke } = idleSetup();
+        runtime.idleParameters = new Set(['Param56', 'Param57', id]);
+        const edge = forceEdges();
+        expect(edge(4).phase).toBe('none');
+        expect(runtime.localIdleGesture).toBe(false);
+        avatar.beginPetting();
+        stroke(410);
+        expect(runtime.petPose).toBe(true);
+        avatar.cue({ ...cue, gesture: 'wave' });
+        expect(runtime.petPose).toBe(false);
+        expect(runtime.poses.sample(410).phase).toBe('enter');
+      }
+      vi.setSystemTime(0);
+      const { runtime, forceEdges } = idleSetup();
+      runtime.idleParameters = new Set(['Param56', 'Param57']);
+      expect(forceEdges()(4).phase).toBe('enter');
+    });
+    it('does not act when an observed cue-owned edge later becomes idle, and clears for promotion but not stale delivery', () => {
+      const { avatar, runtime, forceEdges } = idleSetup();
+      const edge = forceEdges();
+      avatar.cue({ ...cue, gesture: 'none' });
+      expect(edge(4, 1000).phase).toBe('none');
+      expect(edge(4, 17000).phase).toBe('none');
+      expect(edge(8, 17500).phase).toBe('enter');
+      avatar.cue({ ...cue, gesture: 'none' }); // stale same scoped message
+      expect(runtime.localIdleGesture).toBe(true);
+      avatar.clearCue(cue); // the expired message does not own the idle hand
+      expect(runtime.localIdleGesture).toBe(true);
+      expect(runtime.poses.sample(17500)).toMatchObject({ phase: 'enter', timeMs: 0 });
+      avatar.reset();
+      vi.setSystemTime(20000);
+      const delivery = {
+        ...cue,
+        requestId: 'delivery',
+        emotion: 'neutral',
+        gesture: 'none',
+        stage: 'delivery',
+      } as const;
+      avatar.cue(delivery);
+      expect(edge(12, 22000).phase).toBe('enter'); // delivery accent is over
+      avatar.cue(delivery);
+      expect(runtime.localIdleGesture).toBe(true);
+      avatar.cue({ ...delivery, segmentId: 2, stage: 'semantic' });
+      expect(runtime.localIdleGesture).toBe(false);
+      expect(runtime.poses.sample(22000).phase).toBe('none');
+    });
+    it('clears the idle owner on accepted cues, state/approval, preview, accessibility and disposal boundaries', () => {
+      for (const boundary of [
+        'cue-none',
+        'cue-wave',
+        'thinking',
+        'working',
+        'blocked',
+        'error',
+        'reset',
+        'preview',
+        'normal',
+        'quiet',
+        'reduced',
+        'dispose',
+      ] as const) {
+        vi.setSystemTime(0);
+        const { avatar, runtime, forceEdges, definition } = idleSetup();
+        const edge = forceEdges();
+        edge(4);
+        expect(runtime.localIdleGesture).toBe(true);
+        if (boundary === 'cue-none' || boundary === 'cue-wave')
+          avatar.cue({ ...cue, gesture: boundary === 'cue-none' ? 'none' : 'wave' });
+        else if (boundary === 'reset') avatar.reset();
+        else if (boundary === 'preview') avatar.preview('happy');
+        else if (boundary === 'normal' || boundary === 'quiet')
+          avatar.configure({ ...settings, intensity: boundary });
+        else if (boundary === 'reduced')
+          avatar.configure({ ...settings, intensity: 'expressive', reducedMotion: true });
+        else if (boundary === 'dispose') {
+          vi.stubGlobal('cancelAnimationFrame', vi.fn());
+          (
+            window as unknown as { removeEventListener: ReturnType<typeof vi.fn> }
+          ).removeEventListener = vi.fn();
+          runtime.canvas = { removeEventListener: vi.fn() };
+          runtime.runtime = { release: vi.fn() };
+          avatar.dispose();
+        } else avatar.setState(boundary);
+        expect(runtime.localIdleGesture, boundary).toBe(false);
+        if (boundary === 'cue-wave')
+          expect(runtime.poses.sample(400)).toMatchObject({
+            phase: 'enter',
+            definition,
+            timeMs: 0,
+          });
+        else if (boundary !== 'thinking')
+          expect(runtime.poses.sample(400).phase, boundary).toBe('none');
+      }
+    });
+    it('keeps an existing idle pair and its original deadline when contact begins, without transferring or repeating the hand', () => {
+      const { avatar, runtime, forceEdges, stroke } = idleSetup();
+      const edge = forceEdges();
+      edge(4, 400);
+      edge(4, 900);
+      avatar.beginPetting();
+      const original = runtime.poses.sample(900);
+      expect(runtime.petPoseUsed).toBe(true);
+      stroke(910);
+      expect(runtime.petPose).toBe(false);
+      expect(runtime.poses.sample(900)).toEqual(original);
+      expect(runtime.petting.timing()?.cap).toBe(12900);
+      avatar.endPetting();
+      expect(runtime.localIdleGesture).toBe(true);
+      vi.setSystemTime(1000);
+      avatar.beginPetting();
+      stroke(1010);
+      expect(edge(4, 2133)).toMatchObject({ phase: 'exit', timeMs: 0 });
+      stroke(3100);
+      expect(edge(4, 3150).phase).toBe('none');
+      expect(runtime.localIdleGesture).toBe(false);
+      stroke(3160);
+      expect(runtime.petPose).toBe(false); // this touch already shared an idle hand
+      avatar.endPetting();
+      vi.setSystemTime(5000);
+      avatar.beginPetting();
+      stroke(5010);
+      expect(runtime.petPose).toBe(true); // a later touch regains the existing hand option
+      expect(runtime.poses.sample(5010)).toMatchObject({ phase: 'enter', timeMs: 0 });
+    });
+    it('also recognizes a naturally finished idle hand before a new touch arrives between frames', () => {
+      const { avatar, runtime, forceEdges, stroke } = idleSetup();
+      forceEdges()(4, 400);
+      vi.setSystemTime(4000);
+      avatar.beginPetting();
+      expect(runtime.localIdleGesture).toBe(false);
+      expect(runtime.petPoseUsed).toBe(false);
+      stroke(4010);
+      expect(runtime.petPose).toBe(true);
+    });
+    it('uses the same real gaze cadence at30/60/120Hz and never replays skipped historical slots', () => {
+      const paths = [30, 60, 120].map((fps) => {
+        vi.setSystemTime(0);
+        const { runtime, tick } = idleSetup();
+        const starts: Array<{ slot: number; at: number }> = [];
+        for (let i = 1; i <= fps * 36; i++) {
+          const active = runtime.localIdleGesture;
+          tick((i * 1000) / fps);
+          if (!active && runtime.localIdleGesture)
+            starts.push({ slot: runtime.actor.gazeSlotId, at: (i * 1000) / fps });
+        }
+        return starts;
+      });
+      expect(paths[0]!.map((x) => x.slot)).toEqual([4, 8]);
+      for (const path of paths.slice(1)) {
+        expect(path.map((x) => x.slot)).toEqual(paths[0]!.map((x) => x.slot));
+        for (let i = 0; i < path.length; i++)
+          expect(Math.abs(path[i]!.at - paths[0]![i]!.at)).toBeLessThanOrEqual(1000 / 30);
+      }
+      vi.setSystemTime(0);
+      const { runtime, tick } = idleSetup();
+      expect(tick(26000).phase).toBe('enter');
+      expect(runtime.actor.gazeSlotId).toBe(8);
+      expect(tick(26000)).toMatchObject({ phase: 'enter', timeMs: 0 });
+      expect(tick(30000).phase).toBe('none');
+      expect(runtime.localIdleGesture).toBe(false);
+    });
+    it('keeps its finite chest glance separate from the face and gives direct petting final priority', () => {
+      const { runtime, forceEdges } = idleSetup();
+      const edge = forceEdges();
+      edge(4, 400);
+      edge(4, 1100);
+      const frame = runtime.actor.sample(1100, 0);
+      const glanced = runtime.idleGestureFrame(frame, runtime.poses.sample(1100));
+      expect(glanced.gazeY).toBe(-0.18);
+      expect(glanced.headY).toBe(-0.12);
+      for (const key of Object.keys(frame) as Array<keyof ActingFrame>)
+        if (!['headY', 'gazeX', 'gazeY'].includes(key)) expect(glanced[key]).toEqual(frame[key]);
+      const touched = applyPetting(glanced, 1, { x: 1, y: 1 });
+      expect(touched.gazeY).toBeGreaterThan(glanced.gazeY);
+      expect(touched.gazeX).toBeGreaterThan(glanced.gazeX);
+      const ended = edge(4, 3150);
+      expect(runtime.idleGestureFrame(frame, ended)).toBe(frame);
+    });
   });
 });

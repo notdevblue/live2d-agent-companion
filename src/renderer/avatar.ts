@@ -16,6 +16,7 @@ import {
   ActingController,
   reactionDuration,
   reactionLifetime,
+  type ActingFrame,
   type ActingState,
 } from './acting.js';
 import {
@@ -115,6 +116,7 @@ export class Avatar {
   private indexes = new Map<string, number>();
   private textures: WebGLTexture[] = [];
   private idle?: Motion;
+  private idleParameters: ReadonlySet<string> = new Set();
   private gestureManager = new CubismMotionManager();
   private actor = new ActingController();
   private petting = new PettingController();
@@ -138,6 +140,8 @@ export class Avatar {
   private petPoseRendered?: PoseFrame;
   private petPoseReturnDeadline?: number;
   private petMotionEntry?: unknown;
+  private localIdleGesture = false;
+  private idleGazeSlot = 0;
   private ranges = new Map<string, ParameterRange>();
   private channels: Partial<Record<ActingChannel, ParameterRange>> = {};
   private physicsOutputs = new Set<string>();
@@ -292,13 +296,10 @@ export class Avatar {
         this.motions.set(name, motion);
         if (group.toLowerCase() === 'idle' && !this.idle) {
           this.idle = motion;
+          this.idleParameters = this.motionInfo.get(name)!.parameters;
           motion.setLoop(true);
           // The new torso-roll input must not replace a model's authored idle.
-          if (
-            ['PositionZ', 'ParamBodyAngleZ'].some((id) =>
-              this.motionInfo.get(name)!.parameters.has(id),
-            )
-          )
+          if (['PositionZ', 'ParamBodyAngleZ'].some((id) => this.idleParameters.has(id)))
             delete this.channels.bodyZ;
         }
       }
@@ -339,6 +340,8 @@ export class Avatar {
   configure(settings: PresentationSettings): void {
     this.presentation = { ...settings };
     this.actor.configure(settings);
+    this.consumeIdleGazeSlot(performance.now());
+    if (this.localIdleGesture && settings.intensity !== 'expressive') this.clearPose();
     if (settings.reducedMotion) this.clearPose();
     if (!settings.pettingEnabled) this.endPetting(true);
     if (!this.model || settings.reducedMotion) this.framing = { ...FRAMING[settings.framing] };
@@ -349,6 +352,7 @@ export class Avatar {
       ? (state as ActingState)
       : 'idle';
     const changed = next !== this.state;
+    if (next !== 'idle' && this.localIdleGesture) this.clearPose();
     if (next !== 'idle') this.endPetting(true);
     const reacting =
       this.actor.sample(now, 0).active ||
@@ -363,6 +367,7 @@ export class Avatar {
     if (next === 'blocked' || next === 'error') this.endPetting(true);
     this.errorUntil = next === 'error' ? now + 3000 : 0;
     this.actor.setState(next, now);
+    this.consumeIdleGazeSlot(now);
     if (changed && next === 'thinking' && !reacting) {
       this.startGesture(this.inventory.gestureMap.thinking, now);
       this.stateGesture = !!this.activeGesture || this.poses.sample(now).phase !== 'none';
@@ -371,6 +376,7 @@ export class Avatar {
   reset(): void {
     const now = performance.now();
     this.actor.reset(now);
+    this.idleGazeSlot = this.actor.gazeSlotId;
     this.lastGesture = -Infinity;
     this.lastGestureName = '';
     this.state = 'idle';
@@ -431,7 +437,10 @@ export class Avatar {
     const previousTiming = this.actor.reactionTiming(cue, now);
     if (!this.actor.cue(cue, now)) {
       const promoted = !previousTiming && this.actor.reactionTiming(cue, now);
-      if (promoted) this.endPetting(true);
+      if (promoted) {
+        if (this.localIdleGesture) this.clearPose();
+        this.endPetting(true);
+      }
       if (
         promoted &&
         cue.stage === 'semantic' &&
@@ -446,6 +455,7 @@ export class Avatar {
         );
       return;
     }
+    if (this.localIdleGesture) this.clearPose();
     this.endPetting(true);
     const motionName = this.inventory.gestureMap[cue.gesture];
     const previousMotion = this.poses.sample(now).definition?.enter ?? this.activeGesture;
@@ -497,8 +507,8 @@ export class Avatar {
     if (!this.actor.clearCue(cue)) return;
     const now = performance.now();
     this.mixer.clear(now, true);
-    // A scoped message clear does not own an independent physical contact.
-    if (!this.petPose) this.clearPose();
+    // A scoped message clear does not own an independent contact or idle hand.
+    if (!this.petPose && !this.localIdleGesture) this.clearPose();
     if (window.__avatarStatus) {
       window.__avatarStatus.lastCue = undefined;
       window.__avatarStatus.lastAttitude = 'neutral';
@@ -587,6 +597,8 @@ export class Avatar {
       : [];
   }
   private clearPose(): void {
+    this.localIdleGesture = false;
+    if (window.__avatarStatus) window.__avatarStatus.localIdleGesture = false;
     this.petPose = false;
     this.petPoseRendered = undefined;
     this.petPoseReturnDeadline = undefined;
@@ -597,6 +609,64 @@ export class Avatar {
     this.activeGesture = '';
     this.posePhase = 'none';
     this.poseTime = 0;
+  }
+  private consumeIdleGazeSlot(now: number): void {
+    this.actor.sample(now, 0);
+    this.idleGazeSlot = this.actor.gazeSlotId;
+  }
+  /** A local idle owner, never a hand gesture inferred from an active message. */
+  private updateIdleGesture(now: number, acting: ActingFrame, pose: PoseFrame): void {
+    if (this.localIdleGesture && pose.phase === 'none') this.localIdleGesture = false;
+    const slot = this.actor.gazeSlotId;
+    const changed = slot !== this.idleGazeSlot;
+    // Consume every observed edge, including those owned by a message, contact
+    // or disabled presentation. No delayed action is queued for eligibility.
+    this.idleGazeSlot = slot;
+    if (
+      !changed ||
+      slot <= 0 ||
+      slot % 4 !== 0 ||
+      this.presentation.intensity !== 'expressive' ||
+      this.presentation.reducedMotion ||
+      this.state !== 'idle' ||
+      acting.active ||
+      pose.phase !== 'none' ||
+      this.activeGesture ||
+      this.stateGesture ||
+      !this.gestureManager.isFinished() ||
+      // An authored idle can own this arm without using gestureManager.
+      // Shared Param56/57 selectors alone are compatible with the default idle.
+      ['Movement2', 'Param59', 'Param60', 'Param61', 'Param62'].some((id) =>
+        this.idleParameters.has(id),
+      ) ||
+      this.petPose ||
+      this.petting.contactHeld ||
+      this.petting.sample(now) > 0
+    )
+      return;
+    const definition = this.chestPoseDefinition();
+    if (!definition || !this.poses.start(definition, now, 600)) return;
+    this.localIdleGesture = true;
+    this.posePhase = 'none';
+    this.poseTime = 0;
+  }
+  private idleGestureFrame(acting: ActingFrame, pose: PoseFrame): ActingFrame {
+    if (!this.localIdleGesture || !pose.definition || pose.phase === 'none') return acting;
+    const progress =
+      pose.phase === 'enter'
+        ? Math.min(1, (pose.timeMs ?? 0) / 600)
+        : pose.phase === 'exit'
+          ? Math.max(0, 1 - (pose.timeMs ?? 0) / pose.definition.exitMs)
+          : 1;
+    const weight = progress * progress * (3 - 2 * progress);
+    // Briefly attend to the chest hand. The direct-contact overlay runs later
+    // and retains priority; face, mouth, breath and root transform stay intact.
+    return {
+      ...acting,
+      headY: acting.headY + (-0.12 - acting.headY) * weight,
+      gazeX: acting.gazeX + (-0.08 - acting.gazeX) * weight,
+      gazeY: acting.gazeY + (-0.18 - acting.gazeY) * weight,
+    };
   }
   private startGesture(name: string | undefined, now: number, lifetimeMs?: number): void {
     if (window.__avatarStatus) window.__avatarStatus.lastMotion = name ?? 'none';
@@ -655,6 +725,7 @@ export class Avatar {
     if (!this.presentation.pettingEnabled || this.state === 'blocked' || this.state === 'error')
       return false;
     const now = performance.now();
+    if (this.localIdleGesture && this.poses.sample(now).phase === 'none') this.clearPose();
     this.updatePettingPose(now);
     if (this.petPose) {
       this.petting.end(now);
@@ -662,7 +733,8 @@ export class Avatar {
     }
     // Recontact can refresh the face, but cannot pop a visible returning arm
     // back to its entry or extend the previous touch's hand budget.
-    this.petPoseUsed = this.petPose;
+    // A new touch does not take over or restart an already visible idle hand.
+    this.petPoseUsed = this.petPose || this.localIdleGesture;
     this.petPoseTravel = 0;
     if (this.petting.sample(now) <= 0) {
       this.pettingFocus = { x: 0, y: 0 };
@@ -703,32 +775,19 @@ export class Avatar {
       if (this.petPose) this.releasePettingPose(now);
     }
   }
-  private startPettingPose(now: number): void {
-    const timing = this.petting.timing();
-    if (
-      this.petPoseUsed ||
-      !timing?.held ||
-      now >= timing.freshUntil ||
-      this.state !== 'idle' ||
-      this.presentation.reducedMotion ||
-      this.inventory.gestureMap.wave !== '默认手切举手' ||
-      this.poses.sample(now).phase !== 'none' ||
-      this.activeGesture ||
-      !this.gestureManager.isFinished()
-    )
-      return;
+  private chestPoseDefinition(): PoseDefinition | undefined {
+    if (this.inventory.gestureMap.wave !== '默认手切举手') return;
     const definition = this.poseDefinitions.get('默认手切举手');
     if (
       !definition ||
       definition.exit !== '举手切默认手' ||
       definition.parameter !== 'Movement2' ||
       Math.abs(definition.enterMs - 1133) > 0.01 ||
-      Math.abs(definition.exitMs - 1017) > 0.01 ||
-      timing.cap - now < definition.enterMs + 400 + definition.exitMs
+      Math.abs(definition.exitMs - 1017) > 0.01
     )
       return;
-    // Only this verified pair is an affectionate chest pose. Custom mappings
-    // and rigs fall back to the existing body/face overlay.
+    // The same verified original chest pair serves direct contact and local idle.
+    // A user mapping, a changed endpoint or a physics-owned input stays authored.
     const endpoints = [
       ['Movement2', 1, 0],
       ['Param56', 1, 1],
@@ -767,6 +826,23 @@ export class Avatar {
       )
         return;
     }
+    return definition;
+  }
+  private startPettingPose(now: number): void {
+    const timing = this.petting.timing();
+    if (
+      this.petPoseUsed ||
+      !timing?.held ||
+      now >= timing.freshUntil ||
+      this.state !== 'idle' ||
+      this.presentation.reducedMotion ||
+      this.poses.sample(now).phase !== 'none' ||
+      this.activeGesture ||
+      !this.gestureManager.isFinished()
+    )
+      return;
+    const definition = this.chestPoseDefinition();
+    if (!definition || timing.cap - now < definition.enterMs + 400 + definition.exitMs) return;
     if (
       !this.poses.start(definition, now, timing.cap - now - definition.enterMs - definition.exitMs)
     )
@@ -820,6 +896,7 @@ export class Avatar {
     return true;
   }
   dispose(): void {
+    if (this.localIdleGesture) this.clearPose();
     this.endPetting(true);
     this.disposed = true;
     cancelAnimationFrame(this.frame);
@@ -830,6 +907,7 @@ export class Avatar {
   }
   private contextLost = (event: Event): void => {
     event.preventDefault();
+    if (this.localIdleGesture) this.clearPose();
     this.endPetting(true);
     this.disposed = true;
     this.onInputRegion?.(null);
@@ -894,6 +972,8 @@ export class Avatar {
         this.lastGestureName = '';
       }
       let acting = this.actor.sample(now, dt);
+      this.updateIdleGesture(now, acting, pose);
+      acting = this.idleGestureFrame(acting, pose);
       if (!this.petPose && acting.gesture === 'wave' && !this.presentation.reducedMotion)
         for (const [index, value] of greetingValues(
           pose,
@@ -1018,6 +1098,7 @@ export class Avatar {
         window.__avatarStatus.variant = acting.variant;
         window.__avatarStatus.posePhase = pose.phase;
         window.__avatarStatus.pettingWeight = petWeight;
+        window.__avatarStatus.localIdleGesture = this.localIdleGesture && pose.phase !== 'none';
         window.__avatarStatus.motionActive =
           pose.phase !== 'none' ||
           !!this.activeGesture ||
@@ -1077,6 +1158,7 @@ export class Avatar {
       if (window.__avatarStatus) window.__avatarStatus.frames++;
       this.frame = requestAnimationFrame(this.draw);
     } catch {
+      if (this.localIdleGesture) this.clearPose();
       this.onInputRegion?.(null);
       window.__avatarStatus = {
         loaded: false,

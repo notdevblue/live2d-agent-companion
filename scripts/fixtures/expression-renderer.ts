@@ -86,6 +86,7 @@ const read = (): any => {
     beforePhysics,
     renderMatrix: Array.from(avatar.runtime.getRenderer().getMvpMatrix().getArray()),
     frame: avatar.actor.sample(clock, 0),
+    gazeSlotId: avatar.actor.gazeSlotId,
     pose: avatar.poses.sample(clock),
     petting: {
       weight: avatar.petting.sample(clock),
@@ -152,12 +153,16 @@ const api = {
     // Each named acceptance case starts at the first authored acting variation.
     avatar.actor = new ActingController();
     inventory.expressionMap.happy = scene.savedHappy ? '＞＜' : undefined;
-    inventory.gestureMap.wave = scene.customWave ? inventory.gestureMap.explain : defaultWave;
+    inventory.gestureMap.wave = scene.emptyWave
+      ? undefined
+      : scene.customWave
+        ? inventory.gestureMap.explain
+        : defaultWave;
     avatar.configure({
-      intensity: 'normal',
+      intensity: scene.intensity ?? 'normal',
       framing: 'bust',
       positionLocked: false,
-      pettingEnabled: !!scene.petting,
+      pettingEnabled: !!(scene.petting || scene.pettingAvailable),
       reducedMotion: !!scene.reducedMotion,
     });
     const cue = {
@@ -172,6 +177,7 @@ const api = {
       source: 'fallback',
     };
     const start = clock;
+    if (scene.state) avatar.setState(scene.state);
     if (scene.petting) {
       if (scene.gesture) avatar.cue(cue);
       avatar.beginPetting();
@@ -179,6 +185,7 @@ const api = {
     else if (!scene.idle) avatar.cue(cue);
     const samples = [];
     let cleared = false;
+    let stateChanged = false;
     let petEnded = false;
     let contactHeld = !!scene.petting;
     let petEventIndex = 0;
@@ -192,7 +199,15 @@ const api = {
           cleared = true;
         }
         if (
-          scene.petting &&
+          !stateChanged &&
+          scene.stateChangeAt !== undefined &&
+          clock - start >= scene.stateChangeAt
+        ) {
+          avatar.setState(scene.stateChange ?? 'blocked');
+          stateChanged = true;
+        }
+        if (
+          (scene.petting || scene.pettingAvailable) &&
           contactHeld &&
           clock - start >= (scene.strokeFromMs ?? 0) &&
           clock - start <= (scene.strokeUntilMs ?? 600)
@@ -231,7 +246,7 @@ const api = {
         while (scene.pettingActions?.[petEventIndex]?.at <= clock - start) {
           const event = scene.pettingActions[petEventIndex++];
           if (event.type === 'begin') {
-            avatar.beginPetting();
+            if (!avatar.beginPetting()) throw Error('Local contact begin rejected');
             contactHeld = true;
             lastPetPoint = undefined;
           } else {

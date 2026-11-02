@@ -21,6 +21,8 @@ interface Window {
     actingPreset?: string;
     posePhase?: string;
     pettingWeight?: number;
+    /** Independent local idle owner, never a semantic message hand gesture. */
+    localIdleGesture?: boolean;
     lastPreview?: import('../shared/contracts.js').CharacterPreview;
     reactionPhase?: import('./acting.js').ActingFrame['phase'];
     variant?: number;
