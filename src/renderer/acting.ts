@@ -74,6 +74,22 @@ interface Reaction {
   variant: number;
   afterglow: boolean;
 }
+/** A read-only projection of the existing cue clock; no timer or extra state. */
+interface ReactionClock {
+  age: number;
+  seconds: number;
+  attitudeSeconds: number;
+  emotionSeconds: number;
+  performanceSeconds: number;
+  duration: number;
+  lifetime: number;
+  accentWeight: number;
+  residueWeight: number;
+  maintenanceWeight: number;
+  mouthWeight: number;
+  phase: ActingFrame['phase'];
+  chuckle?: { first: number; second: number };
+}
 const timing = (preset: ActingPreset): { duration: number; attack: number; release: number } => {
   if (preset === 'acknowledge') return { duration: 1800, attack: 180, release: 500 };
   if (preset === 'surprised') return { duration: 2200, attack: 100, release: 700 };
@@ -142,6 +158,53 @@ const attitudeTime = (reaction: Reaction, t: number): number =>
         ? 0.9
         : 0),
   );
+const reactionClock = (reaction: Reaction | undefined, now: number): ReactionClock | undefined => {
+  if (!reaction) return undefined;
+  const age = now - reaction.started;
+  const seconds = age / 1000;
+  const { duration, attack, release } = timing(reaction.preset);
+  const lifetime = reactionLifetime(reaction.preset, reaction.afterglow ? 'semantic' : 'delivery');
+  const accentWeight = smooth(age / attack) * smooth((duration - age) / release);
+  const fade = reaction.afterglow ? 1 - smooth((age - (lifetime - 1000)) / 1000) : 0;
+  const attitudeSeconds = attitudeTime(reaction, seconds);
+  const emotionSeconds = accentTime(reaction.preset, seconds, reaction.variant);
+  // Keep the established millisecond/second arithmetic at the public frame
+  // boundary. Mouth fade and postural settling have distinct existing budgets.
+  const maintenanceWeight =
+    reaction.afterglow && reaction.preset !== 'acknowledge'
+      ? smooth((seconds - (duration - release) / 1000) / (release / 1000)) *
+        smooth((lifetime / 1000 - seconds) / 1.8)
+      : 0;
+  return {
+    age,
+    seconds,
+    attitudeSeconds,
+    emotionSeconds,
+    performanceSeconds: accentTime(reaction.preset, attitudeSeconds, reaction.variant),
+    duration,
+    lifetime,
+    accentWeight,
+    residueWeight:
+      reaction.afterglow && age >= duration - release ? 0.4 * (1 - accentWeight) * fade : 0,
+    maintenanceWeight,
+    mouthWeight: reaction.afterglow ? smooth((age - (duration - release)) / release) * fade : 0,
+    phase:
+      age >= duration
+        ? 'afterglow'
+        : age < attack
+          ? 'anticipation'
+          : age < 1200
+            ? 'accent'
+            : age > duration - release
+              ? 'release'
+              : 'settle',
+    ...(reaction.preset === 'laugh' &&
+    reaction.gesture === 'none' &&
+    (reaction.emotion === 'happy' || reaction.emotion === 'neutral')
+      ? { chuckle: chuckleBeats(seconds, reaction.variant) }
+      : {}),
+  };
+};
 // A stable integer hash gives irregular schedules without global randomness or wall clocks.
 const random = (n: number): number => {
   let x = Math.imul(n + 173, 0x45d9f3b);
@@ -451,11 +514,8 @@ export class ActingController {
       this.reaction = undefined;
     }
     const reaction = this.reaction;
-    const age = reaction ? now - reaction.started : 0;
-    const weight = reaction ? this.envelope(age, reaction.preset) : 0;
-    const performanceAge = reaction
-      ? accentTime(reaction.preset, attitudeTime(reaction, age / 1000), reaction.variant) * 1000
-      : 0;
+    const clock = reactionClock(reaction, now);
+    const performanceAge = (clock?.performanceSeconds ?? 0) * 1000;
     const wink =
       reaction &&
       ((reaction.preset === 'wink' && performanceAge > 350 && performanceAge < 1400) ||
@@ -472,7 +532,7 @@ export class ActingController {
     // averted posture. The existing cue clock returns both eyes by 3.1s.
     const angryCheck =
       reaction?.preset === 'angry' && reaction.gesture === 'none'
-        ? beat(attitudeTime(reaction, age / 1000), 1.95, 0.25, 0.25, 0.65) * this.scale()
+        ? beat(clock!.attitudeSeconds, 1.95, 0.25, 0.25, 0.65) * this.scale()
         : 0;
     return {
       ...this.pose,
@@ -483,22 +543,12 @@ export class ActingController {
       offsetY: this.state === 'blocked' ? 0 : this.breathWave(now) * 0.0045 * this.scale(),
       preset: reaction?.preset ?? this.base(),
       active: !!reaction,
-      expressionWeight: weight + this.residueWeight(reaction, age) * this.scale(),
+      expressionWeight: (clock?.accentWeight ?? 0) + (clock?.residueWeight ?? 0) * this.scale(),
       emotion: reaction?.emotion ?? (this.state === 'error' ? 'concerned' : 'neutral'),
       gesture: reaction?.gesture ?? 'none',
       ...(reaction?.attitude !== undefined ? { attitude: reaction.attitude } : {}),
       variant: reaction?.variant ?? 0,
-      phase: !reaction
-        ? 'idle'
-        : age >= reactionDuration(reaction.preset)
-          ? 'afterglow'
-          : age < timing(reaction.preset).attack
-            ? 'anticipation'
-            : age < 1200
-              ? 'accent'
-              : age > timing(reaction.preset).duration - timing(reaction.preset).release
-                ? 'release'
-                : 'settle',
+      phase: clock?.phase ?? 'idle',
     };
   }
 
@@ -524,21 +574,6 @@ export class ActingController {
         ? 'neutral'
         : this.state;
   }
-  private envelope(age: number, preset: ActingPreset): number {
-    const { duration, attack, release } = timing(preset);
-    return smooth(age / attack) * smooth((duration - age) / release);
-  }
-  private afterglowFade(reaction: Reaction | undefined, age: number): number {
-    if (!reaction?.afterglow) return 0;
-    const end = reactionLifetime(reaction.preset);
-    return 1 - smooth((age - (end - 1000)) / 1000);
-  }
-  private residueWeight(reaction: Reaction | undefined, age: number): number {
-    if (!reaction?.afterglow) return 0;
-    const { duration, release } = timing(reaction.preset);
-    if (age < duration - release) return 0;
-    return 0.4 * (1 - this.envelope(age, reaction.preset)) * this.afterglowFade(reaction, age);
-  }
   private breathWave(now: number): number {
     // A 4.8s relaxed cycle: shorter inhale, longer exhale, zero speed at either end.
     // Keep the clock independent of cues/resets so starting a reaction never restarts a breath.
@@ -562,12 +597,13 @@ export class ActingController {
       this.blinkAt += 2600 + random(40 + this.blinkIndex) * 4000;
     }
     const reaction = this.reaction;
-    const age = reaction ? now - reaction.started : 0;
-    const weight = reaction ? this.envelope(age, reaction.preset) : 0;
+    const clock = reactionClock(reaction, now);
+    const age = clock?.age ?? 0;
+    const weight = clock?.accentWeight ?? 0;
     // Do not blend a waiting/working pose back into the message's attack or
     // release. Once the reaction expires the latest task state resumes.
     const base = this.target(reaction ? 'neutral' : this.base(), (now - this.epoch!) / 1000);
-    const target = reaction ? this.reactionTarget(reaction, age / 1000) : base;
+    const target = reaction ? this.reactionTarget(reaction, clock!) : base;
     // A gesture carries body/gaze intent independently of the face's emotion or attitude.
     if (reaction?.gesture === 'thinking' || reaction?.gesture === 'explain') {
       const gesture = this.amplifyIntent(
@@ -585,7 +621,7 @@ export class ActingController {
           beat(age / 1000, 2.35, 0.18, 0.12, 0.45) +
           beat(age / 1000, 7.25, 0.15, 0.1, 0.35)
         : 0;
-    const maintenance = this.maintenanceTarget(reaction, age / 1000);
+    const maintenance = this.maintenanceTarget(reaction, clock);
     const idleGaze = !reaction && this.state === 'idle' && this.gazeIndex > 0;
     const idleAge = (now - this.gazeSince) / 1000;
     const idleTilt = idleGaze ? 0.55 * beat(idleAge, 0, 0.35, 0.55, 0.8) : 0;
@@ -676,11 +712,8 @@ export class ActingController {
         torso = { x: direction * 0.24, z: -direction * 0.28 };
       else if (reaction.preset === 'happy' && reaction.emotion === 'happy')
         torso = { x: direction * 0.1, z: direction * 0.04 };
-      else if (
-        reaction.preset === 'laugh' &&
-        (reaction.emotion === 'happy' || reaction.emotion === 'neutral')
-      ) {
-        const { first, second } = chuckleBeats(age / 1000, reaction.variant);
+      else if (clock?.chuckle) {
+        const { first, second } = clock.chuckle;
         torso = {
           x: direction * (-0.26 + 0.14 * first - 0.1 * second),
           z: direction * (0.28 - 0.18 * first + 0.02 * second),
@@ -714,12 +747,7 @@ export class ActingController {
       blend(base.smile, target.smile) + heldFace.smile * maintenance.weight * scale,
       6,
     );
-    const mouthWeight = reaction?.afterglow
-      ? smooth(
-          (age - (reactionDuration(reaction.preset) - timing(reaction.preset).release)) /
-            timing(reaction.preset).release,
-        ) * this.afterglowFade(reaction, age)
-      : 0;
+    const mouthWeight = clock?.mouthWeight ?? 0;
     const closedMouth =
       reaction?.emotion === 'angry' ||
       reaction?.preset === 'angry' ||
@@ -850,14 +878,15 @@ export class ActingController {
 
   private maintenanceTarget(
     reaction: Reaction | undefined,
-    t: number,
+    clock: ReactionClock | undefined,
   ): { pose: Pose; weight: number } {
     const pose = neutral();
-    if (!reaction?.afterglow || reaction.preset === 'acknowledge') return { pose, weight: 0 };
-    const { duration, release } = timing(reaction.preset);
-    const end = reactionLifetime(reaction.preset) / 1000;
-    const weight =
-      smooth((t - (duration - release) / 1000) / (release / 1000)) * smooth((end - t) / 1.8);
+    if (!reaction?.afterglow || reaction.preset === 'acknowledge' || !clock)
+      return { pose, weight: 0 };
+    const t = clock.seconds;
+    const { duration } = clock;
+    const end = clock.lifetime / 1000;
+    const weight = clock.maintenanceWeight;
     // A finite attention phrase: look toward the listener, glance, reconnect.
     // No randomized reactions and no new mouth/speech clock during the hold.
     const glance = beat(t, 5.1, 0.4, 0.65, 0.6) - beat(t, 9.6, 0.4, 0.65, 0.6);
@@ -951,11 +980,12 @@ export class ActingController {
     return pose;
   }
 
-  private reactionTarget(reaction: Reaction, t: number): Pose {
+  private reactionTarget(reaction: Reaction, clock: ReactionClock): Pose {
+    const t = clock.seconds;
     const shyLaugh = reaction.emotion === 'embarrassed' && reaction.preset === 'laugh';
-    const target = this.target(reaction.preset, attitudeTime(reaction, t), reaction.variant);
+    const target = this.target(reaction.preset, clock.attitudeSeconds, reaction.variant);
     if (reaction.emotion === 'concerned' && reaction.preset === 'tease') {
-      const local = accentTime('tease', t, reaction.variant);
+      const local = clock.emotionSeconds;
       const worry = 1 - smooth((local - 1.05) / 0.6);
       target.browInner = 0.5 + 0.22 * worry;
       target.browY = 0.12;
@@ -994,13 +1024,9 @@ export class ActingController {
       target.lean -= 0.03 * listen;
       target.browY += 0.08 * listen;
     }
-    if (
-      reaction.preset === 'laugh' &&
-      reaction.gesture === 'none' &&
-      (reaction.emotion === 'happy' || reaction.emotion === 'neutral')
-    ) {
-      const { first, second } = chuckleBeats(t, reaction.variant);
-      const local = accentTime('laugh', t, reaction.variant);
+    if (clock.chuckle) {
+      const { first, second } = clock.chuckle;
+      const local = clock.emotionSeconds;
       const direction = reaction.variant ? -1 : 1;
       target.headY = -0.24 * first - 0.14 * second;
       target.headZ =
