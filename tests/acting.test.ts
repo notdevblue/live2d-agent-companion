@@ -772,7 +772,8 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
       expect(accent.offsetY).toBe(baseline.offsetY);
       expect(accent.breath).toBe(baseline.breath);
       const residue = advance(actor, 2800, 60, 1000);
-      expect(Math.abs(residue.headZ)).toBeGreaterThan(0.12);
+      if (cue.emotion === 'happy') expect(residue.headX).toBeLessThan(-0.3);
+      else expect(Math.abs(residue.headZ)).toBeGreaterThan(0.12);
       if (cue.emotion === 'happy') expect(residue.mouthOpen).toBeCloseTo(0.18 * 0.65, 6);
       else expect(residue.mouthOpen).toBe(0);
       expect(advance(actor, reactionLifetime(residue.preset), 60, 2800).active).toBe(false);
@@ -1032,6 +1033,131 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
       for (const phase of ['away', 'reconnect'] as const)
         for (const key of [...motionKeys, 'offsetY', 'breath', 'mouthOpen'] as const)
           expect(path[phase][key]).toBeCloseTo(paths[0]![phase][key], 7);
+  });
+
+  it('lets the torso finish an idle gaze shift after the eyes reconnect, then releases the finite posture', () => {
+    const actor = new ActingController();
+    const looking = advance(actor, 1400);
+    const settling = advance(actor, 2200, 60, 1400);
+    expect(Math.abs(settling.gazeX)).toBeLessThan(Math.abs(looking.gazeX) * 0.5);
+    expect(Math.abs(settling.bodyX)).toBeGreaterThan(Math.abs(looking.bodyX) * 1.7);
+    expect(settling.bodyX).toBeLessThan(-0.2);
+    const returned = advance(actor, 4500, 60, 2200);
+    expect(Math.abs(returned.bodyX)).toBeLessThan(Math.abs(settling.bodyX) * 0.4);
+    expect(returned).toMatchObject({ active: false, gesture: 'none', mouthOpen: 0 });
+  });
+
+  it('keeps idle posture slots continuous, deterministic through frame gaps and bounded by accessibility', () => {
+    for (const [intensity, reducedMotion, scale] of [
+      ['normal', false, 0.65],
+      ['quiet', false, 0.35],
+      ['normal', true, 0.65 * 0.18],
+    ] as const) {
+      const paths = [30, 60, 120].map((fps) => {
+        const actor = new ActingController();
+        actor.configure({ intensity, reducedMotion });
+        let previous = actor.sample(0, 0),
+          slots = 0,
+          slot = 0;
+        const frames: ActingFrame[] = [];
+        for (let i = 1; i <= fps * 10; i++) {
+          const frame = actor.sample((i * 1000) / fps, 1 / fps);
+          const nextSlot = (actor as unknown as { gazeIndex: number }).gazeIndex;
+          if (nextSlot !== slot) {
+            slots++;
+            expect(Math.abs(frame.headX - previous.headX)).toBeLessThan(4.5 / fps);
+            expect(Math.abs(frame.bodyX - previous.bodyX)).toBeLessThan(2.1 / fps);
+            slot = nextSlot;
+          }
+          expect(Math.abs(frame.headX)).toBeLessThanOrEqual(0.7 * scale + 1e-10);
+          expect(Math.abs(frame.bodyX)).toBeLessThanOrEqual(0.5 * scale + 1e-10);
+          if (i % fps === 0) frames.push(frame);
+          previous = frame;
+        }
+        expect(slots).toBeGreaterThanOrEqual(3);
+        return frames;
+      });
+      const gaps = new ActingController();
+      gaps.configure({ intensity, reducedMotion });
+      gaps.sample(0, 0);
+      for (let time = 1000; time <= 10000; time += 1000) {
+        const frame = gaps.sample(time, 1);
+        for (const key of motionKeys)
+          expect(frame[key]).toBeCloseTo(paths[0]![time / 1000 - 1]![key], 7);
+      }
+      for (const path of paths.slice(1))
+        for (let i = 0; i < path.length; i++)
+          for (const key of [...motionKeys, 'offsetY', 'breath'] as const)
+            expect(path[i]![key]).toBeCloseTo(paths[0]![i]![key], 7);
+      const normal = advance(new ActingController(), 10000);
+      for (const key of motionKeys)
+        expect(paths[0]![9]![key]).toBeCloseTo((normal[key] * scale) / 0.65, 7);
+      const skipped = gaps.sample(60000, 1);
+      expect(skipped).toMatchObject({ active: false, gesture: 'none', mouthOpen: 0 });
+      expect((gaps as unknown as { gazeAt: number }).gazeAt).toBeGreaterThan(60000);
+      expect(Math.abs(skipped.bodyX)).toBeLessThanOrEqual(0.5 * scale + 1e-10);
+      gaps.setState('blocked', 60000);
+      expect(gaps.sample(60000, 0)).toMatchObject({ headX: 0, bodyX: 0, gazeX: 0 });
+    }
+  });
+
+  it('gives happy and laugh a finite listener glance followed by an angled reconnection', () => {
+    for (const attitude of ['neutral', 'laugh'] as const)
+      for (const variant of [0, 1]) {
+        const cue = {
+          requestId: 'listener',
+          messageId: 'm',
+          segmentId: 1,
+          emotion: 'happy',
+          attitude,
+          gesture: 'none',
+        } as const;
+        const paths = [30, 60, 120].map((fps) => {
+          const actor = new ActingController(),
+            reduced = new ActingController();
+          reduced.configure({ intensity: 'normal', reducedMotion: true });
+          for (const a of [actor, reduced]) {
+            if (variant) {
+              a.cue(cue, 0);
+              a.reset(0);
+            }
+            a.cue(cue, 0);
+          }
+          const direction = variant ? -1 : 1;
+          const glance = advance(actor, 2800, fps),
+            quiet = advance(reduced, 2800, fps);
+          expect(glance.headX * direction).toBeLessThan(-0.25);
+          expect(glance.gazeX * direction).toBeLessThan(-0.12);
+          expect(glance).toMatchObject({ emotion: 'happy', attitude, gesture: 'none', variant });
+          for (const key of motionKeys) expect(quiet[key]).toBeCloseTo(glance[key] * 0.18, 7);
+          const bodySettled = advance(actor, 3200, fps, 2800);
+          expect(bodySettled.bodyX * direction).toBeLessThan(-0.08);
+          const reconnected = advance(actor, 4500, fps, 3200);
+          expect(reconnected.headX * direction).toBeGreaterThan(0.08);
+          expect(reconnected.headX * direction - glance.headX * direction).toBeGreaterThan(0.4);
+          expect(reconnected.smile).toBeGreaterThan(0.3);
+          const preset = attitude === 'laugh' ? 'laugh' : 'happy';
+          expect(advance(actor, reactionLifetime(preset), fps, 4500).active).toBe(false);
+          actor.reset(reactionLifetime(preset));
+          expect(actor.sample(reactionLifetime(preset), 0)).toMatchObject({ headX: 0, bodyX: 0 });
+          return { glance, bodySettled, reconnected };
+        });
+        for (const path of paths.slice(1))
+          for (const phase of ['glance', 'bodySettled', 'reconnected'] as const)
+            for (const key of [...motionKeys, 'offsetY', 'breath'] as const)
+              expect(path[phase][key]).toBeCloseTo(paths[0]![phase][key], 7);
+        const cleared = new ActingController();
+        cleared.cue(cue, 0);
+        advance(cleared, 2800);
+        expect(cleared.clearCue(cue)).toBe(true);
+        expect(cleared.sample(2800, 0)).toMatchObject({
+          active: false,
+          headX: 0,
+          bodyX: 0,
+          gazeX: 0,
+          mouthOpen: 0,
+        });
+      }
   });
 
   it('keeps calibrated angry lids readable at every intensity with reduced motion and an exact deadline', () => {

@@ -559,6 +559,13 @@ export class ActingController {
     const idleAge = (now - this.gazeSince) / 1000;
     const idleTilt = idleGaze ? 0.35 * beat(idleAge, 0, 0.35, 0.55, 0.8) : 0;
     const reconnect = idleGaze ? 1 - 0.55 * smooth((idleAge - 0.65) / 0.85) : 1;
+    // One posture shift per existing irregular gaze slot. Eyes lead the turn,
+    // then the torso settles later and both return without another idle clock.
+    const idleDirection = this.gaze.x < 0 ? -1 : 1;
+    const idleHeadShift = idleGaze ? idleDirection * 0.22 * beat(idleAge, 0, 0.6, 0.8, 1.6) : 0;
+    const idleWeightShift = idleGaze
+      ? idleDirection * 0.1 * beat(idleAge, 0.25, 0.75, 0.9, 1.5)
+      : 0;
     const scale = this.scale();
     const blend = (a: number, b: number): number => a + (b - a) * weight;
     const follow = (key: keyof Pose, value: number, rate: number): void => {
@@ -596,7 +603,10 @@ export class ActingController {
       // target so an authored emotional lean cannot add an excessive turn.
       clamp(
         this.pose.gazeX * 1.6 +
-          (blend(base.headX, target.headX) + maintenance.pose.headX * maintenance.weight) * scale,
+          (blend(base.headX, target.headX) +
+            maintenance.pose.headX * maintenance.weight +
+            idleHeadShift) *
+            scale,
         -0.7 * scale,
         0.7 * scale,
       ),
@@ -620,7 +630,11 @@ export class ActingController {
       4,
     );
     // A delayed torso inclination stays inside the measured safe PositionX range.
-    follow('bodyX', clamp(this.pose.headX * 0.65, -0.5 * scale, 0.5 * scale), 2.1);
+    follow(
+      'bodyX',
+      clamp(this.pose.headX * 0.65 + idleWeightShift * scale, -0.5 * scale, 0.5 * scale),
+      2.1,
+    );
     follow('bodyY', this.pose.headY * 0.2 + this.breathWave(now) * 0.13 * scale, 2.1);
     follow(
       'lean',
@@ -782,6 +796,10 @@ export class ActingController {
       pose.headZ = direction * (0.23 + 0.1 * sway);
       pose.headY = -0.08 * (1 + glance);
       pose.lean = 0.08;
+      if (reaction.gesture === 'none' && reaction.emotion !== 'embarrassed') {
+        pose.headX += direction * 0.12;
+        pose.gazeX += direction * 0.08;
+      }
     }
     if (reaction.preset === 'tease') {
       pose.headZ = -direction * (0.22 + 0.08 * sway);
@@ -876,6 +894,22 @@ export class ActingController {
       target.gazeX = -0.5 * (1 - reconnect) + 0.12 * beat(local, 2.2, 0.2, 0.2, 0.4);
       target.gazeY = -0.28 * (1 - 0.8 * reconnect);
       target.lean = -0.04 + 0.12 * reconnect;
+    }
+    if (
+      (reaction.preset === 'happy' || reaction.preset === 'laugh') &&
+      !shyLaugh &&
+      reaction.gesture === 'none'
+    ) {
+      // After the welcome/chuckle, briefly check the listener and reconnect to
+      // the mild angled hold. Eye and head inputs turn together on this rig.
+      const direction = reaction.variant ? -1 : 1;
+      const listen = beat(t, 1.85, 0.45, 0.55, 0.85);
+      target.headX -= direction * 0.23 * listen;
+      target.gazeX -= direction * 0.24 * listen;
+      target.headZ -= direction * 0.13 * listen;
+      target.headY += 0.07 * listen;
+      target.lean -= 0.03 * listen;
+      target.browY += 0.08 * listen;
     }
     if (shyLaugh) {
       // Emotion supplies the first glance; attitude supplies the delayed laugh.
