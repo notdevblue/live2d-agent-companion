@@ -1,24 +1,50 @@
 # 구현 및 검증 상태
 
-**확인일:** 2026-11-02 · **버전:** 0.1.0-alpha.1 · **배포:** 로컬 개발용, Windows 릴리스 검증 전
+**확인일:** 2026-11-03 · **버전:** 0.1.0-alpha.1 · **배포:** 로컬 개발용, Windows 릴리스 검증 전
 
 ## 구현 범위
 
 사용자가 확정한 완료 흐름은 **DeepSeek-chan 표시 → 채팅 요청 → Hermes 실제 응답 → Jev 판단 → 모델 표정/모션**이다. 내부 모듈은 분리하지만 캐릭터 단독 PoC로 완료하지 않는다. 화면 캡처·PC 실행·TTS/립싱크는 구현하지 않았다.
 
-| 항목 | 구현/실증 | 한계 |
-|---|---|---|
-| Electron | typed IPC, sender/mainFrame 검사, sandbox/contextIsolation, renderer 외부 네트워크 차단 | Windows 실제 창/입력 미검증 |
-| Chat | 직접 전송 시 하단 이동, 응답 하단 추적/과거 위치 유지, 실시간·복원 답변의 Markdown 문단/강조/목록/코드/표 | 링크는 이동 없는 표시, 이미지는 alt text. 코드 문법 강조 없음 |
-| 첨부 | 이미지/일반 파일 선택·드롭·paste·초안 미리보기/삭제, Hermes SSH 실제 이미지/파일 전달 | 10개·파일당 10 MiB·전체 25 MiB. HTTP/Grok 미지원, 첨부-only의 로컬 history 복원은 기본 텍스트 표시이며 첨부 thumbnail/파일명 이력 보존은 미구현 |
-| UI/Live2D | 투명 Overlay, 모니터 이동·부분 표시·휠 배율, 로컬 actor의 시선/고개/몸 연기·표정 crossfade·paired 손 포즈, 강도/구도/배치 잠금/움직임 줄이기/미리보기 | Windows·실제 고 DPI·성능 수락 전. 선택적 직접 쓰다듬기 제공. 마우스 시선 추적/TTS 없음 |
-| Linux/Sway | Xwayland의 non-focusable Overlay, 입력 전용 XShape로 빈 영역 통과·모델 재진입, 실패 시 전체 입력 복구 | 현재 SwayFX 환경에서 실증. native Wayland 클릭 통과는 미지원 |
-| Core | binding/turn/request 검사, dedupe, lease, reconciling, 승인/취소, 원문 없는 복원 | 원문 히스토리 영구 저장 안 함 |
-| Hermes SSH | 기존 owner의 native control/ticket/WebSocket, 명시적 세션 선택, 동일 세션 표시용 history 복원, 전용 테스트 세션 실제 왕복·새 연결 receipt 복구 | canonical Bot Chat 미검증, 실제 진행 중 취소/승인은 계약 테스트만 |
-| Hermes HTTP | Runs/SSE/상태/중단/승인/복구와 테스트 서버 왕복 | 원격 실증 전. API 소유 세션 전용 |
-| Grok Bot | Webhook 인증 제출, 200→accepted/awaiting_result | 실계정 미실증, callback 미구현, 양방향 채팅 미지원 |
-| Jev | 메시지당 대표 Choice emotion/gesture/선택적 attitude 1회, 800자·요청당 8회·짧은 수집/판단 기한, 문장 재생 큐 없음 | 진행 응답의 빈도/감정 품질은 모델·작업에 따라 다름 |
-| 인증키 | async safeStorage, 서버별 credential scope, 사용자 `.env` 시작 시 입력 | 현재 headless 환경은 보호 저장소 불가. 앱 보관은 메모리 전용이며 사용자 `.env`는 별도 유지 |
+| 항목        | 구현/실증                                                                                                                                             | 한계                                                                                                                                            |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Electron    | typed IPC, sender/mainFrame 검사, sandbox/contextIsolation, renderer 외부 네트워크 차단                                                               | Windows 실제 창/입력 미검증                                                                                                                     |
+| Chat        | 직접 전송 시 하단 이동, 응답 하단 추적/과거 위치 유지, 실시간·복원 답변의 Markdown 문단/강조/목록/코드/표                                             | 링크는 이동 없는 표시, 이미지는 alt text. 코드 문법 강조 없음                                                                                   |
+| 첨부        | 이미지/일반 파일 선택·드롭·paste·초안 미리보기/삭제, Hermes SSH 실제 이미지/파일 전달                                                                 | 10개·파일당 10 MiB·전체 25 MiB. HTTP/Grok 미지원, 첨부-only의 로컬 history 복원은 기본 텍스트 표시이며 첨부 thumbnail/파일명 이력 보존은 미구현 |
+| UI/Live2D   | 투명 Overlay, 모니터 이동·부분 표시·휠 배율, 로컬 actor의 시선/고개/몸 연기·표정 crossfade·paired 손 포즈, 강도/구도/배치 잠금/움직임 줄이기/미리보기 | Windows·실제 고 DPI·성능 수락 전. 선택적 직접 쓰다듬기 제공. 마우스 시선 추적/TTS 없음                                                          |
+| Linux/Sway  | Xwayland의 non-focusable Overlay, 입력 전용 XShape로 빈 영역 통과·모델 재진입, 실패 시 전체 입력 복구                                                 | 현재 SwayFX 환경에서 실증. native Wayland 클릭 통과는 미지원                                                                                    |
+| Core        | binding/turn/request 검사, dedupe, lease, reconciling, 승인/취소, 원문 없는 복원                                                                      | 원문 히스토리 영구 저장 안 함                                                                                                                   |
+| Hermes SSH  | 기존 owner의 native control/ticket/WebSocket, 명시적 세션 선택, 동일 세션 표시용 history 복원, 전용 테스트 세션 실제 왕복·새 연결 receipt 복구        | canonical Bot Chat 미검증, 실제 진행 중 취소/승인은 계약 테스트만                                                                               |
+| Hermes HTTP | Runs/SSE/상태/중단/승인/복구와 테스트 서버 왕복                                                                                                       | 원격 실증 전. API 소유 세션 전용                                                                                                                |
+| Grok Bot    | Webhook 인증 제출, 200→accepted/awaiting_result                                                                                                       | 실계정 미실증, callback 미구현, 양방향 채팅 미지원                                                                                              |
+| Jev         | 메시지당 대표 Choice emotion/gesture/선택적 attitude 1회, 800자·요청당 8회·짧은 수집/판단 기한, 문장 재생 큐 없음                                     | 진행 응답의 빈도/감정 품질은 모델·작업에 따라 다름                                                                                              |
+| 인증키      | async safeStorage, 서버별 credential scope, 사용자 `.env` 시작 시 입력                                                                                | 현재 headless 환경은 보호 저장소 불가. 앱 보관은 메모리 전용이며 사용자 `.env`는 별도 유지                                                      |
+
+## Grok의 VTuber 시각 검토와 개선 (2026-11-03)
+
+조사·공식 영상 링크 전달·개선·영상·재검토는 [Grok 검토·반영](../ux/GROK_VTUBER_REVIEW.md)을 따른다. 기존 그림을 제외한 **연기 기여도 단독** 고정 평가의 회차별 점수는 60→57→57→63→60/100이다. 이는 단일 모델의 주관적 시각 UX 평가이며 기능 검사·실시간 성능 인증이 아니다. 기존 아트를 포함한 59초 사용 흐름의 별도 종합 평가도 **60/100**이었다. 두 기준을 같은 점수의 상승으로 표현하지 않는다. 85점 종료 조건은 충족하지 않았으며 고개·상체의 시각적 호응을 보강 중이다.
+
+`FR-L2D-004/006/008/009`를 실제 기본 renderer에 통합했다. 복합 감정의 시선 회피→웃음/윙크와 감정별 유지 얼굴, 두 변주의 눈·고개·시간 구조, 단일 특수 눈 그림과 표시 층, 실제 rig 범위로 보정한 화남/기쁨, 접촉 방향의 쓰다듬기와 사용자 홍조를 제공한다. 원본 가슴 포즈를 인사라 부르던 원인을 확인해 편 손바닥의 세 번 흔들기→낮춘 유지→부분 올림→원본 복귀로 연결했다. 설명도 검증된 팔 입력 하나만 낮추며 selector·손가락·소매 연결을 보존한다. 없는/다른/physics-owned 입력은 원본 경로로 fallback한다. 구조·한계는 [Live2D 통합](../integrations/LIVE2D_TTS.md#grok-검토-후-무음-시각-연기-2026-11-03)을 따른다. TTS/음소 발화·새 리깅·전역 커서/PC 조작은 추가하지 않았다.
+
+### 다섯 번째 개선 검증과 영상
+
+- unit/contract **534개**, typecheck, format, build, 외부 AI 없는 Mock Electron 통합 검사를 통과했다. 잘못된 sender/enum·요청 중 미리보기·잠긴 위치 변경의 거절 로그는 Mock의 예상 결과다. 30/60/120fps·192조합·정확한 deadline·중단/clear/접근성, 12초 상한 근처의 연속 fade, 빠른 세 눈 전환의 단일 소유권/중립 틈 방지를 포함한다.
+- 실제 SDK/SwiftShader의 **36개 수락 검사·72 PNG**(after 69/before lean 3), 체크포인트의 509개 parameter 범위 오류 0·외부 요청 0을 확인했다. 8초 기쁨의 실제 눈 열림은 약 .402, 고정 입 열림 .117, 화남 입 형태 −.764/입 열림 0이다. 접촉 좌/우의 `AngleX`는 −7.731/+7.731, physics 뒤 `ParamAngleX`는 −6.221/+6.221(600ms 합성 획)이다. 실제 8초의 낮춘 손/보호 입력, 두 부분 올림과 최종 전체 authored endpoint 복귀, 특수 눈의 1.2/1.25초 0/1전환, 접촉/해제 여운/최종 복귀를 검사했다. `artifacts/grok-review/round-05-expression-results.json`과 `artifacts/expression-afterglow/`가 로컬 근거다. 50ms 시뮬레이션·지정 체크포인트 rasterize이며 실시간 FPS 검사가 아니다.
+- 고정 before(`29b85f0`)와 현재 after의 긴 구간 비교는 **167.5초/20fps/3350 paired frame**다. 각 측 warmup 포함 3630회 parameter 검사에서 범위 오류/외부 요청 0, physics 뒤 실제 출력 변화를 확인했다. 접촉 입력은 양측 57/57 alpha 적중과 같은 실제 이동량을 확인했다. 근거는 `artifacts/grok-review/round-05-comparison.mp4`와 `round-05-results.json`이다. 소스 SHA-256과 실제 cue/시간/변주를 기록했다.
+- 사용 흐름용 연속 비교는 **59초/20fps/1180 paired frame**다. 각 측 한 Avatar/actor가 이어지며 실제 ID clear 8회와 변주 카운터, 짧은 로컬 손 미리보기/복귀, 직접 쓰다듬기 62/62 alpha 적중을 포함한다. 각 측 509개 parameter의 1300회 검사에서 범위 오류 0·외부 요청 0이다. `story-05-comparison.mp4`와 `story-05-results.json`이 근거다. **합성 cue·로컬 미리보기·무음**이며 실제 provider/IPC/AI 대화를 촬영한 영상으로 주장하지 않는다. 긴 의미 손/여운 검사와 독립된 실제 public Avatar API 사용 흐름이다.
+- 실제 Sway/Xwayland의 새 앱 프로세스에서 production renderer·설정 UI 20종·쓰다듬기 켜기 저장/설정 reload·Shift stroke/창 위치 불변·해제·승인 정리·의미 여운 손 hold·낡은 clear 무시/정확한 clear 정리·모델 renderer reload를 확인했다. **쓰다듬기 활성 > 0을 먼저 확인하고 획 입력이 계속 들어오는 중에 승인**을 보내 0으로 정리됨을 확인했다. 배경 창 JS 조회를 기다리는 동안 진단 입력을 멈추면 .9초 정지 timeout이 먼저 끝나는 시험 주입 문제를 고쳐, 조회 중에도 제한된 stroke를 계속 보내고 finally에서 해제한다. 캐릭터 자세가 바뀐 뒤 좌표도 현재 알파 내부로 다시 구한다. 제품 입력 규칙을 우회한 수정은 아니다. 원래 설정 해시를 보존했고 provider prompt/Jev 호출 0회다. 이후 기본 `~/.local/bin/live2d-companion`으로 정상 재실행해 PID 생존/설정 해시 일치를 확인했다. 근거는 ignored `.tmp/afterglow-native/result.json`의 `approvalActiveBefore:true` 등이다. 물리 마우스·OS 재부팅·재로그인은 수행하지 않았다.
+
+다섯 번째 개선 코드 커밋은 `116e1b9`(안전한 합성/손/직접 반응)와 `bdce55e`(기본 actor/Avatar/입력 통합)다. 적용은 현 checkout에서 `npm run build` 후 앱 종료·기본 런처 재실행이다. 복원은 변경을 분리한 작업 트리에서 이 두 코드 커밋을 역순으로 revert하고 build·같은 런처 재실행한다. `29b85f0`의 설정 schema와 호환되어 개인 연결/매핑/위치/배율을 다시 쓸 필요가 없다. 복원 버전의 현재 기능 안내도 해당 문서 버전과 맞춘다. SDK·모델 자산/영상/프레임·개인 설정·Grok 원문 세션은 공개 Git에 넣지 않는다.
+
+### 여섯 번째 개선 검증 (2026-11-03)
+
+시선에서 실제 고개 회전으로 가는 약한 결합과 상체의 작은 호응을 측정해 보정했다. 같은 시선 입력에서 실제 얼굴/상체 변형은 약 8.49/2.95px에서 20.85/12.14px로 바뀌었다. 더 큰 입력은 고개 한도로 약 29.11/17.75px에 제한됐다(480×720 고정 구도·합성 정상 자세; 모든 움직임에 대한 보편 상한은 아니다). root 행렬 변화·범위 오류는 0이고 상하 offset/호흡은 보존했다. 쓰다듬기는 반대 방향의 대기 자세에서 접촉 목표로 보간하고, 해제 시 화남의 음수 입도 튀지 않고 원래 값으로 돌아간다.
+
+unit/contract **539개**, typecheck·format·build·Mock desktop을 통과했다. 실제 SDK는 **38개 수락 검사·90개 현재 체크포인트 PNG**(after87/before3)에서 509개 parameter의 범위 오류/외부 요청 0을 확인했다. 2~10초 대기의 physics 뒤 고개/상체 값 변화 폭은 약 **9.630°/6.487°**, 움직임 줄이기에서는 **1.733°/1.168°**다. 입력 값만 변하고 실제 출력은 정적인 상태를 구분하는 수락 검사를 추가했다. 로컬 근거는 `artifacts/grok-review/round-06-expression-results.json`이다.
+
+사용 흐름 영상은 `artifacts/grok-review/story-06-comparison.mp4`(59초·20fps·1180 paired frame)이며 같은 22개 앱 소스를 고정한 실제 연속 Avatar를 사용했다. 소스 해시와 `story-06-results.json`을 보존한다. 합성 cue·로컬 미리보기·무음이라는 범위는 같다. 실제 production renderer를 새 앱 프로세스에서 다시 검사해 설정 UI/저장·reload·직접 획·해제·활성 쓰다듬기→승인 즉시 정리·여운/clear·renderer reload·개인 설정 보존을 확인했다. `.tmp/afterglow-native/round-06-result.json`은 2026-11-03 03:04 KST의 성공 근거이며 provider/Jev 호출은 0이다. 이후 기본 런처로 정상 재실행했다. OS 재부팅/재로그인·물리 마우스 검증은 하지 않았다.
+
+여섯 번째 코드 커밋은 `28a9420`이다. Grok의 이 회차 종합 평가는 진행 중이며 85점 통과로 표시하지 않는다. 적용·복원은 같은 checkout의 build·기본 런처를 사용하며 추가 설정 이관은 없다. 이 회차만 복원하려면 해당 커밋을 revert한 뒤 build·기본 런처로 재실행한다.
 
 ## 감정 여운·추가 감정·쓰다듬기 (2026-11-02)
 
@@ -45,7 +71,6 @@
 적용은 `npm run build` 뒤 기존 앱을 종료하고 기본 `~/.local/bin/live2d-companion` 런처로 실행한다. 런처는 이 checkout의 기본 Electron 진입점을 읽으므로 별도 시험 경로·서비스·자동 실행 항목은 없다. 쓰다듬기 설정은 기존 settings 저장/부트스트랩과 presentation 이벤트를 사용하고, 예전 설정에 필드가 없으면 꺼짐으로 해석한다. 기존 개인 연결/세션/모델/표정 매핑·위치·배율은 자동 이관하지 않는다. 새 happy 기본이 이미 저장된 사용자의 `＞＜`를 덮지 않는다.
 
 복원은 이 변경 커밋을 revert하고 `npm run build` 뒤 같은 기본 런처로 재실행한다. 되돌린 버전은 새 감정/쓰다듬기 필드를 모를 수 있으므로, **되돌리기 전에** 현재 버전 설정에서 새 angry/confused 매핑 행과 `presentation.pettingEnabled`만 제거한 기존 형태의 비밀 없는 설정 백업으로 복원한다. 개인 연결 값·비밀·대화는 저장소에 넣지 않는다. 모델/SDK 자산 추가 배포는 없다. 실제 앱 재실행 검증과 OS 재부팅/재로그인 검증을 구분하며 이번에 OS 재부팅·재로그인은 수행하지 않았다.
-
 
 Linux에서 구버전으로 돌아갈 때 새 설정 필드를 제거하는 예시다. **앱을 먼저 종료**하고 실행한다. 백업에는 개인 연결 메타데이터가 들어갈 수 있으므로 사용자 설정 디렉터리에만 두고 저장소에 추가하지 않는다.
 
@@ -118,7 +143,7 @@ Linux의 `setIgnoreMouseEvents`는 mouse forwarding을 지원하지 않는다. S
 
 ## 재현 명령
 
-~~~sh
+```sh
 npm run format:check
 npm run typecheck
 npm test
@@ -127,7 +152,7 @@ npm run test:desktop
 # Linux X11이 있는 환경에서만: 자기 소유의 숨겨진 창으로 native protocol 검사
 DISPLAY=:0 npm run test:x11
 npm audit
-~~~
+```
 
 기본 desktop 검사는 외부 AI 없이 실제 Electron/SDK/모델에 Mock 응답과 명시적 표현 fixture를 적용한다. `artifacts/desktop-smoke.json`, `live2d-smoke.png`, `chat-smoke.png`는 로컬 확인용이며 커밋하지 않는다. headless의 고정 viewport·software GPU는 Windows 합성/입력이나 실사용 성능 검증을 대체하지 않는다.
 
@@ -146,7 +171,6 @@ npm audit
 
 - `FR-CHAT-003`: 기존 요청은 text만 받았고 첨부 선택 UI·바이트 transport가 없었다. File 선택/채팅 drop/명시 paste, 파일명·크기·raster blob preview/삭제와 attachment-only 전송을 추가했다. main→Core→SSH는 제한된 바이트 snapshot만 전달하고 renderer 경로를 읽지 않는다. source probe로 지원을 확인한 뒤 이미지 immutable admission·일반 파일의 canonical file.attach ref를 사용한다. 새 UI가 시작 시 비활성화되던 원인은 configure에서 capability를 조회하지 않던 경로였고, 선택별 자동 discovery·이전 조회 무시·chat bootstrap 대기로 해결했다. 전체 230개 검사·typecheck·format·build를 통과했다. Mock Electron의 `attachmentComposer`는 실제 input/drop→blob preview→adapter 바이트·빈 텍스트 전송·제거와 Overlay/설정의 전송 거절을 검사한다. 초기에 테스트가 image read 완료 전에 확인하던 문제를 고쳐 실제 준비 완료까지 기다리며 `.message.user:last-of-type` 대신 전달한 파일명으로 bubble을 확인한다. 이미지 근거는 ignored `artifacts/attachments-smoke.png`, 수치 근거는 `artifacts/desktop-smoke.json`이다.
 - 실제 default 전용 검증 세션에서 합성 PNG 숫자와 텍스트 파일의 임의 verification 값을 정확히 읽은 최종 응답을 확인했다(ignored `.tmp/attachment-check/live-result.json`). 실사용 session binding을 바꾸거나 기존 대화에 테스트 메시지를 넣지 않았고 Jev 호출은 0회다. 실제 Sway 기본 설정의 앱 재실행에서 지원 자동 조회·버튼 활성·이미지 paste/실제 preview load·초안 전송 준비·삭제·수평 잘림 없음·요청 미생성을 확인했다(`.tmp/attachment-check/native-result.json`). 이 UI 검사는 전송 버튼을 누르지 않았다. 검증한 build를 설치된 rofi 기본 항목으로 재실행해 실제 production 경로·동일 build·기존 설정/위치 보존·Overlay 한 개 mapped를 확인했다(`.tmp/attachment-check/production-result.json`). 파일 원문은 로컬 pending/log/Jev에 저장·전송하지 않는다. 이미 접수한 첨부는 자동 재송신하지 않으며 ACK 전 유실의 접수 여부 미확정은 기존 Hermes 계약의 한계다. 일반 첨부는 원격 후속 참조를 위해 보관되고 불확실한 이미지 stage는 remote cache에 남을 수 있다.
-
 
 - `FR-DIR-005/FR-L2D-007`: 고개 반응이 잘 보이지 않던 원인은 작은 회전 target에 기본 강도 .65와 느린 4.5/s 추종이 겹치던 것이었다. 중립 전달의 headY target을 -.22→-.48, 명시적 끄덕임을 ±.24→±.60, 안심 끄덕임을 ±.24→±.36, 도리도리를 ±.30→±.52로 조정했다. 고개 추종은 명시적 끄덕/도리도리 8.5/s·전달/안심 6.5/s이며 idle·다른 표정의 추종은 유지한다. 전체 상하 offset/호흡·창 배치·반응 수명·Jev 판단/호출 수는 바꾸지 않았다. 기본 강도의 실제 회전 하한·idle과 같은 offset·승인 차단을 회귀 검사하고 기존 30/60/120fps·움직임 줄이기 검사를 포함한 전체 206개·typecheck·format·build·Mock desktop을 통과했다. 실제 DeepSeek/SDK의 idle 대비 physics 이후 각도 비교에서 중립 전달의 아래 끄덕임은 약 3.56°→8.60°, 명시적 끄덕임의 peak-to-peak는 약 6.55°→20.53°였다. 도리도리·안심도 증가했고 전체 offset 동일·손 포즈 없음·자연 종료를 확인했다(ignored `.tmp/nod-check/before.json`, `after.json`). headless의 기본 강도 로컬 모델 검증이며 화면 거리별 가시성/실사용 성능 보장은 아니다. 설치된 rofi 항목으로 기본 앱을 재실행해 Overlay 한 개·mapped·기존 설정/위치 보존을 확인했다(ignored `.tmp/nod-check/restart.json`). 적용은 build 후 기존 앱 종료·Live2D Companion 런처 재실행, 복원은 변경 커밋 revert 후 같은 절차다. OS 재부팅/재로그인은 하지 않았다.
 
