@@ -39,6 +39,59 @@ const scenes = [
     times: [2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000],
   },
   {
+    name: 'idle-attention',
+    idle: true,
+    intensity: 'expressive',
+    times: [5500, 5850, 6100, 6250, 6500, 6950, 7100],
+  },
+  {
+    name: 'idle-attention-held',
+    idle: true,
+    intensity: 'expressive',
+    pettingAvailable: true,
+    strokeFromMs: 20000,
+    strokeUntilMs: 20000,
+    pettingActions: [
+      { at: 5500, type: 'begin' },
+      { at: 6200, type: 'end' },
+    ],
+    times: [5500, 6100, 6300, 6800, 7100],
+  },
+  {
+    name: 'idle-attention-residue',
+    idle: true,
+    intensity: 'expressive',
+    pettingAvailable: true,
+    strokeFromMs: 5000,
+    strokeUntilMs: 5300,
+    pettingActions: [
+      { at: 5000, type: 'begin' },
+      { at: 5300, type: 'end' },
+    ],
+    times: [5500, 6100, 6400, 6800, 7100],
+  },
+  {
+    name: 'idle-attention-interrupt',
+    idle: true,
+    intensity: 'expressive',
+    pettingAvailable: true,
+    strokeFromMs: 20000,
+    strokeUntilMs: 20000,
+    pettingActions: [
+      { at: 6200, type: 'begin' },
+      { at: 6250, type: 'end' },
+    ],
+    times: [6100, 6200, 6250, 6500, 7100],
+  },
+  {
+    name: 'idle-attention-approval',
+    idle: true,
+    intensity: 'expressive',
+    stateChangeAt: 6200,
+    stateChange: 'blocked',
+    times: [6100, 6200, 6500],
+  },
+  {
     name: 'idle-expressive',
     idle: true,
     intensity: 'expressive',
@@ -51,12 +104,12 @@ const scenes = [
     { name: 'idle-normal-long', intensity: 'normal' },
     { name: 'idle-quiet-long', intensity: 'quiet' },
     { name: 'idle-working', intensity: 'expressive', state: 'working' },
-  ].map((options) => ({ ...options, idle: true, times: [11000, 12500, 14100, 17000] })),
+  ].map((options) => ({ ...options, idle: true, times: [6100, 11000, 12500, 14100, 17000] })),
   {
     name: 'active-none-expressive',
     emotion: 'happy',
     intensity: 'expressive',
-    times: [11000, 12500, 14100, 16000],
+    times: [6100, 11000, 12500, 14100, 16000],
   },
   {
     name: 'idle-approval',
@@ -582,6 +635,51 @@ void app.whenReady().then(async () => {
       sample('petting-right', 600).values.PositionZ > 1 &&
         sample('petting-right', 600).values.ParamBodyAngleZ < -0.5 &&
         Math.abs(sample('petting-right', 1800).frame.bodyZ) < 0.3 * 0.65,
+    );
+    check(
+      'expressive idle gives one finite eye greeting without a message, mouth opening or hand',
+      !!sample('idle-attention', 6100).status.localIdleAttention &&
+        Math.abs(
+          sample('idle-attention', 6100).values.ParamEyeLOpen -
+            sample('idle-attention', 6100).values.ParamEyeROpen,
+        ) > 0.5 &&
+        sample('idle-attention', 6100).values.ParamMouthForm > 0.45 &&
+        sample('idle-attention', 6100).values.ParamMouthOpenY === 0 &&
+        sample('idle-attention', 6100).values.Movement2 === 0 &&
+        !sample('idle-attention', 6100).frame.active &&
+        !sample('idle-attention', 7100).status.localIdleAttention &&
+        Math.abs(sample('idle-attention', 7100).values.ParamMouthForm) < 0.001,
+    );
+    check(
+      'idle eye greeting respects accessibility, quiet and normal modes, work and active semantic none',
+      [
+        'idle-expressive-reduced',
+        'idle-normal-long',
+        'idle-quiet-long',
+        'idle-working',
+        'active-none-expressive',
+      ].every((name) => !sample(name, 6100).status.localIdleAttention),
+    );
+    check(
+      'held contact and petting residue consume the eye edge without delayed attention after release',
+      ['idle-attention-held', 'idle-attention-residue'].every((name) =>
+        result.after[name].every((entry: any) => !entry.status.localIdleAttention),
+      ) &&
+        sample('idle-attention-residue', 5500).status.pettingWeight > 0.5 &&
+        sample('idle-attention-residue', 6400).status.pettingWeight === 0,
+    );
+    check(
+      'a new contact cancels an existing idle eye greeting without restarting it on the same slot',
+      !!sample('idle-attention-interrupt', 6100).status.localIdleAttention &&
+        [6200, 6250, 6500, 7100].every(
+          (time) => !sample('idle-attention-interrupt', time).status.localIdleAttention,
+        ),
+    );
+    check(
+      'approval immediately clears the independently owned idle eye greeting',
+      !!sample('idle-attention-approval', 6100).status.localIdleAttention &&
+        !sample('idle-attention-approval', 6200).status.localIdleAttention &&
+        !sample('idle-attention-approval', 6500).status.localIdleAttention,
     );
     check(
       'expressive idle uses one locally owned chest gesture with no semantic cue',

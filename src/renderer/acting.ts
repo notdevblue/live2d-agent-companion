@@ -220,6 +220,11 @@ export class ActingController {
     return this.gazeIndex;
   }
 
+  /** Start of that same gaze slot; consumers add no timer or clock state. */
+  get gazeSlotStartedAt(): number {
+    return this.gazeSince;
+  }
+
   configure(options: ActingOptions): void {
     this.options = { ...options };
     // Changing accessibility options also limits the current pose immediately.

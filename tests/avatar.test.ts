@@ -939,12 +939,16 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
         actor: ActingController;
         petting: PettingController;
         localIdleGesture: boolean;
+        idleFaceSlot?: number;
         idleGazeSlot: number;
+        blinkIds: string[];
+        contextLost: (event: Event) => void;
         idleParameters: ReadonlySet<string>;
         stateGesture: boolean;
         clearPose: () => void;
         updateIdleGesture: (now: number, acting: ActingFrame, pose: PoseFrame) => void;
         idleGestureFrame: (acting: ActingFrame, pose: PoseFrame) => ActingFrame;
+        idleAttentionFrame: (acting: ActingFrame, now: number) => ActingFrame;
       };
       base.avatar.configure({ ...settings, intensity: 'expressive' });
       let previous = 0;
@@ -958,14 +962,302 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
       };
       const forceEdges = () => {
         let slot = 0;
+        let startedAt = 0;
         vi.spyOn(runtime.actor, 'gazeSlotId', 'get').mockImplementation(() => slot);
+        vi.spyOn(runtime.actor, 'gazeSlotStartedAt', 'get').mockImplementation(() => startedAt);
         return (next: number, now = next * 100) => {
+          if (slot !== next) startedAt = now;
           slot = next;
           return tick(now);
         };
       };
       return { ...base, runtime, tick, forceEdges };
     }
+    describe('independent idle face attention', () => {
+      it('uses the real 2mod8 slot at 30/60/120Hz with no pose, cooldown or other frame changes', () => {
+        const paths = [30, 60, 120].map((fps) => {
+          vi.setSystemTime(0);
+          const { runtime, tick } = idleSetup();
+          const visible: number[] = [];
+          for (let i = 0; i <= fps * 10; i++) {
+            const now = (i * 1000) / fps;
+            tick(now);
+            const base = runtime.actor.sample(now, 0);
+            const face = runtime.idleAttentionFrame(base, now);
+            for (const key of Object.keys(base) as Array<keyof ActingFrame>)
+              if (!['smile', 'eyeL', 'eyeR'].includes(key)) expect(face[key]).toBe(base[key]);
+            expect(runtime.poses.sample(now).phase).toBe('none');
+            expect(runtime.localIdleGesture).toBe(false);
+            expect(runtime.lastGesture).toBe(-Infinity);
+            if (face !== base) visible.push(now);
+          }
+          expect(runtime.idleFaceSlot).toBeUndefined();
+          expect(visible[0]).toBeGreaterThanOrEqual(5840);
+          expect(visible[0]).toBeLessThan(5880);
+          expect(visible.at(-1)).toBeGreaterThan(6890);
+          expect(visible.at(-1)).toBeLessThan(6940);
+          return visible;
+        });
+        for (const path of paths.slice(1))
+          expect(Math.abs(path[0]! - paths[0]![0]!)).toBeLessThanOrEqual(1000 / 30);
+      });
+      it('keeps preparation/expiry unchanged, multiplies blink and alternates the selected eye', () => {
+        const { runtime, forceEdges } = idleSetup();
+        const edge = forceEdges();
+        window.__avatarStatus = { loaded: true, frames: 0 };
+        edge(2, 0);
+        const base = { ...runtime.actor.sample(0, 0), eyeL: 1, eyeR: 1, blink: 1 };
+        expect(runtime.idleAttentionFrame(base, 250)).toBe(base);
+        expect(window.__avatarStatus.localIdleAttention).toBe(false);
+        expect(runtime.idleAttentionFrame(base, 600)).toMatchObject({
+          smile: 0.5,
+          eyeL: 0,
+          eyeR: 0.92,
+          active: false,
+          gesture: 'none',
+        });
+        expect(window.__avatarStatus.localIdleAttention).toBe(true);
+        expect(
+          runtime.idleAttentionFrame({ ...base, blink: 0, eyeL: 0, eyeR: 0 }, 600),
+        ).toMatchObject({ eyeL: 0, eyeR: 0 });
+        edge(2, 1330);
+        expect(runtime.idleFaceSlot).toBeUndefined();
+        expect(runtime.idleAttentionFrame(base, 1330)).toBe(base);
+        expect(window.__avatarStatus.localIdleAttention).toBe(false);
+        edge(2, 1400);
+        expect(runtime.idleFaceSlot).toBeUndefined();
+        edge(10, 2000);
+        expect(runtime.idleAttentionFrame(base, 2600)).toMatchObject({ eyeL: 0.92, eyeR: 0 });
+        edge(11, 2650);
+        expect(runtime.idleFaceSlot).toBeUndefined();
+      });
+      it('consumes ineligible edges for every existing idle gate without late attention', () => {
+        for (const gate of [
+          'normal',
+          'quiet',
+          'reduced',
+          'active-none',
+          'thinking',
+          'working',
+          'blocked',
+          'error',
+          'pose',
+          'motion',
+          'manager',
+          'state-owner',
+          'contact',
+          'residue',
+          'pet-owner',
+        ] as const) {
+          vi.setSystemTime(0);
+          const { avatar, runtime, forceEdges, definition, stroke } = idleSetup();
+          const edge = forceEdges();
+          if (gate === 'normal' || gate === 'quiet')
+            avatar.configure({ ...settings, intensity: gate });
+          if (gate === 'reduced')
+            avatar.configure({ ...settings, intensity: 'expressive', reducedMotion: true });
+          if (gate === 'active-none') avatar.cue({ ...cue, gesture: 'none' });
+          if (['thinking', 'working', 'blocked', 'error'].includes(gate)) avatar.setState(gate);
+          if (gate === 'pose') runtime.poses.start({ ...definition, enter: 'other-owner' }, 0);
+          if (gate === 'motion') runtime.activeGesture = 'other-owner';
+          if (gate === 'manager')
+            vi.mocked(runtime.gestureManager.isFinished).mockReturnValue(false);
+          if (gate === 'state-owner') runtime.stateGesture = true;
+          if (gate === 'contact' || gate === 'residue' || gate === 'pet-owner')
+            avatar.beginPetting();
+          if (gate === 'residue') {
+            vi.setSystemTime(20);
+            avatar.strokePetting(10);
+            vi.setSystemTime(200);
+            avatar.endPetting();
+          }
+          if (gate === 'pet-owner') stroke(20);
+          edge(2, 400);
+          expect(runtime.idleFaceSlot, gate).toBeUndefined();
+          expect(runtime.idleGazeSlot).toBe(2);
+          avatar.reset();
+          vi.mocked(runtime.gestureManager.isFinished).mockReturnValue(true);
+          avatar.configure({ ...settings, intensity: 'expressive' });
+          edge(2, 500);
+          expect(runtime.idleFaceSlot, gate).toBeUndefined();
+          edge(10, 600);
+          expect(runtime.idleFaceSlot, gate).toBe(10);
+        }
+      });
+      it('fully excludes contact residue and never wakes later in the same natural slot', () => {
+        const { avatar, runtime, tick } = idleSetup();
+        for (let now = 0; now <= 5000; now += 50) tick(now);
+        avatar.beginPetting();
+        vi.setSystemTime(5100);
+        avatar.strokePetting(10);
+        vi.setSystemTime(5500);
+        avatar.endPetting();
+        let sawResidue = false;
+        for (let now = 5550; now <= 7300; now += 50) {
+          tick(now);
+          sawResidue ||= runtime.petting.sample(now) > 0;
+          const base = runtime.actor.sample(now, 0);
+          const face = runtime.idleAttentionFrame(base, now);
+          expect(face).toBe(base);
+          expect(runtime.idleFaceSlot).toBeUndefined();
+          expect(applyPetting(face, runtime.petting.sample(now))).toEqual(
+            applyPetting(base, runtime.petting.sample(now)),
+          );
+        }
+        expect(sawResidue).toBe(true);
+        expect(runtime.petting.sample(7300)).toBe(0);
+      });
+      it('clears an ongoing face on contact and per-frame ownership loss without restarting', () => {
+        for (const gate of ['contact', 'residue', 'pose', 'motion', 'authored-face'] as const) {
+          vi.setSystemTime(0);
+          const { avatar, runtime, forceEdges, definition } = idleSetup();
+          const edge = forceEdges();
+          edge(2, 0);
+          edge(2, 500);
+          window.__avatarStatus = { loaded: true, frames: 0 };
+          runtime.idleAttentionFrame(runtime.actor.sample(500, 0), 500);
+          expect(window.__avatarStatus.localIdleAttention).toBe(true);
+          if (gate === 'contact') {
+            avatar.beginPetting();
+            expect(runtime.idleFaceSlot).toBeUndefined();
+            expect(window.__avatarStatus.localIdleAttention).toBe(false);
+            avatar.endPetting(true);
+          }
+          if (gate === 'residue') {
+            runtime.petting.begin(500);
+            runtime.petting.stroke(10, 520);
+            runtime.petting.end(550);
+          }
+          if (gate === 'pose') runtime.poses.start(definition, 500);
+          if (gate === 'motion') runtime.activeGesture = 'other';
+          if (gate === 'authored-face') runtime.idleParameters = new Set(['ParamMouthForm']);
+          edge(2, 600);
+          expect(runtime.idleFaceSlot, gate).toBeUndefined();
+          runtime.clearPose();
+          runtime.petting.clear();
+          runtime.idleParameters = new Set();
+          edge(2, 700);
+          expect(runtime.idleFaceSlot, gate).toBeUndefined();
+        }
+      });
+      it('respects authored idle face channels while remaining independent of hand asset mappings', () => {
+        for (const id of [
+          'ParamEyeLOpen',
+          'ParamEyeROpen',
+          'ParamMouthForm',
+          'EyeSmile',
+          'ParamEyeLSmile',
+          'ParamEyeRSmile',
+          'key3',
+          'key4',
+          'key5',
+          'key6',
+          'customBlink',
+        ]) {
+          vi.setSystemTime(0);
+          const { runtime, forceEdges } = idleSetup();
+          runtime.blinkIds = ['customBlink'];
+          runtime.idleParameters = new Set([id]);
+          const edge = forceEdges();
+          edge(2, 0);
+          expect(runtime.idleFaceSlot, id).toBeUndefined();
+          runtime.idleParameters = new Set();
+          edge(2, 500);
+          expect(runtime.idleFaceSlot, id).toBeUndefined();
+        }
+        for (const mapping of ['custom', '', undefined]) {
+          vi.setSystemTime(0);
+          const { runtime, forceEdges } = idleSetup();
+          runtime.inventory.gestureMap.wave = mapping;
+          runtime.motions.clear();
+          runtime.poseDefinitions.clear();
+          runtime.idleParameters = new Set(['Param56', 'Param57', 'SweatBurst1']);
+          forceEdges()(2, 0);
+          expect(runtime.idleFaceSlot).toBe(2);
+          expect(runtime.poses.sample(0).phase).toBe('none');
+        }
+      });
+      it('clears face ownership immediately at accepted lifecycle boundaries', () => {
+        for (const boundary of [
+          'cue',
+          'thinking',
+          'working',
+          'blocked',
+          'error',
+          'reset',
+          'preview',
+          'normal',
+          'quiet',
+          'reduced',
+          'dispose',
+          'contextlost',
+        ] as const) {
+          vi.setSystemTime(0);
+          const { avatar, runtime, forceEdges } = idleSetup();
+          const edge = forceEdges();
+          edge(2, 0);
+          edge(2, 600);
+          window.__avatarStatus = { loaded: true, frames: 0 };
+          runtime.idleAttentionFrame(runtime.actor.sample(600, 0), 600);
+          if (boundary === 'cue') avatar.cue({ ...cue, gesture: 'none' });
+          else if (boundary === 'reset') avatar.reset();
+          else if (boundary === 'preview') avatar.preview('happy');
+          else if (boundary === 'normal' || boundary === 'quiet')
+            avatar.configure({ ...settings, intensity: boundary });
+          else if (boundary === 'reduced')
+            avatar.configure({ ...settings, intensity: 'expressive', reducedMotion: true });
+          else if (boundary === 'dispose') {
+            vi.stubGlobal('cancelAnimationFrame', vi.fn());
+            (
+              window as unknown as { removeEventListener: ReturnType<typeof vi.fn> }
+            ).removeEventListener = vi.fn();
+            runtime.canvas = { removeEventListener: vi.fn() };
+            runtime.runtime = { release: vi.fn() };
+            avatar.dispose();
+          } else if (boundary === 'contextlost')
+            runtime.contextLost({ preventDefault: vi.fn() } as unknown as Event);
+          else avatar.setState(boundary);
+          expect(runtime.idleFaceSlot, boundary).toBeUndefined();
+          expect(window.__avatarStatus.localIdleAttention, boundary).toBe(false);
+        }
+      });
+      it('preserves idle face on stale/scoped expired clears, but clears on semantic promotion', () => {
+        const { avatar, runtime, forceEdges } = idleSetup();
+        const edge = forceEdges();
+        avatar.cue({ ...cue, gesture: 'none' });
+        edge(2, 17000);
+        edge(2, 17500);
+        expect(runtime.idleFaceSlot).toBe(2);
+        avatar.cue({ ...cue, gesture: 'none' });
+        avatar.clearCue(cue);
+        expect(runtime.idleFaceSlot).toBe(2);
+        avatar.reset();
+        vi.setSystemTime(20000);
+        const delivery = {
+          ...cue,
+          requestId: 'delivery',
+          emotion: 'neutral',
+          gesture: 'none',
+          stage: 'delivery',
+        } as const;
+        avatar.cue(delivery);
+        edge(10, 22000);
+        edge(10, 22500);
+        expect(runtime.idleFaceSlot).toBe(10);
+        avatar.cue(delivery);
+        expect(runtime.idleFaceSlot).toBe(10);
+        avatar.cue({ ...delivery, segmentId: 2, stage: 'semantic' });
+        expect(runtime.idleFaceSlot).toBeUndefined();
+      });
+      it('does not manufacture a new pulse after a late frame in the current slot', () => {
+        const { runtime, tick } = idleSetup();
+        tick(7200); // slot 2 began around 5.6s; its finite attention is already over
+        expect(runtime.actor.gazeSlotId).toBe(2);
+        expect(runtime.idleFaceSlot).toBeUndefined();
+        const base = runtime.actor.sample(7200, 0);
+        expect(runtime.idleAttentionFrame(base, 7200)).toBe(base);
+      });
+    });
     it('uses one existing gaze edge in four with the original 2750ms pair and no semantic cooldown', () => {
       const { runtime, forceEdges, definition } = idleSetup();
       const edge = forceEdges();

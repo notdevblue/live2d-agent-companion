@@ -23,6 +23,8 @@ interface Window {
     pettingWeight?: number;
     /** Independent local idle owner, never a semantic message hand gesture. */
     localIdleGesture?: boolean;
+    /** Finite local idle face attention, independent of semantic cues and hands. */
+    localIdleAttention?: boolean;
     lastPreview?: import('../shared/contracts.js').CharacterPreview;
     reactionPhase?: import('./acting.js').ActingFrame['phase'];
     variant?: number;

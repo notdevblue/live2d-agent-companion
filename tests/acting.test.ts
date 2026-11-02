@@ -1302,6 +1302,9 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
       expect(actor.gazeSlotId).toBe(0);
       advance(actor, 1400, fps, 600);
       const slot = actor.gazeSlotId;
+      expect(actor.gazeSlotStartedAt).toBeCloseTo(700);
+      const startedAt = actor.gazeSlotStartedAt;
+      expect(actor.gazeSlotStartedAt).toBe(startedAt);
       expect(slot).toBeGreaterThan(0);
       expect(actor.gazeSlotId).toBe(slot);
       actor.cue({ emotion: 'happy', gesture: 'none' }, 1400);
@@ -1311,6 +1314,7 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
       const result = actor.gazeSlotId;
       actor.reset(10000);
       expect(actor.gazeSlotId).toBe(0);
+      expect(actor.gazeSlotStartedAt).toBe(10000);
       return result;
     });
     expect(paths).toEqual([paths[0], paths[0], paths[0]]);
