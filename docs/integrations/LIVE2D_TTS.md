@@ -176,3 +176,9 @@ interface SpeechSynthesizer {
 기쁨·웃음은 기존 강조 구간에 한 번의 forward lean과 고개 반응을 만들고 3초 무렵 안정한다. 화남은 옆으로 고개/상체를 돌린 뒤 눈을 부분 재접촉하고 측면 자세를 남긴다. 걱정 섞인 장난의 초기 숙임/회피는 같은 wink 시계로 재접촉한다. `gesture=none`은 authored 팔 포즈를 시작하지 않는다. 여운 동안 새 body/발화 반복 시계는 만들지 않으며 기존 수명/clear·강도·움직임 줄이기를 적용한다.
 
 직접 쓰다듬기의 접근은 원래 lean에서 최소 .18의 목표로 같은 접촉 가중치만큼 보간한다. 더 강한 기존 양수 lean은 보존하고 해제 시 원래 자세로 돌아간다. 기존 Avatar의 negative `LeanInput` forward branch와 접근용 zoom/anchor 경로를 사용하므로 이 국소 자세의 MVP는 변한다. `offsetY`·ambient 호흡이나 OS 창 위치/저장 배율을 바꾼 것은 아니다. SDK 수락은 실제 forward branch 출력 `Param50`과 최종 해제를 확인하며, 움직임 줄이기에서는 lean을 줄이고 접근 zoom은 사용하지 않는다.
+
+### 복합 감정의 준비와 눈꺼풀 종료
+
+`attitudeTime`은 부끄러움+웃음·걱정+장난에서 기존 cue 시간의 .9초를 준비 감정에 쓰고, 같은 지연 시간을 눈 모양과 wink의 blink 억제에 적용한다. 별도 타이머나 전체 cue 수명 연장은 없다. 걱정의 음수 입·미간을 먼저 보여 준 뒤 장난으로 재접촉하고, 혼란은 한 번의 회피/젖힘 뒤 반대쪽을 살핀다.
+
+화남은 특수 눈 자산 없이 normal 실제 눈 열림 약 .4를 사용한다. 알려진 key6도 MOC에서 원형 입을 그려 닫힌 화남과 맞지 않아 추가하지 않았다. 화남의 기존 eye target 우회 경로가 기한까지 .5를 남기는 원인을 고쳐, 계산된 눈 모양에 기존 강조+유지 가중치를 적용하고 마지막에 중립으로 복귀한다. 유지값 .4025는 보존하며 preview/delivery도 기존 release를 따른다. quiet/expressive·움직임 줄이기·정확한 clear와 종료 직전 실제 출력은 현재 [검증 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다.

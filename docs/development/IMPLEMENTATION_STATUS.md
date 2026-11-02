@@ -22,37 +22,23 @@
 
 ## Grok의 VTuber 시각 검토와 개선 (2026-11-03)
 
-조사·공식 영상 링크 전달·개선·영상·재검토는 [Grok 검토·반영](../ux/GROK_VTUBER_REVIEW.md)을 따른다. 기존 그림을 제외한 **연기 기여도 단독** 고정 평가의 회차별 점수는 60→57→57→63→60/100이다. 이는 단일 모델의 주관적 시각 UX 평가이며 기능 검사·실시간 성능 인증이 아니다. 기존 아트를 포함한 59초 사용 흐름의 별도 종합 평가도 **60/100**이었다. 두 기준을 같은 점수의 상승으로 표현하지 않는다. 85점 종료 조건은 충족하지 않았으며 고개·상체의 시각적 호응을 보강 중이다.
+현재 코드 기준은 `3a0fef4`다. 조사 원문·공식 영상 링크 전달·채택/기각·점수와 적용/복원은 [Grok 검토·반영](../ux/GROK_VTUBER_REVIEW.md)을 따른다. 초기 연기 기여도 단독 점수는 60→57→57→63→60/100, 기존 그림을 포함한 완료 종합 평가는 60→58→72→72→74/100이다. 평가 범위·프레임 간격·전신 크기가 바뀐 조건을 구분하며 직접 상승 수치로 합치지 않는다. **현재 적용한 종료 페이드 수정본의 종합 평가는 74/100으로 85점 조건에 못 미쳤다.** 대기/유지와 직접 접촉의 몸 반응은 후속 개선 중이다. 단일 모델의 주관적 시각 의견이고 기능·실시간 성능 인증이 아니다.
 
-`FR-L2D-004/006/008/009`를 실제 기본 renderer에 통합했다. 복합 감정의 시선 회피→웃음/윙크와 감정별 유지 얼굴, 두 변주의 눈·고개·시간 구조, 단일 특수 눈 그림과 표시 층, 실제 rig 범위로 보정한 화남/기쁨, 접촉 방향의 쓰다듬기와 사용자 홍조를 제공한다. 원본 가슴 포즈를 인사라 부르던 원인을 확인해 편 손바닥의 세 번 흔들기→낮춘 유지→부분 올림→원본 복귀로 연결했다. 설명도 검증된 팔 입력 하나만 낮추며 selector·손가락·소매 연결을 보존한다. 없는/다른/physics-owned 입력은 원본 경로로 fallback한다. 구조·한계는 [Live2D 통합](../integrations/LIVE2D_TTS.md#grok-검토-후-무음-시각-연기-2026-11-03)을 따른다. TTS/음소 발화·새 리깅·전역 커서/PC 조작은 추가하지 않았다.
+`FR-L2D-004/006/008/009`를 실제 기본 renderer에 통합했다. 감정별 유지 얼굴과 두 변주, 부끄러움/걱정→지연 웃음/wink, 혼란의 회피/젖힘→호기심 기울임, 화남의 측면 자세·음수 닫힌 입·실제 normal 눈 열림 .4025를 제공한다. 특수 눈은 짧은 강조 뒤 단일 그림의 표시 소유권으로 돌아오고 홍조/땀과 독립된다. 시선→고개→지연된 상체를 실제 rig로 보정했고 기쁨/웃음은 한 번 다가왔다 안정한다. 기존 lean 경로의 국소 zoom/anchor는 의도적으로 변하지만 ambient offsetY/호흡·OS 창 위치/저장 배율은 유지한다. `gesture=none`에서 팔을 자동으로 올리지 않는다.
 
-### 다섯 번째 개선 검증과 영상
+명시적 인사는 원본 가슴 포즈의 검증된 중간 편 손바닥을 이어 세 번 흔들고 낮춘 유지/부분 올림 뒤 원본 exit로 복귀한다. 설명도 검증된 팔 입력만 사용한다. selector·손가락·seam·physics 출력과 사용자 다른 매핑은 보존한다. 직접 쓰다듬기는 유효한 접촉 좌표로 고개/시선/상체를 보간하고 사용자 홍조·작은 접근을 제공한다. .3초 유지+.75초 fade·최초12초·중복 종료·승인 즉시 정리와 opt-in을 유지한다. 음수 입 해제의 끊김, 상한 근처 fade, 빠른 세 눈 전환의 중립 틈과 화남 눈꺼풀의 종료 점프를 수정했다. TTS·음소·새 리깅·전역 커서/PC 조작·새 공급자 판단은 추가하지 않았다.
 
-- unit/contract **534개**, typecheck, format, build, 외부 AI 없는 Mock Electron 통합 검사를 통과했다. 잘못된 sender/enum·요청 중 미리보기·잠긴 위치 변경의 거절 로그는 Mock의 예상 결과다. 30/60/120fps·192조합·정확한 deadline·중단/clear/접근성, 12초 상한 근처의 연속 fade, 빠른 세 눈 전환의 단일 소유권/중립 틈 방지를 포함한다.
-- 실제 SDK/SwiftShader의 **36개 수락 검사·72 PNG**(after 69/before lean 3), 체크포인트의 509개 parameter 범위 오류 0·외부 요청 0을 확인했다. 8초 기쁨의 실제 눈 열림은 약 .402, 고정 입 열림 .117, 화남 입 형태 −.764/입 열림 0이다. 접촉 좌/우의 `AngleX`는 −7.731/+7.731, physics 뒤 `ParamAngleX`는 −6.221/+6.221(600ms 합성 획)이다. 실제 8초의 낮춘 손/보호 입력, 두 부분 올림과 최종 전체 authored endpoint 복귀, 특수 눈의 1.2/1.25초 0/1전환, 접촉/해제 여운/최종 복귀를 검사했다. `artifacts/grok-review/round-05-expression-results.json`과 `artifacts/expression-afterglow/`가 로컬 근거다. 50ms 시뮬레이션·지정 체크포인트 rasterize이며 실시간 FPS 검사가 아니다.
-- 고정 before(`29b85f0`)와 현재 after의 긴 구간 비교는 **167.5초/20fps/3350 paired frame**다. 각 측 warmup 포함 3630회 parameter 검사에서 범위 오류/외부 요청 0, physics 뒤 실제 출력 변화를 확인했다. 접촉 입력은 양측 57/57 alpha 적중과 같은 실제 이동량을 확인했다. 근거는 `artifacts/grok-review/round-05-comparison.mp4`와 `round-05-results.json`이다. 소스 SHA-256과 실제 cue/시간/변주를 기록했다.
-- 사용 흐름용 연속 비교는 **59초/20fps/1180 paired frame**다. 각 측 한 Avatar/actor가 이어지며 실제 ID clear 8회와 변주 카운터, 짧은 로컬 손 미리보기/복귀, 직접 쓰다듬기 62/62 alpha 적중을 포함한다. 각 측 509개 parameter의 1300회 검사에서 범위 오류 0·외부 요청 0이다. `story-05-comparison.mp4`와 `story-05-results.json`이 근거다. **합성 cue·로컬 미리보기·무음**이며 실제 provider/IPC/AI 대화를 촬영한 영상으로 주장하지 않는다. 긴 의미 손/여운 검사와 독립된 실제 public Avatar API 사용 흐름이다.
-- 실제 Sway/Xwayland의 새 앱 프로세스에서 production renderer·설정 UI 20종·쓰다듬기 켜기 저장/설정 reload·Shift stroke/창 위치 불변·해제·승인 정리·의미 여운 손 hold·낡은 clear 무시/정확한 clear 정리·모델 renderer reload를 확인했다. **쓰다듬기 활성 > 0을 먼저 확인하고 획 입력이 계속 들어오는 중에 승인**을 보내 0으로 정리됨을 확인했다. 배경 창 JS 조회를 기다리는 동안 진단 입력을 멈추면 .9초 정지 timeout이 먼저 끝나는 시험 주입 문제를 고쳐, 조회 중에도 제한된 stroke를 계속 보내고 finally에서 해제한다. 캐릭터 자세가 바뀐 뒤 좌표도 현재 알파 내부로 다시 구한다. 제품 입력 규칙을 우회한 수정은 아니다. 원래 설정 해시를 보존했고 provider prompt/Jev 호출 0회다. 이후 기본 `~/.local/bin/live2d-companion`으로 정상 재실행해 PID 생존/설정 해시 일치를 확인했다. 근거는 ignored `.tmp/afterglow-native/result.json`의 `approvalActiveBefore:true` 등이다. 물리 마우스·OS 재부팅·재로그인은 수행하지 않았다.
+### 현재 검증·영상
 
-다섯 번째 개선 코드 커밋은 `116e1b9`(안전한 합성/손/직접 반응)와 `bdce55e`(기본 actor/Avatar/입력 통합)다. 적용은 현 checkout에서 `npm run build` 후 앱 종료·기본 런처 재실행이다. 복원은 변경을 분리한 작업 트리에서 이 두 코드 커밋을 역순으로 revert하고 build·같은 런처 재실행한다. `29b85f0`의 설정 schema와 호환되어 개인 연결/매핑/위치/배율을 다시 쓸 필요가 없다. 복원 버전의 현재 기능 안내도 해당 문서 버전과 맞춘다. SDK·모델 자산/영상/프레임·개인 설정·Grok 원문 세션은 공개 Git에 넣지 않는다.
+- **546개 unit/contract**, typecheck·format·build·외부 AI 없는 Mock Electron 검사를 통과했다. 192조합·30/60/120fps·강도/접근성·저장 매핑/빈 선택·손 복귀·clear/승인·12초·종료 직전 페이드를 포함한다. 잘못된 sender/enum과 요청 중 미리보기 거절 로그는 Mock의 예상 결과다.
+- 실제 SDK/SwiftShader **45개 수락 검사·107개 현재 PNG**(after104/before3)의 체크포인트마다 509개 parameter 범위 오류/외부 요청 0을 확인했다. 실제 눈 그림·입·손/최종 endpoint·접촉 방향·강도·종료 직전을 검사한다. 화남 16100/16150/16200ms의 실제 눈 열림은 약 .99184/.99647/1이며, 8초 .4025·입 열림0은 보존했다. `artifacts/grok-review/round-09-expression-results.json`과 `artifacts/expression-afterglow/`가 근거다. 50ms 시뮬레이션·지정 rasterize이며 실시간 FPS/CPU 검사가 아니다.
+- 실제 MOC의 별도 정점/PNG 비교로 시선의 직접 binding, 고개/몸 upstream, 초기 감정 몸 반응과 종료 경계를 확인했다. scalar 값만 바뀐 상태를 연기 완료로 판단하지 않는다. 정점 변화량·고정 root 비교와 국소 접근의 MVP 변화를 [검토 문서](../ux/GROK_VTUBER_REVIEW.md#고개상체의-실제-구동-경로-확인)에 구분해 기록했다.
+- `artifacts/grok-review/story-09-comparison.mp4`는 **59초·1120×900·20fps·1180 paired frame**다. 한 Avatar/actor가 이어지며 22개 앱 소스·실제 import 해시를 고정했다. 각 측 509개 parameter의 1300회 검사에서 범위 오류0·접촉62/62 alpha 적중·외부 요청0이다. 이벤트/해시는 `story-09-results.json`에 있다. **합성 cue·로컬 미리보기·무음**이며 실제 provider/IPC 대화 촬영이 아니다. 입력 위치용 시연 고리는 제품 효과가 아니므로 모델 crop에서 제거했다. 긴 의미 손/복귀의 별도 기존 자료는 `round-05-comparison.mp4`(167.5초/3350 paired frame)로 보존한다.
+- 실제 Sway/Xwayland 새 앱 프로세스의 production renderer에서 설정 UI20종·켜기 저장/reload·Shift stroke/창 위치 불변·해제·활성 petting→승인 즉시 정리·의미 여운 손 hold·낡은/정확한 clear·renderer reload·원래 설정 해시 보존을 확인했다. 이후 정상 `~/.local/bin/live2d-companion` 런처의 PID 생존/설정 보존을 확인했다. ignored `.tmp/afterglow-native/round-09-result.json`(2026-11-03 03:41 KST, `approvalActiveBefore:true`)이 근거이며 provider/Jev 호출은0이다. 테스트의 배경 JS 조회 중에도 제한된 획 입력을 지속해 실제 활성 반응에서 승인을 검사했다. 물리 마우스·OS 재부팅/재로그인은 하지 않았다.
 
-### 여섯 번째 개선 검증 (2026-11-03)
+### 적용·복원
 
-시선에서 실제 고개 회전으로 가는 약한 결합과 상체의 작은 호응을 측정해 보정했다. 같은 시선 입력에서 실제 얼굴/상체 변형은 약 8.49/2.95px에서 20.85/12.14px로 바뀌었다. 더 큰 입력은 고개 한도로 약 29.11/17.75px에 제한됐다(480×720 고정 구도·합성 정상 자세; 모든 움직임에 대한 보편 상한은 아니다). root 행렬 변화·범위 오류는 0이고 상하 offset/호흡은 보존했다. 쓰다듬기는 반대 방향의 대기 자세에서 접촉 목표로 보간하고, 해제 시 화남의 음수 입도 튀지 않고 원래 값으로 돌아간다.
-
-unit/contract **539개**, typecheck·format·build·Mock desktop을 통과했다. 실제 SDK는 **38개 수락 검사·90개 현재 체크포인트 PNG**(after87/before3)에서 509개 parameter의 범위 오류/외부 요청 0을 확인했다. 2~10초 대기의 physics 뒤 고개/상체 값 변화 폭은 약 **9.630°/6.487°**, 움직임 줄이기에서는 **1.733°/1.168°**다. 입력 값만 변하고 실제 출력은 정적인 상태를 구분하는 수락 검사를 추가했다. 로컬 근거는 `artifacts/grok-review/round-06-expression-results.json`이다.
-
-사용 흐름 영상은 `artifacts/grok-review/story-06-comparison.mp4`(59초·20fps·1180 paired frame)이며 같은 22개 앱 소스를 고정한 실제 연속 Avatar를 사용했다. 소스 해시와 `story-06-results.json`을 보존한다. 합성 cue·로컬 미리보기·무음이라는 범위는 같다. 실제 production renderer를 새 앱 프로세스에서 다시 검사해 설정 UI/저장·reload·직접 획·해제·활성 쓰다듬기→승인 즉시 정리·여운/clear·renderer reload·개인 설정 보존을 확인했다. `.tmp/afterglow-native/round-06-result.json`은 2026-11-03 03:04 KST의 성공 근거이며 provider/Jev 호출은 0이다. 이후 기본 런처로 정상 재실행했다. OS 재부팅/재로그인·물리 마우스 검증은 하지 않았다.
-
-여섯 번째 코드 커밋은 `28a9420`이다. Grok의 이 회차 종합 평가는 **58/100**으로 85점 조건에 못 미쳤다. 초기 감정의 몸짓과 더 촘촘한 시각 근거를 후속으로 보강한다. 적용·복원은 같은 checkout의 build·기본 런처를 사용하며 추가 설정 이관은 없다. 이 회차만 복원하려면 해당 커밋을 revert한 뒤 build·기본 런처로 재실행한다.
-
-### 초기 몸 반응의 추가 보강 (2026-11-03)
-
-현재 기본 코드 `9754202`는 기쁨·웃음의 한 번 다가옴→안정, 화남의 옆으로 돌기→눈 재접촉, 걱정 섞인 장난의 숙임→재접촉과 접촉 중의 작은 접근을 보강한다. 자동 손/새 시계 없이 기존 타이밍을 사용하고, 강도·접근성·clear/승인·12초 접촉 제한을 보존한다. 기존 lean 경로의 내부 zoom/anchor는 이 접근에 따라 의도적으로 바뀌며 ambient offsetY/호흡·OS 창 위치/저장 배율은 같다.
-
-**543개 unit/contract·42개 실제 SDK 수락·102 PNG**, typecheck·format·build·Mock desktop을 통과했다. actual SDK의 509개 parameter 범위 오류/외부 요청 0, 감정 초기 0.3/1/2/3초와 유지/최종 복귀를 확인했다. 실제 몸 비교 40개 체크포인트도 [검토 문서](../ux/GROK_VTUBER_REVIEW.md#초기-감정의-몸짓-보강)에 기록했다. `round-07-expression-results.json`·`story-07-comparison.mp4`/`story-07-results.json`이 로컬 근거다. 기본 production renderer의 새 앱 프로세스에서 설정/합성 Shift stroke/해제/승인·clear/reload·원래 설정 해시 보존을 다시 통과했고, 이후 정상 런처의 프로세스 생존과 설정 보존을 확인했다. 근거는 `.tmp/afterglow-native/round-07-result.json`(2026-11-03 03:17 KST)이다. 물리 마우스·OS 재부팅/재로그인은 하지 않았다.
-
-Grok의 새 종합 평가는 진행 중이며 이전 완료 점수는 58/100이다. 이번 자료는 같은 59초 흐름을 균일 .5초 간격·큰 전신 이미지로 제시하므로 이전 관찰 조건과 구분한다. 적용은 build·같은 기본 런처 재실행, 이 회차 복원은 `9754202` revert 뒤 build·재실행이며 개인 설정 이관은 필요 없다.
+적용은 현재 checkout에서 `npm run build` 후 앱 종료·같은 기본 런처 재실행이다. 별도 시험용 실행 경로나 서비스는 없다. 현재 회차만 복원하려면 `3a0fef4`를 revert하고 build·기본 런처로 재실행한다. 전체 Grok 개선은 `3a0fef4`→`9754202`→`28a9420`→`bdce55e`→`116e1b9`를 이 순서로 revert하며(최신→과거) 해당 문서 버전도 맞춘다. `29b85f0`의 설정 schema와 호환되어 개인 연결/세션/매핑·위치/배율을 이관하지 않는다. SDK·모델·영상/프레임·개인 설정·Grok 원문 세션은 공개 Git에 넣지 않는다. 초기 감정 추가 이전으로 더 복원할 때는 아래 별도 절차를 따른다.
 
 ## 감정 여운·추가 감정·쓰다듬기 (2026-11-02)
 
