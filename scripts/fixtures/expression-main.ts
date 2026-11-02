@@ -95,7 +95,7 @@ const scenes = [
     name: 'idle-expressive',
     idle: true,
     intensity: 'expressive',
-    times: [10000, 11000, 11300, 11700, 12500, 13000, 13500, 14100, 15000, 17000],
+    times: [10000, 11000, 11300, 11700, 12500, 13000, 13500, 14100, 15000, 17000, 18200],
   },
   ...[
     { name: 'idle-expressive-reduced', intensity: 'expressive', reducedMotion: true },
@@ -134,6 +134,17 @@ const scenes = [
     ],
     times: [11900, 12000, 12500, 13000, 14000, 14100, 14500, 15000, 16100],
   },
+  ...[
+    { name: 'torso-happy', emotion: 'happy', attitude: 'neutral' },
+    { name: 'torso-laugh', emotion: 'happy', attitude: 'laugh' },
+    { name: 'torso-shy', emotion: 'embarrassed', attitude: 'laugh' },
+    { name: 'torso-angry', emotion: 'angry', attitude: 'neutral' },
+    { name: 'torso-shy-reduced', emotion: 'embarrassed', attitude: 'laugh', reducedMotion: true },
+  ].map((options) => ({
+    ...options,
+    intensity: 'expressive',
+    times: [1000, 3000, 8000, 16200, 18200],
+  })),
   { name: 'happy', emotion: 'happy', times: [300, 1000, 2000, 3000, 8000, 16200] },
   {
     name: 'happy-laugh',
@@ -621,6 +632,47 @@ void app.whenReady().then(async () => {
         ) < 0.002 &&
         Math.abs(sample('preview-wave', 3650).values.Movement2) < 0.001 &&
         sample('preview-wave', 3650).status.posePhase === 'none',
+    );
+    check(
+      'independent emotion torsos reach distinct authored shoulder rolls and side postures',
+      Math.abs(sample('torso-happy', 8000).values.ParamBodyAngleZ) < 1.5 &&
+        sample('torso-shy', 8000).values.ParamBodyAngleZ > 4 &&
+        sample('torso-laugh', 8000).values.ParamBodyAngleZ < -4 &&
+        sample('torso-angry', 8000).values.ParamBodyAngleZ < -3 &&
+        Math.abs(
+          sample('torso-angry', 8000).values.PositionX -
+            sample('torso-laugh', 8000).values.PositionX,
+        ) > 3,
+    );
+    check(
+      'emotion torso intent stays inside no-hand ownership and the original finite reaction lifetime',
+      ['torso-happy', 'torso-laugh', 'torso-shy', 'torso-angry'].every(
+        (name) =>
+          result.after[name].every(
+            (entry: any) =>
+              Math.abs(entry.values.Movement2) < 0.001 &&
+              Math.abs(entry.values.Movement3) < 0.001 &&
+              entry.frame.gesture === 'none',
+          ) &&
+          !sample(name, 16200).frame.active &&
+          Math.abs(
+            sample(name, 18200).values.PositionX -
+              sample('idle-expressive', 18200).values.PositionX,
+          ) < 1 &&
+          Math.abs(
+            sample(name, 18200).values.PositionZ -
+              sample('idle-expressive', 18200).values.PositionZ,
+          ) < 1,
+      ),
+    );
+    check(
+      'reduced motion limits the independent emotional torso without reopening the mouth or starting a hand',
+      Math.abs(sample('torso-shy-reduced', 8000).values.ParamBodyAngleZ) <
+        Math.abs(sample('torso-shy', 8000).values.ParamBodyAngleZ) * 0.25 &&
+        Math.abs(sample('torso-shy-reduced', 8000).values.PositionX) <
+          Math.abs(sample('torso-shy', 8000).values.PositionX) * 0.25 &&
+        sample('torso-shy-reduced', 8000).values.Movement2 === 0 &&
+        Math.abs(sample('torso-shy-reduced', 8000).values.ParamMouthOpenY) < 1e-6,
     );
     check(
       'optional torso roll reaches authored physics during idle and respects reduced motion',

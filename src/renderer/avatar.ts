@@ -299,7 +299,9 @@ export class Avatar {
           this.idle = motion;
           this.idleParameters = this.motionInfo.get(name)!.parameters;
           motion.setLoop(true);
-          // The new torso-roll input must not replace a model's authored idle.
+          // Independent torso intent must not replace a model's authored idle.
+          if (['PositionX', 'ParamBodyAngleX'].some((id) => this.idleParameters.has(id)))
+            delete this.channels.bodyX;
           if (['PositionZ', 'ParamBodyAngleZ'].some((id) => this.idleParameters.has(id)))
             delete this.channels.bodyZ;
         }

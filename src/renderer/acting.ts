@@ -655,16 +655,39 @@ export class ActingController {
         scale,
       4,
     );
-    // A delayed torso inclination stays inside the measured safe PositionX range.
+    // Emotion can hold a distinct shoulder/waist attitude on the existing cue
+    // envelope, while idle and explicit gestures retain delayed head following.
+    let torso: { x: number; z: number } | undefined;
+    if (reaction?.gesture === 'none') {
+      const direction = reaction.variant ? -1 : 1;
+      if (reaction.preset === 'angry') torso = { x: -direction * 0.44, z: direction * 0.22 };
+      else if (
+        reaction.preset === 'shy' ||
+        (reaction.preset === 'laugh' && reaction.emotion === 'embarrassed')
+      )
+        torso = { x: direction * 0.24, z: -direction * 0.28 };
+      else if (reaction.preset === 'happy' && reaction.emotion === 'happy')
+        torso = { x: direction * 0.1, z: direction * 0.04 };
+      else if (
+        reaction.preset === 'laugh' &&
+        (reaction.emotion === 'happy' || reaction.emotion === 'neutral')
+      )
+        torso = { x: -direction * 0.26, z: direction * 0.28 };
+    }
+    const torsoWeight = torso ? Math.min(1, weight + maintenance.weight) : 0;
+    const bodyX = this.pose.headX * 0.65 + idleWeightShift * scale;
+    const bodyZ = this.pose.headZ * 0.7;
     follow(
       'bodyX',
-      clamp(this.pose.headX * 0.65 + idleWeightShift * scale, -0.5 * scale, 0.5 * scale),
+      clamp(bodyX + ((torso?.x ?? 0) * scale - bodyX) * torsoWeight, -0.5 * scale, 0.5 * scale),
       2.1,
     );
     follow('bodyY', this.pose.headY * 0.2 + this.breathWave(now) * 0.13 * scale, 2.1);
-    // PositionZ is a distinct torso-roll upstream on this rig. Its authored
-    // physics counterbalances the shoulders against the head's inclination.
-    follow('bodyZ', clamp(this.pose.headZ * 0.7, -0.3 * scale, 0.3 * scale), 2.1);
+    follow(
+      'bodyZ',
+      clamp(bodyZ + ((torso?.z ?? 0) * scale - bodyZ) * torsoWeight, -0.3 * scale, 0.3 * scale),
+      2.1,
+    );
     follow(
       'lean',
       (blend(base.lean, target.lean) + maintenance.pose.lean * maintenance.weight) * scale,
