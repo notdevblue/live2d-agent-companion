@@ -81,14 +81,15 @@ const child = spawn(
     stdio: ['ignore', 'inherit', 'inherit'],
   },
 );
+// Direct-input hand cases rasterize contact/return frames to validate own-canvas alpha.
 const timer = setTimeout(async () => {
-  console.error('표현 렌더 검증이 45초 제한을 넘었습니다.');
+  console.error('표현 렌더 검증이 120초 제한을 넘었습니다.');
   await writeFile(
     join(output, 'results.json'),
-    JSON.stringify({ passed: false, error: '45 second process timeout' }),
+    JSON.stringify({ passed: false, error: '120 second process timeout' }),
   );
   child.kill('SIGKILL');
-}, 45000);
+}, 120000);
 child.on('error', (error) => {
   clearTimeout(timer);
   console.error(error.message);

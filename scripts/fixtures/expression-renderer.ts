@@ -11,6 +11,7 @@ let clock = 1000;
 Object.defineProperty(performance, 'now', { value: () => clock });
 let avatar: any;
 let inventory: any;
+let defaultWave: string | undefined;
 let render = true;
 let beforePhysics: Record<string, number> = {};
 const parameters = [
@@ -35,6 +36,8 @@ const parameters = [
   'ParamBrowRY',
   'Mouthpucker',
   'Movement2',
+  'Param56',
+  'Param57',
   'Movement3',
   'Param62',
   'Param59',
@@ -79,10 +82,12 @@ const read = (): any => {
     dimensions: [innerWidth, innerHeight, avatar.canvas.width, avatar.canvas.height],
     values: values(),
     beforePhysics,
+    renderMatrix: Array.from(avatar.runtime.getRenderer().getMvpMatrix().getArray()),
     frame: avatar.actor.sample(clock, 0),
     pose: avatar.poses.sample(clock),
     petting: {
       weight: avatar.petting.sample(clock),
+      poseOwned: !!avatar.petPose,
       region: head,
       headHit: !!head && avatar.pettingHit(head.x + head.width / 2, head.y + head.height / 2),
       lowerHit: avatar.pettingHit(180, 500),
@@ -120,6 +125,7 @@ const read = (): any => {
 const api = {
   async setup(input: any) {
     inventory = input;
+    defaultWave = inventory.gestureMap.wave;
     avatar = new Avatar(document.querySelector('canvas')!, inventory);
     await avatar.load();
     const renderer = avatar.runtime.getRenderer();
@@ -144,6 +150,7 @@ const api = {
     // Each named acceptance case starts at the first authored acting variation.
     avatar.actor = new ActingController();
     inventory.expressionMap.happy = scene.savedHappy ? '＞＜' : undefined;
+    inventory.gestureMap.wave = scene.customWave ? inventory.gestureMap.explain : defaultWave;
     avatar.configure({
       intensity: 'normal',
       framing: 'bust',
@@ -163,11 +170,17 @@ const api = {
       source: 'fallback',
     };
     const start = clock;
-    if (scene.petting) avatar.beginPetting();
-    else if (scene.preview) avatar.preview(scene.preview);
+    if (scene.petting) {
+      if (scene.gesture) avatar.cue(cue);
+      avatar.beginPetting();
+    } else if (scene.preview) avatar.preview(scene.preview);
     else if (!scene.idle) avatar.cue(cue);
     const samples = [];
     let cleared = false;
+    let petEnded = false;
+    let contactHeld = !!scene.petting;
+    let petEventIndex = 0;
+    let lastPetPoint: { x: number; y: number } | undefined;
     for (const time of scene.times) {
       const target = start + time;
       while (clock < target) {
@@ -176,9 +189,26 @@ const api = {
           avatar.clearCue(cue);
           cleared = true;
         }
-        if (scene.petting && clock - start <= 600) {
+        if (
+          scene.petting &&
+          contactHeld &&
+          clock - start >= (scene.strokeFromMs ?? 0) &&
+          clock - start <= (scene.strokeUntilMs ?? 600)
+        ) {
           const region = avatar.pettingRegion;
-          if (scene.focusDirection && region && clock - start > 500)
+          if (scene.handContact && region) {
+            const point = {
+              x: region.x + region.width * 0.5 + Math.sin((clock - start) / 100) * 20,
+              y: region.y + region.height * 0.5,
+            };
+            if (!avatar.pettingHit(point.x, point.y))
+              throw Error(`Petting acceptance point outside own alpha at ${clock - start}`);
+            const distance = lastPetPoint
+              ? Math.hypot(point.x - lastPetPoint.x, point.y - lastPetPoint.y)
+              : 0;
+            avatar.strokePetting(distance, point.x, point.y);
+            lastPetPoint = point;
+          } else if (scene.focusDirection && region && clock - start > 500)
             avatar.strokePetting(
               12,
               region.x + region.width * (0.5 + 0.25 * scene.focusDirection),
@@ -186,8 +216,30 @@ const api = {
             );
           else avatar.strokePetting(12);
         }
-        if (scene.petting && clock - start === 650) avatar.endPetting();
-        render = clock === target;
+        if (
+          scene.petting &&
+          !scene.noPointerUp &&
+          !petEnded &&
+          clock - start >= (scene.endAtMs ?? 650)
+        ) {
+          avatar.endPetting();
+          petEnded = true;
+          contactHeld = false;
+        }
+        while (scene.pettingActions?.[petEventIndex]?.at <= clock - start) {
+          const event = scene.pettingActions[petEventIndex++];
+          if (event.type === 'begin') {
+            avatar.beginPetting();
+            contactHeld = true;
+            lastPetPoint = undefined;
+          } else {
+            avatar.endPetting();
+            contactHeld = false;
+          }
+        }
+        render =
+          (!!scene.handContact && clock - start >= Math.max(0, (scene.strokeFromMs ?? 0) - 50)) ||
+          clock === target;
         if (render) avatar.regionAt = -Infinity;
         avatar.draw(clock);
       }

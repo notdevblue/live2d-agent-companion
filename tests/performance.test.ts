@@ -511,3 +511,63 @@ describe('model performance composition', () => {
     expect(poses.sample(20000)).toEqual({ phase: 'none' });
   });
 });
+
+describe('direct-input authored return budget', () => {
+  const definition = {
+    enter: 'chest',
+    exit: 'rest',
+    parameter: 'Movement2',
+    enterMs: 1133,
+    exitMs: 1017,
+  };
+  it('reverses the last visible entry even when event time logically reached the hold', () => {
+    for (const fps of [30, 60, 120]) {
+      const poses = new PoseSequence();
+      poses.start(definition, 0, 9000);
+      const visible = poses.sample(700);
+      expect(poses.sample(1500).phase).toBe('hold');
+      poses.release(1500, 750, visible);
+      expect(poses.sample(1500)).toMatchObject({ phase: 'exit', reverseEntry: true, timeMs: 700 });
+      for (let time = 1500; time < 2199; time += 1000 / fps) {
+        const frame = poses.sample(time);
+        expect(frame.reverseEntry).toBe(true);
+        expect(frame.timeMs).toBeCloseTo(700 - (time - 1500));
+      }
+      expect(poses.sample(2200)).toEqual({ phase: 'none' });
+    }
+  });
+  it('time-scales the original trajectory into inactivity and release deadlines without extending duplicates', () => {
+    for (const [budget, rendered, end] of [
+      [750, { phase: 'enter', timeMs: 1100 }, 750],
+      [750, { phase: 'hold', timeMs: 2000 }, 750],
+      [1050, { phase: 'hold', timeMs: 2000 }, 1017],
+      [300, { phase: 'exit', timeMs: 700 }, 300],
+    ] as const) {
+      const poses = new PoseSequence();
+      poses.start(definition, 0, 9000);
+      expect(poses.release(2000, budget, rendered)).toBe(true);
+      const first = poses.sample(2000);
+      expect(first.timeMs).toBe(rendered.phase === 'hold' ? 0 : rendered.timeMs);
+      expect(poses.release(2100, 1050, rendered)).toBe(false);
+      const tail = poses.sample(2000 + end - 0.001);
+      expect(tail.phase).toBe('exit');
+      expect(tail.timeMs).toBeCloseTo(rendered.phase === 'enter' ? 0 : 1017, 2);
+      expect(poses.sample(2000 + end)).toEqual({ phase: 'none' });
+    }
+  });
+  it('clears unrendered/expired inputs and drops reverse state on replacement', () => {
+    const poses = new PoseSequence();
+    poses.start(definition, 0);
+    poses.release(20, 750, { phase: 'none' });
+    expect(poses.sample(20).phase).toBe('none');
+    poses.start(definition, 100);
+    poses.release(500, 0, { phase: 'enter', timeMs: 300 });
+    expect(poses.sample(500).phase).toBe('none');
+    poses.start(definition, 1000);
+    poses.release(1400, 750, { phase: 'enter', timeMs: 300 });
+    poses.clear();
+    poses.start({ ...definition, enter: 'other' }, 1500);
+    expect(poses.sample(1500)).toMatchObject({ phase: 'enter', timeMs: 0 });
+    expect(poses.sample(1500).reverseEntry).toBeUndefined();
+  });
+});

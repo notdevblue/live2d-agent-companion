@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ModelInventory } from '../src/shared/contracts.js';
 import type { ActingFrame } from '../src/renderer/acting.js';
-import type { ExpressionLayer, ExpressionParameter } from '../src/renderer/performance.js';
+import {
+  PoseSequence,
+  type ParameterRange,
+  type PoseFrame,
+  type ExpressionLayer,
+  type ExpressionParameter,
+} from '../src/renderer/performance.js';
 
 vi.mock('@cubism/live2dcubismframework', () => ({ CubismFramework: {} }));
 vi.mock('@cubism/model/cubismusermodel', () => ({ CubismUserModel: class {} }));
@@ -10,6 +16,12 @@ vi.mock('@cubism/motion/cubismmotionmanager', () => ({
     stopAllMotions = vi.fn();
     startMotionPriority = vi.fn();
     isFinished = () => false;
+  },
+}));
+vi.mock('@cubism/motion/cubismmotionqueueentry', () => ({
+  CubismMotionQueueEntry: class {
+    setStartTime = vi.fn();
+    setFadeInStartTime = vi.fn();
   },
 }));
 vi.mock('@cubism/math/cubismmatrix44', () => ({ CubismMatrix44: class {} }));
@@ -468,5 +480,424 @@ describe('Avatar petting opt-in and interruption — FR-L2D-008', () => {
     expect(runtime.pettingFocus).toEqual({ x: -1, y: -1 });
     avatar.beginPetting();
     expect(runtime.pettingFocus).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe('owned direct-petting chest pose — FR-L2D-008', () => {
+  const settings = {
+    intensity: 'normal',
+    framing: 'bust',
+    positionLocked: true,
+    reducedMotion: false,
+    pettingEnabled: true,
+  } as const;
+  const endpoints = [
+    ['Movement2', 1, 0],
+    ['Param56', 1, 1],
+    ['Param57', 0, 0],
+    ['Param62', 0.034, -0.001],
+    ['Param59', 0.476, -0.001],
+    ['Param60', 0.86, 0],
+    ['Param61', 0.002, 0.001],
+  ] as const;
+  function touchSetup() {
+    const { avatar } = setup();
+    const runtime = avatar as unknown as {
+      inventory: ModelInventory;
+      poses: PoseSequence;
+      ranges: Map<string, ParameterRange>;
+      indexes: Map<string, number>;
+      poseDefinitions: Map<string, Parameters<PoseSequence['start']>[0]>;
+      motionInfo: Map<
+        string,
+        { duration: number; parameters: Set<string>; held: Map<string, number> }
+      >;
+      motions: Map<string, { doUpdateParameters: ReturnType<typeof vi.fn> }>;
+      gestureManager: { isFinished: () => boolean };
+      physicsOutputs: Set<string>;
+      petPose: boolean;
+      petPoseUsed: boolean;
+      activeGesture: string;
+      lastGesture: number;
+      lastGestureName: string;
+      samplePettingPose: (frame: PoseFrame) => boolean;
+      updatePettingPose: (now: number) => void;
+      model: {
+        getParameterMinimumValue: (i: number) => number;
+        getParameterMaximumValue: () => number;
+        setParameterValueByIndex: ReturnType<typeof vi.fn>;
+      };
+      canvas: { removeEventListener: ReturnType<typeof vi.fn> };
+      runtime: { release: ReturnType<typeof vi.fn> };
+    };
+    runtime.inventory = {
+      ...inventory,
+      gestureMap: { ...inventory.gestureMap, wave: '默认手切举手' },
+    };
+    const definition = {
+      enter: '默认手切举手',
+      exit: '举手切默认手',
+      parameter: 'Movement2',
+      enterMs: 1133,
+      exitMs: 1017,
+    };
+    runtime.poseDefinitions.set(definition.enter, definition);
+    for (const [i, [id]] of endpoints.entries()) {
+      runtime.indexes.set(id, i);
+      runtime.ranges.set(id, { index: i, min: i < 3 ? 0 : -1, max: 1, neutral: 0 });
+    }
+    for (const [name, column] of [
+      [definition.enter, 1],
+      [definition.exit, 2],
+    ] as const) {
+      runtime.motionInfo.set(name, {
+        duration: name === definition.enter ? 1133 : 1017,
+        parameters: new Set(endpoints.map((row) => row[0])),
+        held: new Map(endpoints.map((row) => [row[0], row[column]])),
+      });
+      runtime.motions.set(name, { doUpdateParameters: vi.fn() });
+    }
+    runtime.model = {
+      getParameterMinimumValue: (i) => (i < 3 ? 0 : -1),
+      getParameterMaximumValue: () => 1,
+      setParameterValueByIndex: vi.fn(),
+    };
+    vi.spyOn(runtime.gestureManager, 'isFinished').mockReturnValue(true);
+    vi.spyOn(avatar, 'pettingHit').mockReturnValue(true);
+    avatar.configure(settings);
+    const stroke = (now: number, distance = 10) => {
+      vi.setSystemTime(now);
+      avatar.strokePetting(distance, 200, 180);
+    };
+    const render = (now: number) => {
+      vi.setSystemTime(now);
+      runtime.updatePettingPose(now);
+      const frame = runtime.poses.sample(now);
+      runtime.samplePettingPose(frame);
+      return frame;
+    };
+    return { avatar, runtime, stroke, render, definition };
+  }
+  it('starts only after real local travel and samples authored entry, hold and paired exit without consuming semantic cooldown', () => {
+    const { avatar, runtime, stroke, render, definition } = touchSetup();
+    avatar.cue({ ...cue, gesture: 'none' });
+    expect(runtime.poses.sample(0).phase).toBe('none');
+    avatar.beginPetting();
+    stroke(10, 3);
+    expect(runtime.petPose).toBe(false);
+    stroke(20, 0);
+    expect(runtime.petPose).toBe(false);
+    stroke(30, 5);
+    expect(runtime.petPose).toBe(true);
+    expect(runtime.lastGesture).toBe(-Infinity);
+    expect(runtime.lastGestureName).toBe('');
+    for (let now = 50; now <= 1300; now += 50) {
+      stroke(now);
+      render(now);
+    }
+    expect(render(1300).phase).toBe('hold');
+    avatar.endPetting();
+    expect(render(1300)).toMatchObject({ phase: 'exit', timeMs: 0 });
+    expect(runtime.motions.get(definition.exit)!.doUpdateParameters).toHaveBeenLastCalledWith(
+      runtime.model,
+      0,
+      1,
+      expect.anything(),
+    );
+    avatar.endPetting();
+    expect(render(2317).phase).toBe('none');
+    expect(runtime.petPose).toBe(false);
+    expect(runtime.lastGesture).toBe(-Infinity);
+  });
+  it('requires eight pixels of valid own-canvas travel rather than unlocated or missed input', () => {
+    const { avatar, runtime, stroke } = touchSetup();
+    avatar.beginPetting();
+    vi.setSystemTime(10);
+    avatar.strokePetting(40, NaN, 180);
+    vi.mocked(avatar.pettingHit).mockReturnValue(false);
+    stroke(20, 40);
+    vi.mocked(avatar.pettingHit).mockReturnValue(true);
+    stroke(30, 3);
+    expect(runtime.petPose).toBe(false);
+    stroke(40, 5);
+    expect(runtime.petPose).toBe(true);
+    avatar.endPetting();
+    expect(runtime.petPose).toBe(false); // no hand frame was ever rendered
+  });
+  it('bounds inactivity and duplicate release across30/60/120Hz without replaying arms', () => {
+    for (const fps of [30, 60, 120]) {
+      const { avatar, runtime, stroke, render } = touchSetup();
+      avatar.beginPetting();
+      for (let n = 1; n <= fps * 1.5; n++) {
+        const at = (n * 1000) / fps;
+        stroke(at);
+        render(at);
+      }
+      for (let n = 1; n <= fps * 0.9; n++) render(1500 + (n * 1000) / fps);
+      render(2400);
+      expect(runtime.petPose).toBe(false);
+      avatar.endPetting();
+      stroke(2500);
+      expect(runtime.petPose).toBe(false);
+      expect(runtime.lastGesture).toBe(-Infinity);
+      vi.setSystemTime(0);
+    }
+  });
+  it('reverses the last actually rendered entry across a long event-frame gap and does not restart on further strokes', () => {
+    const { avatar, runtime, stroke, render, definition } = touchSetup();
+    avatar.beginPetting();
+    stroke(10);
+    render(110);
+    for (let now = 200; now <= 1400; now += 100) stroke(now);
+    vi.setSystemTime(1400);
+    avatar.endPetting();
+    const released = render(1400);
+    expect(released).toMatchObject({ phase: 'exit', reverseEntry: true, timeMs: 100 });
+    expect(runtime.motions.get(definition.enter)!.doUpdateParameters).toHaveBeenLastCalledWith(
+      runtime.model,
+      0.1,
+      1,
+      expect.anything(),
+    );
+    expect(render(1450).timeMs).toBe(50);
+    expect(render(1500).phase).toBe('none');
+    stroke(1550);
+    expect(runtime.petPose).toBe(false);
+  });
+  it('returns from inactivity within900ms, does not refresh on stationary input or repeat within one touch', () => {
+    const { avatar, runtime, stroke, render } = touchSetup();
+    avatar.beginPetting();
+    for (let now = 20; now <= 1600; now += 20) {
+      stroke(now);
+      render(now);
+    }
+    expect(render(1700).phase).toBe('hold');
+    stroke(1750, 0);
+    expect(render(1750)).toMatchObject({ phase: 'exit', timeMs: 0 });
+    expect(render(2499).phase).toBe('exit');
+    expect(render(2500).phase).toBe('none');
+    stroke(2600);
+    expect(runtime.petPose).toBe(false);
+    avatar.beginPetting();
+    stroke(2700);
+    expect(runtime.petPose).toBe(true);
+  });
+  it('keeps every authored phase inside the original12second cap and skips too-late starts', () => {
+    const { avatar, runtime, stroke, render } = touchSetup();
+    avatar.beginPetting();
+    for (let now = 50; now <= 11900; now += 50) {
+      stroke(now);
+      render(now);
+    }
+    expect(runtime.poses.sample(11900).phase).toBe('exit');
+    avatar.endPetting();
+    render(12000);
+    expect(runtime.petPose).toBe(false);
+    expect(runtime.poses.sample(12000).phase).toBe('none');
+    vi.setSystemTime(13000);
+    avatar.beginPetting();
+    stroke(23000);
+    expect(runtime.petPose).toBe(false);
+  });
+  it('keeps existing/custom poses and unavailable/changed rigs on body-only fallback', () => {
+    for (const missing of [
+      'custom-map',
+      'empty-map',
+      'output',
+      'range',
+      'endpoint',
+      'clip',
+      'busy',
+      'reduced',
+      'existing',
+      'alpha',
+    ] as const) {
+      const { avatar, runtime, stroke, definition } = touchSetup();
+      if (missing === 'custom-map') runtime.inventory.gestureMap.wave = 'custom';
+      if (missing === 'empty-map') delete runtime.inventory.gestureMap.wave;
+      if (missing === 'output') runtime.physicsOutputs.add('Param60');
+      if (missing === 'range') runtime.ranges.get('Param59')!.max = 2;
+      if (missing === 'endpoint')
+        runtime.motionInfo.get(definition.enter)!.held.set('Param59', 0.8);
+      if (missing === 'clip') runtime.motions.delete(definition.exit);
+      if (missing === 'busy') avatar.setState('working');
+      if (missing === 'reduced') avatar.configure({ ...settings, reducedMotion: true });
+      if (missing === 'existing') runtime.poses.start({ ...definition, enter: 'custom' }, 0);
+      if (missing === 'alpha') vi.mocked(avatar.pettingHit).mockReturnValue(false);
+      avatar.beginPetting();
+      stroke(20);
+      expect(runtime.petPose).toBe(false);
+      avatar.endPetting(true);
+      if (missing === 'existing') expect(runtime.poses.sample(20).definition?.enter).toBe('custom');
+      vi.setSystemTime(0);
+    }
+  });
+  it('preserves the old visible return and its deadline through rapid or repeated recontact', () => {
+    for (const mode of ['stationary', 'strokes', 'repeat'] as const) {
+      const { avatar, runtime, stroke, render } = touchSetup();
+      avatar.beginPetting();
+      for (let now = 20; now <= 1600; now += 20) {
+        stroke(now);
+        render(now);
+      }
+      avatar.endPetting();
+      expect(render(1850)).toMatchObject({ phase: 'exit', timeMs: 250 });
+      vi.setSystemTime(1851);
+      avatar.beginPetting();
+      expect(render(1851)).toMatchObject({ phase: 'exit', timeMs: 251 });
+      if (mode === 'repeat') {
+        vi.setSystemTime(1852);
+        avatar.beginPetting();
+        vi.setSystemTime(1853);
+        avatar.beginPetting();
+      }
+      if (mode !== 'strokes') avatar.endPetting();
+      for (let now = 1860; now <= 2600; now += 20) {
+        if (mode === 'strokes') stroke(now);
+        render(now);
+      }
+      expect(render(2616)).toMatchObject({ phase: 'exit', timeMs: 1016 });
+      expect(render(2617).phase).toBe('none');
+      stroke(2700);
+      expect(runtime.petPose).toBe(false);
+      expect(runtime.lastGesture).toBe(-Infinity);
+      vi.setSystemTime(2800);
+      avatar.beginPetting();
+      stroke(2810);
+      expect(render(2810)).toMatchObject({ phase: 'enter', timeMs: 0 });
+      vi.setSystemTime(0);
+    }
+  });
+  it('keeps the old return and face budget alive independently of the new contact, then still cancels immediately for approval', () => {
+    const { avatar, runtime, stroke, render } = touchSetup();
+    avatar.beginPetting();
+    for (let now = 20; now <= 1600; now += 20) {
+      stroke(now);
+      render(now);
+    }
+    avatar.endPetting();
+    render(1600);
+    vi.setSystemTime(1601);
+    avatar.beginPetting();
+    stroke(1610);
+    expect(render(2511)).toMatchObject({ phase: 'exit', timeMs: 911 });
+    const pet = (avatar as unknown as { petting: { sample: (now: number) => number } }).petting;
+    expect(pet.sample(2511)).toBeGreaterThan(0);
+    expect(pet.sample(2650)).toBe(0);
+    avatar.endPetting();
+    expect(runtime.petPose).toBe(true);
+    avatar.setState('blocked');
+    expect(runtime.petPose).toBe(false);
+    expect(runtime.poses.sample(2511).phase).toBe('none');
+  });
+  it('preserves smoothed focus and visible body inputs when recontact carries an old release', () => {
+    const { avatar, runtime, stroke, render } = touchSetup();
+    const physical = avatar as unknown as {
+      petting: { sample: (now: number) => number };
+      pettingFocus: { x: number; y: number };
+      pettingLook: { x: number; y: number };
+    };
+    avatar.beginPetting();
+    for (let now = 20; now <= 1600; now += 20) {
+      stroke(now);
+      render(now);
+    }
+    physical.pettingFocus = { x: 0.8, y: -0.4 };
+    physical.pettingLook = { x: 0.6, y: -0.2 };
+    avatar.endPetting();
+    render(1850);
+    const before = physical.petting.sample(1851);
+    vi.setSystemTime(1851);
+    avatar.beginPetting();
+    expect(physical.petting.sample(1851)).toBe(before);
+    expect(physical.pettingFocus).toEqual({ x: 0.8, y: -0.4 });
+    expect(physical.pettingLook).toEqual({ x: 0.6, y: -0.2 });
+    avatar.endPetting();
+    vi.setSystemTime(1900);
+    avatar.beginPetting();
+    expect(physical.petting.sample(1900)).toBe(1);
+    avatar.configure({ ...settings, reducedMotion: true });
+    expect(runtime.petPose).toBe(false);
+    expect(physical.petting.sample(1900)).toBe(1); // reduced motion scales, rather than resets, the same envelope
+    avatar.configure({ ...settings, pettingEnabled: false });
+    expect(physical.petting.sample(1900)).toBe(0);
+    vi.setSystemTime(3000);
+    avatar.configure(settings);
+    avatar.beginPetting();
+    expect(physical.pettingFocus).toEqual({ x: 0, y: 0 });
+    expect(physical.pettingLook).toEqual({ x: 0, y: 0 });
+  });
+  it('retains the original twelve-second hand cap when recontact starts a fresh body budget', () => {
+    const { avatar, runtime, stroke, render } = touchSetup();
+    avatar.beginPetting();
+    for (let now = 50; now <= 11900; now += 50) {
+      stroke(now);
+      render(now);
+    }
+    avatar.endPetting();
+    render(11900);
+    vi.setSystemTime(11901);
+    avatar.beginPetting();
+    stroke(11910);
+    expect(render(11999).phase).toBe('exit');
+    expect(render(12000).phase).toBe('none');
+    expect(runtime.petPose).toBe(false);
+    const pet = (avatar as unknown as { petting: { sample: (now: number) => number } }).petting;
+    expect(pet.sample(12000)).toBeGreaterThan(0);
+  });
+  it('keeps direct contact face and authored hand independent of matching semantic clear', () => {
+    const { avatar, runtime, stroke, render } = touchSetup();
+    avatar.cue({ ...cue, gesture: 'none' });
+    avatar.beginPetting();
+    for (let now = 20; now <= 1600; now += 20) {
+      stroke(now);
+      render(now);
+    }
+    avatar.clearCue(cue);
+    expect(runtime.petPose).toBe(true);
+    expect(render(1600).phase).toBe('hold');
+    const pet = (avatar as unknown as { petting: { sample: (now: number) => number } }).petting;
+    expect(pet.sample(1600)).toBeGreaterThan(0.99);
+    avatar.endPetting();
+    render(1850);
+    avatar.clearCue(cue);
+    expect(render(1850)).toMatchObject({ phase: 'exit', timeMs: 250 });
+  });
+  it('clears only owned hands on new cues, disable, reduced motion, busy/error/approval, reset and disposal', () => {
+    for (const boundary of [
+      'cue',
+      'disable',
+      'reduced',
+      'thinking',
+      'working',
+      'blocked',
+      'error',
+      'reset',
+      'dispose',
+    ] as const) {
+      const { avatar, runtime, stroke, render } = touchSetup();
+      avatar.cue({ ...cue, gesture: 'none' });
+      avatar.beginPetting();
+      stroke(20);
+      render(100);
+      expect(runtime.petPose).toBe(true);
+      if (boundary === 'cue')
+        avatar.cue({ ...cue, messageId: 'next', segmentId: 2, gesture: 'none' });
+      else if (boundary === 'disable') avatar.configure({ ...settings, pettingEnabled: false });
+      else if (boundary === 'reduced') avatar.configure({ ...settings, reducedMotion: true });
+      else if (boundary === 'reset') avatar.reset();
+      else if (boundary === 'dispose') {
+        vi.stubGlobal('cancelAnimationFrame', vi.fn());
+        (
+          window as unknown as { removeEventListener: ReturnType<typeof vi.fn> }
+        ).removeEventListener = vi.fn();
+        runtime.canvas = { removeEventListener: vi.fn() };
+        runtime.runtime = { release: vi.fn() };
+        avatar.dispose();
+      } else avatar.setState(boundary);
+      expect(runtime.petPose).toBe(false);
+      expect(runtime.poses.sample(100).phase).toBe('none');
+      vi.setSystemTime(0);
+    }
   });
 });

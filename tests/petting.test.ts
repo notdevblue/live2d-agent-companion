@@ -202,3 +202,101 @@ describe('explicit local petting — FR-L2D-008', () => {
     ).toEqual({ x: 50, y: 20, width: 300, height: 200 });
   });
 });
+
+describe('shared direct-contact deadlines', () => {
+  it('exposes the original inactivity/release/cap budget and does not refresh it on zero travel', () => {
+    const pet = new PettingController();
+    pet.begin(100);
+    pet.stroke(3, 110);
+    expect(pet.timing()).toBeUndefined();
+    pet.stroke(6, 120);
+    expect(pet.timing()).toEqual({ held: true, cap: 12100, deadline: 1020, freshUntil: 270 });
+    for (let now = 130; now <= 1100; now += 10) pet.stroke(0, now);
+    expect(pet.timing()?.deadline).toBe(1020);
+    expect(pet.sample(1020)).toBe(0);
+    pet.stroke(5, 2000);
+    expect(pet.timing()?.deadline).toBe(2900);
+    pet.end(2100);
+    expect(pet.timing()).toMatchObject({ held: false, deadline: 3150, cap: 12100 });
+    pet.end(2300);
+    expect(pet.timing()?.deadline).toBe(3150);
+    pet.clear();
+    expect(pet.timing()).toBeUndefined();
+  });
+});
+
+describe('bounded release carry on physical recontact', () => {
+  function released() {
+    const pet = new PettingController();
+    pet.begin(0);
+    pet.stroke(10, 20);
+    pet.end(300);
+    return pet;
+  }
+  it('preserves one old release curve unchanged across repeated no-stroke begin/end cycles', () => {
+    const reference = released(),
+      pet = released();
+    for (const now of [500, 510, 700, 900, 1200]) {
+      const before = pet.sample(now);
+      pet.begin(now);
+      expect(pet.sample(now)).toBe(before);
+      pet.end(now + 1);
+      for (const future of [now + 1, 1300, 1349, 1350, 2000])
+        expect(pet.sample(future)).toBe(reference.sample(future));
+    }
+    expect(pet.sample(1350)).toBe(0);
+    pet.begin(2000);
+    expect(pet.sample(2000)).toBe(0);
+  });
+  it('gives new valid travel its own budget while retaining the stronger immutable release only', () => {
+    const pet = released();
+    pet.begin(600);
+    expect(pet.timing()).toBeUndefined();
+    pet.stroke(3, 610);
+    expect(pet.timing()).toBeUndefined();
+    pet.stroke(5, 620);
+    expect(pet.timing()?.cap).toBe(12600);
+    expect(pet.sample(600)).toBeGreaterThan(0);
+    pet.end(900);
+    const own = new PettingController();
+    own.begin(600);
+    own.stroke(8, 620);
+    own.end(900);
+    pet.begin(901); // the new own release is stronger; keep its original900..1950 curve
+    for (const at of [901, 1200, 1500, 1949, 1950]) expect(pet.sample(at)).toBe(own.sample(at));
+    pet.end(902);
+    pet.begin(903);
+    expect(pet.sample(1950)).toBe(0);
+  });
+  it('keeps the older deadline on equal-strength releases instead of stacking or extending them', () => {
+    const pet = new PettingController();
+    pet.begin(0);
+    pet.stroke(10, 20);
+    pet.end(250);
+    pet.begin(251);
+    pet.stroke(8, 252);
+    expect(pet.sample(450)).toBe(1);
+    pet.end(450);
+    pet.begin(451);
+    expect(pet.sample(451)).toBe(1);
+    expect(pet.sample(1300)).toBe(0); // older250..1300 wins the tie over450..1500
+  });
+  it('keeps the old twelve-second cap on no-stroke recontact and clears both contributions globally', () => {
+    const pet = new PettingController();
+    pet.begin(0);
+    for (let now = 20; now <= 11820; now += 200) pet.stroke(10, now);
+    pet.end(11900);
+    const before = pet.sample(11901);
+    pet.begin(11901);
+    expect(pet.sample(11901)).toBe(before);
+    pet.end(11902);
+    pet.begin(11903);
+    expect(pet.sample(12000)).toBe(0);
+    pet.stroke(8, 12010);
+    expect(pet.timing()?.cap).toBe(23903);
+    expect(pet.sample(12300)).toBeGreaterThan(0);
+    pet.clear();
+    expect(pet.sample(12300)).toBe(0);
+    expect(pet.timing()).toBeUndefined();
+  });
+});

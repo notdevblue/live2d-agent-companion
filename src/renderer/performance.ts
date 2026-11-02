@@ -330,24 +330,68 @@ export interface PoseFrame {
   phase: 'none' | 'enter' | 'hold' | 'exit';
   definition?: PoseDefinition;
   timeMs?: number;
+  /** Sample the authored entry backwards rather than seeking into its return. */
+  reverseEntry?: boolean;
 }
 export class PoseSequence {
   private definition?: PoseDefinition;
   private started = 0;
   private holdMs = 1500;
+  private returning?: { at: number; duration: number; from: number; reverse: boolean };
   start(definition: PoseDefinition, now: number, holdMs = 1500): boolean {
     const active = this.sample(now);
     if (active.definition?.enter === definition.enter && active.phase !== 'exit') return false;
     this.definition = definition;
+    this.returning = undefined;
     this.started = now;
     this.holdMs = Number.isFinite(holdMs) ? clamp(holdMs, 400, 16000) : 1500;
     return true;
   }
   clear(): void {
     this.definition = undefined;
+    this.returning = undefined;
+  }
+  /** Bound a direct-input return without restarting it on duplicate release.
+   * The caller supplies its last rendered frame: event time may be ahead of it. */
+  release(now: number, budgetMs: number, rendered: PoseFrame): boolean {
+    if (!this.definition || this.returning) return false;
+    if (
+      !Number.isFinite(now) ||
+      !Number.isFinite(budgetMs) ||
+      budgetMs <= 0 ||
+      rendered.phase === 'none'
+    ) {
+      this.clear();
+      return false;
+    }
+    const reverse = rendered.phase === 'enter' || !!rendered.reverseEntry;
+    const end = reverse ? this.definition.enterMs : this.definition.exitMs;
+    const time = Number.isFinite(rendered.timeMs) ? clamp(rendered.timeMs!, 0, end) : 0;
+    const from = reverse || rendered.phase === 'exit' ? time : 0;
+    const distance = reverse ? from : end - from;
+    if (distance <= 0) {
+      this.clear();
+      return false;
+    }
+    this.returning = { at: now, duration: Math.min(distance, budgetMs, 1050), from, reverse };
+    return true;
   }
   sample(now: number): PoseFrame {
     if (!this.definition) return { phase: 'none' };
+    if (this.returning) {
+      const { at, duration, from, reverse } = this.returning;
+      const progress = clamp((now - at) / duration, 0, 1);
+      if (progress >= 1) {
+        this.clear();
+        return { phase: 'none' };
+      }
+      return {
+        phase: 'exit',
+        definition: this.definition,
+        timeMs: reverse ? from * (1 - progress) : from + (this.definition.exitMs - from) * progress,
+        ...(reverse ? { reverseEntry: true } : {}),
+      };
+    }
     const elapsed = Math.max(0, now - this.started);
     const { enterMs, exitMs } = this.definition;
     if (elapsed < enterMs) return { phase: 'enter', definition: this.definition, timeMs: elapsed };

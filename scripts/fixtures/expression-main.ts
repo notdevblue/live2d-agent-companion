@@ -92,6 +92,113 @@ const scenes = [
   { name: 'petting', petting: true, times: [500, 1400, 1800] },
   { name: 'petting-left', petting: true, focusDirection: -1, times: [500, 600, 1800] },
   { name: 'petting-right', petting: true, focusDirection: 1, times: [500, 600, 1800] },
+  {
+    name: 'petting-recontact',
+    petting: true,
+    handContact: true,
+    strokeUntilMs: 3200,
+    noPointerUp: true,
+    pettingActions: [
+      { at: 1600, type: 'end' },
+      { at: 1851, type: 'begin' },
+      { at: 3200, type: 'end' },
+    ],
+    times: [1500, 1600, 1850, 1851, 1900, 2500, 2650, 3000, 3200, 4250],
+  },
+  {
+    name: 'petting-recontact-no-stroke',
+    petting: true,
+    handContact: true,
+    strokeUntilMs: 1600,
+    noPointerUp: true,
+    pettingActions: [
+      { at: 1600, type: 'end' },
+      { at: 1851, type: 'begin' },
+      { at: 1900, type: 'end' },
+      { at: 2001, type: 'begin' },
+      { at: 2050, type: 'end' },
+    ],
+    times: [1600, 1850, 1851, 1900, 2001, 2050, 2600, 2650, 2700],
+  },
+  {
+    name: 'petting-scoped-clear',
+    petting: true,
+    handContact: true,
+    emotion: 'happy',
+    gesture: 'none',
+    clearAt: 1000,
+    strokeUntilMs: 2000,
+    endAtMs: 2000,
+    times: [950, 1000, 1500, 2000, 3050],
+  },
+  {
+    name: 'petting-late-hand',
+    petting: true,
+    handContact: true,
+    strokeFromMs: 10000,
+    strokeUntilMs: 11000,
+    endAtMs: 11000,
+    times: [10000, 11000, 12000],
+  },
+  {
+    name: 'petting-held',
+    petting: true,
+    handContact: true,
+    strokeUntilMs: 3000,
+    endAtMs: 3000,
+    times: [500, 1500, 2500, 3000, 3500, 4050, 4200],
+  },
+  {
+    name: 'petting-early-release',
+    petting: true,
+    handContact: true,
+    strokeUntilMs: 400,
+    endAtMs: 425,
+    times: [400, 425, 475, 850, 1475],
+  },
+  {
+    name: 'petting-stationary-hand',
+    petting: true,
+    handContact: true,
+    strokeUntilMs: 1500,
+    noPointerUp: true,
+    times: [1500, 1650, 1900, 2400, 2600],
+  },
+  {
+    name: 'petting-twelve-second-hand',
+    petting: true,
+    handContact: true,
+    strokeUntilMs: 12000,
+    noPointerUp: true,
+    times: [4000, 10000, 11000, 11950, 12000, 12050],
+  },
+  {
+    name: 'petting-custom-wave',
+    petting: true,
+    handContact: true,
+    customWave: true,
+    strokeUntilMs: 2000,
+    endAtMs: 2000,
+    times: [1500, 2500],
+  },
+  {
+    name: 'petting-reduced-hand',
+    petting: true,
+    handContact: true,
+    reducedMotion: true,
+    strokeUntilMs: 2000,
+    endAtMs: 2000,
+    times: [1500, 2500],
+  },
+  {
+    name: 'petting-existing-pose',
+    petting: true,
+    handContact: true,
+    gesture: 'explain',
+    strokeUntilMs: 2000,
+    endAtMs: 2000,
+    times: [500, 1500, 2500, 4000],
+  },
 ];
 
 void app.whenReady().then(async () => {
@@ -401,6 +508,102 @@ void app.whenReady().then(async () => {
       sample('petting', 500).values.LeanInput < -1 &&
         sample('petting', 500).values.Param50 > 0.04 &&
         sample('petting', 1800).values.Param50 < sample('petting', 500).values.Param50 * 0.5,
+    );
+    const handRest = (scene: string, time: number): boolean => {
+      const frame = sample(scene, time);
+      return (
+        frame.pose.phase === 'none' &&
+        !frame.petting.poseOwned &&
+        Math.abs(frame.values.Movement2) < 0.01 &&
+        Math.abs(frame.values.Param60) < 0.02
+      );
+    };
+    check(
+      'validated direct petting uses the original chest hand without adding a semantic gesture',
+      sample('petting-held', 2500).petting.poseOwned &&
+        sample('petting-held', 2500).pose.phase === 'hold' &&
+        sample('petting-held', 2500).values.Movement2 > 0.99 &&
+        sample('petting-held', 2500).values.Param60 > 0.8 &&
+        sample('petting-held', 2500).frame.gesture === 'none' &&
+        handRest('petting-held', 4050),
+    );
+    check(
+      'early direct-input return starts at the last rendered hand and rests within its release budget',
+      ['Movement2', 'Param56', 'Param57', 'Param62', 'Param59', 'Param60', 'Param61'].every(
+        (parameter) =>
+          Math.abs(
+            sample('petting-early-release', 400).values[parameter] -
+              sample('petting-early-release', 425).values[parameter],
+          ) < 0.0001,
+      ) && handRest('petting-early-release', 850),
+    );
+    check(
+      'stationary petting returns the hand by the original nine-hundred-millisecond deadline',
+      sample('petting-stationary-hand', 1500).petting.poseOwned &&
+        sample('petting-stationary-hand', 1650).pose.phase === 'exit' &&
+        handRest('petting-stationary-hand', 2400) &&
+        sample('petting-stationary-hand', 2400).petting.weight === 0,
+    );
+    check(
+      'continuous petting completes the authored return inside the original twelve-second cap',
+      sample('petting-twelve-second-hand', 10000).petting.poseOwned &&
+        sample('petting-twelve-second-hand', 11000).pose.phase === 'exit' &&
+        handRest('petting-twelve-second-hand', 12000) &&
+        sample('petting-twelve-second-hand', 12000).petting.weight === 0,
+    );
+    check(
+      'custom mappings, reduced motion and insufficient late budgets keep body-only petting',
+      ['petting-custom-wave', 'petting-reduced-hand', 'petting-late-hand'].every((scene) =>
+        result.after[scene].every(
+          (frame: any) =>
+            !frame.petting.poseOwned &&
+            frame.pose.phase === 'none' &&
+            Math.abs(frame.values.Movement2) < 0.01,
+        ),
+      ) && sample('petting-late-hand', 11000).petting.weight > 0.5,
+    );
+    check(
+      'direct petting never takes or clears an existing semantic explain pose',
+      [500, 1500, 2500, 4000].every(
+        (time) =>
+          !sample('petting-existing-pose', time).petting.poseOwned &&
+          sample('petting-existing-pose', time).values.Movement3 > 0.99 &&
+          Math.abs(sample('petting-existing-pose', time).values.Movement2) < 0.01,
+      ) && sample('petting-existing-pose', 4000).pose.phase === 'hold',
+    );
+    check(
+      'rapid recontact preserves the visible body and the original owned hand return',
+      sample('petting-recontact', 1851).petting.poseOwned &&
+        sample('petting-recontact', 1851).pose.phase === 'exit' &&
+        sample('petting-recontact', 1851).renderMatrix.every(
+          (value: number, index: number) =>
+            Math.abs(value - sample('petting-recontact', 1850).renderMatrix[index]) < 0.002,
+        ) &&
+        Math.abs(
+          sample('petting-recontact', 1851).values.ParamEyeLOpen -
+            sample('petting-recontact', 1850).values.ParamEyeLOpen,
+        ) < 0.01 &&
+        handRest('petting-recontact', 2650) &&
+        sample('petting-recontact', 3000).petting.weight > 0.5,
+    );
+    check(
+      'repeated no-stroke contacts cannot recycle the old affection or hand deadline',
+      sample('petting-recontact-no-stroke', 1851).petting.poseOwned &&
+        sample('petting-recontact-no-stroke', 1900).petting.weight <=
+          sample('petting-recontact-no-stroke', 1851).petting.weight &&
+        sample('petting-recontact-no-stroke', 2050).petting.weight <
+          sample('petting-recontact-no-stroke', 1900).petting.weight &&
+        handRest('petting-recontact-no-stroke', 2650) &&
+        sample('petting-recontact-no-stroke', 2650).petting.weight === 0 &&
+        sample('petting-recontact-no-stroke', 2700).petting.weight === 0,
+    );
+    check(
+      'a scoped semantic clear preserves the independently owned direct-contact response',
+      !sample('petting-scoped-clear', 1500).frame.active &&
+        sample('petting-scoped-clear', 1500).petting.poseOwned &&
+        sample('petting-scoped-clear', 1500).values.Movement2 > 0.99 &&
+        sample('petting-scoped-clear', 1500).petting.weight > 0.5 &&
+        handRest('petting-scoped-clear', 3050),
     );
     check(
       'petting zone selects only the upper model silhouette',

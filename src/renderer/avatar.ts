@@ -1,6 +1,7 @@
 import { CubismFramework } from '@cubism/live2dcubismframework';
 import { CubismUserModel } from '@cubism/model/cubismusermodel';
 import { CubismMotionManager } from '@cubism/motion/cubismmotionmanager';
+import { CubismMotionQueueEntry } from '@cubism/motion/cubismmotionqueueentry';
 import { CubismMatrix44 } from '@cubism/math/cubismmatrix44';
 import { CubismClippingManager_WebGL } from '@cubism/rendering/cubismrenderer_webgl';
 import {
@@ -41,6 +42,7 @@ import {
   type ExpressionLayer,
   type ParameterRange,
   type PoseDefinition,
+  type PoseFrame,
 } from './performance.js';
 import { canGenerateMipmaps, canvasDimensions, maskBufferCountForGroups } from './rendering.js';
 import { alphaInputRegion } from '../shared/input-region.js';
@@ -50,6 +52,7 @@ interface Motion {
   setFadeInTime(value: number): void;
   setFadeOutTime(value: number): void;
   setEffectIds(eyeBlink: unknown[], lipSync: unknown[]): void;
+  doUpdateParameters(model: Model, time: number, weight: number, entry: unknown): void;
 }
 interface Model {
   loadParameters(): void;
@@ -129,6 +132,12 @@ export class Avatar {
   private stateGesture = false;
   private posePhase = 'none';
   private poseTime = 0;
+  private petPose = false;
+  private petPoseUsed = false;
+  private petPoseTravel = 0;
+  private petPoseRendered?: PoseFrame;
+  private petPoseReturnDeadline?: number;
+  private petMotionEntry?: unknown;
   private ranges = new Map<string, ParameterRange>();
   private channels: Partial<Record<ActingChannel, ParameterRange>> = {};
   private physicsOutputs = new Set<string>();
@@ -333,6 +342,7 @@ export class Avatar {
       ? (state as ActingState)
       : 'idle';
     const changed = next !== this.state;
+    if (next !== 'idle') this.endPetting(true);
     const reacting =
       this.actor.sample(now, 0).active ||
       (!this.stateGesture &&
@@ -414,6 +424,7 @@ export class Avatar {
     const previousTiming = this.actor.reactionTiming(cue, now);
     if (!this.actor.cue(cue, now)) {
       const promoted = !previousTiming && this.actor.reactionTiming(cue, now);
+      if (promoted) this.endPetting(true);
       if (
         promoted &&
         cue.stage === 'semantic' &&
@@ -428,6 +439,7 @@ export class Avatar {
         );
       return;
     }
+    this.endPetting(true);
     const motionName = this.inventory.gestureMap[cue.gesture];
     const previousMotion = this.poses.sample(now).definition?.enter ?? this.activeGesture;
     // A configured waiting clip must not keep owning head/hand channels or
@@ -478,7 +490,8 @@ export class Avatar {
     if (!this.actor.clearCue(cue)) return;
     const now = performance.now();
     this.mixer.clear(now, true);
-    this.clearPose();
+    // A scoped message clear does not own an independent physical contact.
+    if (!this.petPose) this.clearPose();
     if (window.__avatarStatus) {
       window.__avatarStatus.lastCue = undefined;
       window.__avatarStatus.lastAttitude = 'neutral';
@@ -567,6 +580,10 @@ export class Avatar {
       : [];
   }
   private clearPose(): void {
+    this.petPose = false;
+    this.petPoseRendered = undefined;
+    this.petPoseReturnDeadline = undefined;
+    this.petMotionEntry = undefined;
     this.stateGesture = false;
     this.poses.clear();
     this.gestureManager.stopAllMotions();
@@ -630,9 +647,21 @@ export class Avatar {
   beginPetting(): boolean {
     if (!this.presentation.pettingEnabled || this.state === 'blocked' || this.state === 'error')
       return false;
-    this.pettingFocus = { x: 0, y: 0 };
-    this.pettingLook = { x: 0, y: 0 };
-    this.petting.begin(performance.now());
+    const now = performance.now();
+    this.updatePettingPose(now);
+    if (this.petPose) {
+      this.petting.end(now);
+      this.releasePettingPose(now);
+    }
+    // Recontact can refresh the face, but cannot pop a visible returning arm
+    // back to its entry or extend the previous touch's hand budget.
+    this.petPoseUsed = this.petPose;
+    this.petPoseTravel = 0;
+    if (this.petting.sample(now) <= 0) {
+      this.pettingFocus = { x: 0, y: 0 };
+      this.pettingLook = { x: 0, y: 0 };
+    }
+    this.petting.begin(now);
     return true;
   }
   strokePetting(distance: number, x?: number, y?: number): void {
@@ -646,10 +675,142 @@ export class Avatar {
         y: Math.max(-1, Math.min(1, (0.5 - (y! - r.y) / r.height) * 2)),
       };
     }
+    if (
+      !this.petPoseUsed &&
+      distance > 0 &&
+      Number.isFinite(x) &&
+      Number.isFinite(y) &&
+      this.pettingHit(x!, y!)
+    ) {
+      this.petPoseTravel = Math.min(8, this.petPoseTravel + distance);
+      if (this.petPoseTravel >= 8) this.startPettingPose(performance.now());
+    }
   }
   endPetting(immediate = false): void {
-    if (immediate) this.petting.clear();
-    else this.petting.end(performance.now());
+    if (immediate) {
+      this.petting.clear();
+      if (this.petPose) this.clearPose();
+    } else {
+      const now = performance.now();
+      this.petting.end(now);
+      if (this.petPose) this.releasePettingPose(now);
+    }
+  }
+  private startPettingPose(now: number): void {
+    const timing = this.petting.timing();
+    if (
+      this.petPoseUsed ||
+      !timing?.held ||
+      now >= timing.freshUntil ||
+      this.state !== 'idle' ||
+      this.presentation.reducedMotion ||
+      this.inventory.gestureMap.wave !== '默认手切举手' ||
+      this.poses.sample(now).phase !== 'none' ||
+      this.activeGesture ||
+      !this.gestureManager.isFinished()
+    )
+      return;
+    const definition = this.poseDefinitions.get('默认手切举手');
+    if (
+      !definition ||
+      definition.exit !== '举手切默认手' ||
+      definition.parameter !== 'Movement2' ||
+      Math.abs(definition.enterMs - 1133) > 0.01 ||
+      Math.abs(definition.exitMs - 1017) > 0.01 ||
+      timing.cap - now < definition.enterMs + 400 + definition.exitMs
+    )
+      return;
+    // Only this verified pair is an affectionate chest pose. Custom mappings
+    // and rigs fall back to the existing body/face overlay.
+    const endpoints = [
+      ['Movement2', 1, 0],
+      ['Param56', 1, 1],
+      ['Param57', 0, 0],
+      ['Param62', 0.034, -0.001],
+      ['Param59', 0.476, -0.001],
+      ['Param60', 0.86, 0],
+      ['Param61', 0.002, 0.001],
+    ] as const;
+    for (const [id] of endpoints) {
+      const range = this.ranges.get(id),
+        selector = ['Movement2', 'Param56', 'Param57'].includes(id);
+      if (
+        !range ||
+        this.physicsOutputs.has(id) ||
+        range.min !== (selector ? 0 : -1) ||
+        range.max !== 1 ||
+        range.neutral !== 0
+      )
+        return;
+    }
+    for (const [name, endpoint] of [
+      [definition.enter, 1],
+      [definition.exit, 2],
+    ] as const) {
+      const info = this.motionInfo.get(name),
+        motion = this.motions.get(name);
+      if (
+        !motion?.doUpdateParameters ||
+        info?.parameters.size !== endpoints.length ||
+        endpoints.some(
+          (row) =>
+            !info.parameters.has(row[0]) ||
+            Math.abs((info.held.get(row[0]) ?? Infinity) - row[endpoint]) > 0.00001,
+        )
+      )
+        return;
+    }
+    if (
+      !this.poses.start(definition, now, timing.cap - now - definition.enterMs - definition.exitMs)
+    )
+      return;
+    const entry = new CubismMotionQueueEntry();
+    entry.setStartTime(0);
+    entry.setFadeInStartTime(0);
+    this.petMotionEntry = entry;
+    this.petPose = this.petPoseUsed = true;
+    this.petPoseRendered = { phase: 'none' };
+  }
+  private releasePettingPose(now: number): void {
+    const timing = this.petting.timing();
+    const deadline = this.petPoseReturnDeadline ?? timing?.deadline;
+    if (deadline === undefined || now >= deadline) {
+      if (this.petPose) this.clearPose();
+      return;
+    }
+    this.poses.release(now, deadline - now, this.petPoseRendered ?? { phase: 'none' });
+    this.petPoseReturnDeadline = deadline;
+    if (this.poses.sample(now).phase === 'none') this.clearPose();
+  }
+  private updatePettingPose(now: number): void {
+    if (!this.petPose) return;
+    const timing = this.petting.timing();
+    const deadline = this.petPoseReturnDeadline ?? timing?.deadline;
+    if (deadline === undefined || now >= deadline || this.poses.sample(now).phase === 'none')
+      this.clearPose();
+    else if (
+      this.petPoseReturnDeadline === undefined &&
+      timing &&
+      (!timing.held || now >= timing.freshUntil)
+    )
+      this.releasePettingPose(now);
+  }
+  private samplePettingPose(pose: PoseFrame): boolean {
+    if (!this.petPose || !pose.definition || pose.phase === 'none') return false;
+    const name =
+      pose.phase === 'exit' && !pose.reverseEntry ? pose.definition.exit : pose.definition.enter;
+    if (pose.phase === 'hold') {
+      for (const [id, value] of this.motionInfo.get(pose.definition.enter)?.held ?? [])
+        this.write(this.indexes.get(id)!, value);
+    } else
+      this.motions
+        .get(name)!
+        .doUpdateParameters(this.model, (pose.timeMs ?? 0) / 1000, 1, this.petMotionEntry);
+    this.activeGesture = name;
+    this.posePhase = pose.phase;
+    this.poseTime = (pose.timeMs ?? 0) / 1000;
+    this.petPoseRendered = { ...pose };
+    return true;
   }
   dispose(): void {
     this.endPetting(true);
@@ -662,6 +823,7 @@ export class Avatar {
   }
   private contextLost = (event: Event): void => {
     event.preventDefault();
+    this.endPetting(true);
     this.disposed = true;
     this.onInputRegion?.(null);
     if (window.__avatarStatus)
@@ -692,8 +854,10 @@ export class Avatar {
         this.motionManager.startMotionPriority(this.idle, false, 1);
       this.motionManager.updateMotion(this.model, elapsed);
       if (this.errorUntil && now >= this.errorUntil) this.setState('idle');
+      this.updatePettingPose(now);
       const pose = this.poses.sample(now);
-      if (pose.phase !== this.posePhase) {
+      const petSampled = this.samplePettingPose(pose);
+      if (!petSampled && pose.phase !== this.posePhase) {
         this.gestureManager.stopAllMotions();
         this.poseTime = 0;
         if (pose.definition && (pose.phase === 'enter' || pose.phase === 'exit')) {
@@ -704,17 +868,18 @@ export class Avatar {
         } else if (pose.phase === 'none') this.activeGesture = '';
         this.posePhase = pose.phase;
       }
-      if (pose.definition && (pose.phase === 'hold' || pose.phase === 'exit')) {
+      if (!petSampled && pose.definition && (pose.phase === 'hold' || pose.phase === 'exit')) {
         for (const [id, value] of this.motionInfo.get(pose.definition.enter)?.held ?? []) {
           const index = this.indexes.get(id);
           if (index !== undefined) this.write(index, value);
         }
       }
-      if (pose.phase === 'enter' || pose.phase === 'exit') {
+      if (!petSampled && (pose.phase === 'enter' || pose.phase === 'exit')) {
         const time = (pose.timeMs ?? 0) / 1000;
         this.gestureManager.updateMotion(this.model, Math.max(0, time - this.poseTime));
         this.poseTime = time;
-      } else if (pose.phase === 'none') this.gestureManager.updateMotion(this.model, elapsed);
+      } else if (!petSampled && pose.phase === 'none')
+        this.gestureManager.updateMotion(this.model, elapsed);
       if (pose.phase === 'none' && this.gestureManager.isFinished()) this.activeGesture = '';
       if (this.stateGesture && pose.phase === 'none' && !this.activeGesture) {
         this.stateGesture = false;
@@ -722,7 +887,7 @@ export class Avatar {
         this.lastGestureName = '';
       }
       let acting = this.actor.sample(now, dt);
-      if (acting.gesture === 'wave' && !this.presentation.reducedMotion)
+      if (!this.petPose && acting.gesture === 'wave' && !this.presentation.reducedMotion)
         for (const [index, value] of greetingValues(
           pose,
           this.ranges,
@@ -732,6 +897,7 @@ export class Avatar {
         ))
           this.write(index, value);
       if (
+        !this.petPose &&
         (acting.gesture === 'wave' || acting.gesture === 'explain') &&
         !this.presentation.reducedMotion
       )
