@@ -137,13 +137,17 @@ const scenes = [
   ...[
     { name: 'torso-happy', emotion: 'happy', attitude: 'neutral' },
     { name: 'torso-laugh', emotion: 'happy', attitude: 'laugh' },
+    { name: 'torso-laugh-reduced', emotion: 'happy', attitude: 'laugh', reducedMotion: true },
     { name: 'torso-shy', emotion: 'embarrassed', attitude: 'laugh' },
     { name: 'torso-angry', emotion: 'angry', attitude: 'neutral' },
     { name: 'torso-shy-reduced', emotion: 'embarrassed', attitude: 'laugh', reducedMotion: true },
   ].map((options) => ({
     ...options,
     intensity: 'expressive',
-    times: [1000, 3000, 8000, 16200, 18200],
+    times:
+      options.name === 'torso-laugh' || options.name === 'torso-laugh-reduced'
+        ? [650, 1000, 1200, 1700, 2400, 3000, 8000, 16200, 18200]
+        : [1000, 3000, 8000, 16200, 18200],
   })),
   { name: 'happy', emotion: 'happy', times: [300, 1000, 2000, 3000, 8000, 16200] },
   {
@@ -643,6 +647,34 @@ void app.whenReady().then(async () => {
           sample('torso-angry', 8000).values.PositionX -
             sample('torso-laugh', 8000).values.PositionX,
         ) > 3,
+    );
+    check(
+      'laughter has two unequal pitch accents with a recovery and counter-tilt on the actual rig',
+      sample('torso-laugh', 650).values.AngleY < sample('torso-laugh', 1200).values.AngleY - 3 &&
+        sample('torso-laugh', 1700).values.AngleY < sample('torso-laugh', 1200).values.AngleY - 2 &&
+        sample('torso-laugh', 1700).values.AngleY > sample('torso-laugh', 650).values.AngleY + 1 &&
+        sample('torso-laugh', 2400).values.AngleY > sample('torso-laugh', 1700).values.AngleY + 2 &&
+        sample('torso-laugh', 650).values.AngleZ > sample('torso-laugh', 1700).values.AngleZ + 8,
+    );
+    check(
+      'the finite laughter phrase preserves no-hand ownership and the original deadline',
+      ['torso-laugh', 'torso-laugh-reduced'].every(
+        (name) =>
+          result.after[name].every(
+            (entry: any) =>
+              entry.frame.gesture === 'none' &&
+              Math.abs(entry.values.Movement2) < 0.001 &&
+              Math.abs(entry.values.Movement3) < 0.001,
+          ) && !sample(name, 16200).frame.active,
+      ),
+    );
+    check(
+      'reduced motion limits both laughter pitch accents without reopening the held mouth',
+      [650, 1700].every(
+        (time) =>
+          Math.abs(sample('torso-laugh-reduced', time).values.AngleY) <
+          Math.abs(sample('torso-laugh', time).values.AngleY) * 0.25,
+      ) && Math.abs(sample('torso-laugh-reduced', 8000).values.ParamMouthOpenY) < 1e-6,
     );
     check(
       'emotion torso intent stays inside no-hand ownership and the original finite reaction lifetime',

@@ -1078,6 +1078,141 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     }
   });
 
+  it('gives pure laughter two unequal finite chuckles across variants, frame rates and accessibility', () => {
+    for (const emotion of ['happy', 'neutral'] as const)
+      for (const variant of [0, 1])
+        for (const [intensity, intensityScale] of [
+          ['quiet', 0.35],
+          ['normal', 0.65],
+          ['expressive', 1],
+        ] as const)
+          for (const reducedMotion of [false, true]) {
+            const scale = intensityScale * (reducedMotion ? 0.18 : 1);
+            const direction = variant ? -1 : 1;
+            const cue = {
+              emotion,
+              attitude: 'laugh',
+              gesture: 'none',
+            } as const;
+            const paths = [30, 60, 120].map((fps) => {
+              const actor = new ActingController(),
+                idle = new ActingController();
+              for (const a of [actor, idle]) a.configure({ intensity, reducedMotion });
+              if (variant) {
+                actor.cue(cue, 0);
+                actor.reset(0);
+              }
+              actor.cue(cue, 0);
+              const times = variant ? [1000, 1600, 2100] : [700, 1300, 1700];
+              const frames: ActingFrame[] = [];
+              let start = 0;
+              for (const time of [...times, 4000, 8000]) {
+                const frame = advance(actor, time, fps, start),
+                  baseline = advance(idle, time, fps, start);
+                expect(Math.abs(frame.headY)).toBeLessThanOrEqual(scale);
+                expect(Math.abs(frame.headZ)).toBeLessThanOrEqual(scale);
+                expect(Math.abs(frame.bodyX)).toBeLessThanOrEqual(0.5 * scale);
+                expect(Math.abs(frame.bodyZ)).toBeLessThanOrEqual(0.3 * scale);
+                expect(frame.offsetY).toBe(baseline.offsetY);
+                expect(frame.breath).toBe(baseline.breath);
+                expect(frame).toMatchObject({
+                  emotion,
+                  attitude: 'laugh',
+                  gesture: 'none',
+                  variant,
+                });
+                frames.push(frame);
+                start = time;
+              }
+              const [first, recovered, second] = frames as [ActingFrame, ActingFrame, ActingFrame];
+              // Two distinct dips separated by a recovery, with a smaller
+              // second chuckle and a different roll/shoulder response.
+              expect(first.headY).toBeLessThan(recovered.headY - 0.15 * scale);
+              expect(second.headY).toBeLessThan(recovered.headY - 0.08 * scale);
+              expect(first.headY).toBeLessThan(second.headY - 0.04 * scale);
+              expect(first.headZ * direction).toBeGreaterThan(
+                second.headZ * direction + 0.3 * scale,
+              );
+              expect(first.bodyX * direction).toBeGreaterThan(
+                second.bodyX * direction + 0.1 * scale,
+              );
+              expect(second.bodyZ * direction).toBeGreaterThan(
+                first.bodyZ * direction + 0.1 * scale,
+              );
+              const held = frames.at(-1)!;
+              expect(held.bodyX).toBeCloseTo(-direction * 0.26 * scale, 6);
+              expect(held.bodyZ).toBeCloseTo(direction * 0.28 * scale, 6);
+              expect(advance(actor, reactionLifetime('laugh'), fps, 8000)).toMatchObject({
+                active: false,
+                smile: 0,
+                mouthOpen: 0,
+              });
+              return frames;
+            });
+            for (const path of paths.slice(1))
+              for (let i = 0; i < path.length; i++)
+                for (const key of [...motionKeys, 'offsetY', 'breath'] as const)
+                  expect(path[i]![key]).toBeCloseTo(paths[0]![i]![key], 7);
+          }
+  });
+
+  it('keeps the original single recovery for hand gestures, concern and other attitudes', () => {
+    const controls = [
+      { emotion: 'happy', attitude: 'laugh', gesture: 'wave' },
+      { emotion: 'happy', attitude: 'laugh', gesture: 'thinking' },
+      { emotion: 'happy', attitude: 'laugh', gesture: 'explain' },
+      { emotion: 'concerned', attitude: 'laugh', gesture: 'none' },
+      { emotion: 'happy', attitude: 'neutral', gesture: 'none' },
+    ] as const;
+    for (const cue of controls) {
+      const actor = new ActingController();
+      actor.cue(cue, 0);
+      const middle = advance(actor, 1300),
+        recovered = advance(actor, 1700, 60, 1300);
+      expect(recovered.headY).toBeGreaterThan(middle.headY);
+      expect(recovered).toMatchObject(cue);
+    }
+  });
+
+  it('clears chuckles immediately at existing ownership boundaries and retains short delivery/preview deadlines', () => {
+    const cue = {
+      requestId: 'chuckle',
+      messageId: 'm',
+      segmentId: 1,
+      emotion: 'happy',
+      attitude: 'laugh',
+      gesture: 'none',
+    } as const;
+    for (const fps of [30, 60, 120]) {
+      for (const boundary of ['clear', 'reset', 'blocked', 'error'] as const) {
+        const actor = new ActingController();
+        actor.cue(cue, 0);
+        const second = advance(actor, 1700, fps);
+        expect(second.headY).toBeLessThan(-0.1);
+        expect(actor.clearCue({ ...cue, segmentId: 2 })).toBe(false);
+        expect(actor.sample(1700, 0)).toEqual(second);
+        if (boundary === 'clear') expect(actor.clearCue(cue)).toBe(true);
+        else if (boundary === 'reset') actor.reset(1700);
+        else actor.setState(boundary, 1700);
+        expect(actor.sample(1700, 0)).toMatchObject({
+          active: false,
+          headY: 0,
+          headZ: 0,
+          bodyX: 0,
+          bodyZ: 0,
+        });
+      }
+      for (const mode of ['preview', 'delivery'] as const) {
+        const actor = new ActingController();
+        if (mode === 'preview') actor.preview('laugh', 0);
+        else actor.cue({ ...cue, stage: 'delivery' }, 0);
+        const second = advance(actor, 1700, fps);
+        expect(second.headY).toBeLessThan(-0.1);
+        expect(advance(actor, reactionDuration('laugh'), fps, 1700).active).toBe(false);
+      }
+    }
+  });
+
   it('gives concerned teasing an attentive small bow before reconnecting on the same finite clock', () => {
     const paths = [30, 60, 120].map((fps) => {
       const actor = new ActingController();

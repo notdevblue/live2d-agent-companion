@@ -123,6 +123,14 @@ const accentTime = (preset: ActingPreset, t: number, variant: number): number =>
   variant && ['happy', 'laugh', 'shy', 'tease', 'angry', 'confused'].includes(preset)
     ? Math.max(0, (t - 0.18) / 1.12)
     : t;
+// Two unequal local chuckles, on the existing finite variant clock.
+const chuckleBeats = (t: number, variant: number): { first: number; second: number } => {
+  const local = accentTime('laugh', t, variant);
+  return {
+    first: beat(local, 0.15, 0.25, 0.15, 0.5),
+    second: beat(local, 1.25, 0.18, 0.12, 0.5),
+  };
+};
 // Compound emotions get their own first beat before the attitude takes over.
 // Target eyelids and blink suppression must consume this same delayed clock.
 const attitudeTime = (reaction: Reaction, t: number): number =>
@@ -671,8 +679,13 @@ export class ActingController {
       else if (
         reaction.preset === 'laugh' &&
         (reaction.emotion === 'happy' || reaction.emotion === 'neutral')
-      )
-        torso = { x: -direction * 0.26, z: direction * 0.28 };
+      ) {
+        const { first, second } = chuckleBeats(age / 1000, reaction.variant);
+        torso = {
+          x: direction * (-0.26 + 0.14 * first - 0.1 * second),
+          z: direction * (0.28 - 0.18 * first + 0.02 * second),
+        };
+      }
     }
     const torsoWeight = torso ? Math.min(1, weight + maintenance.weight) : 0;
     const bodyX = this.pose.headX * 0.65 + idleWeightShift * scale;
@@ -980,6 +993,18 @@ export class ActingController {
       target.headY += 0.07 * listen;
       target.lean -= 0.03 * listen;
       target.browY += 0.08 * listen;
+    }
+    if (
+      reaction.preset === 'laugh' &&
+      reaction.gesture === 'none' &&
+      (reaction.emotion === 'happy' || reaction.emotion === 'neutral')
+    ) {
+      const { first, second } = chuckleBeats(t, reaction.variant);
+      const local = accentTime('laugh', t, reaction.variant);
+      const direction = reaction.variant ? -1 : 1;
+      target.headY = -0.24 * first - 0.14 * second;
+      target.headZ =
+        direction * (0.1 * (1 - smooth((local - 2.6) / 0.6)) + 0.24 * first - 0.17 * second);
     }
     if (shyLaugh) {
       // Emotion supplies the first glance; attitude supplies the delayed laugh.
