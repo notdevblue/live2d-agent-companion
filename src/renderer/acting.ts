@@ -918,21 +918,23 @@ export class ActingController {
       const worry = 1 - smooth((local - 1.05) / 0.6);
       target.browInner = 0.5 + 0.22 * worry;
       target.browY = 0.12;
-      // This rig needs a genuinely downturned mouth before the playful beat.
+      // A downturned mouth leads into closed-mouth relief at the playful beat.
       // The legacy smile accent is unscaled, so gate this stronger local face
       // explicitly when quiet/reduced motion is selected.
-      target.smile = (-0.18 - 0.64 * worry) * Math.min(1, this.scale() / 0.65);
+      target.smile = (0.4 - 1.22 * worry) * Math.min(1, this.scale() / 0.65);
       target.eyeSmile = 0.05;
       // Preserve the source eye closures while changing each lid's neutral shape.
-      target.eyeL = (0.64 * target.eyeL) / (reaction.variant ? 0.9 : 0.72);
-      target.eyeR = (0.78 * target.eyeR) / (reaction.variant ? 0.66 : 0.98);
+      target.eyeL = (0.88 * target.eyeL) / (reaction.variant ? 0.9 : 0.72);
+      target.eyeR = (0.96 * target.eyeR) / (reaction.variant ? 0.66 : 0.98);
       const anticipation = beat(local, 0.05, 0.3, 0.65, 0.55);
       const reconnect = smooth((local - 1.2) / 1.0);
       target.headZ = 0.3 + 0.12 * anticipation - 0.16 * reconnect;
-      target.headX = -0.18 * anticipation;
-      target.headY = -0.42 + 0.3 * reconnect;
-      target.gazeX = -0.5 * (1 - reconnect) + 0.12 * beat(local, 2.2, 0.2, 0.2, 0.4);
-      target.gazeY = -0.28 * (1 - 0.8 * reconnect);
+      // Keep the initial concern attentive instead of saturating a bowed,
+      // half-lidded pose; the same finite clock still reconnects into the wink.
+      target.headX = -0.08 * anticipation;
+      target.headY = -0.18 + 0.1 * reconnect;
+      target.gazeX = -0.12 * (1 - reconnect) + 0.12 * beat(local, 2.2, 0.2, 0.2, 0.4);
+      target.gazeY = -0.12 * (1 - 0.8 * reconnect);
       target.lean = -0.04 + 0.12 * reconnect;
     }
     if (

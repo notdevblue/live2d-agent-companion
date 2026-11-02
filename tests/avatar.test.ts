@@ -342,7 +342,7 @@ describe('semantic expression afterglow — FR-L2D-004/006/007', () => {
     vi.setSystemTime(2000);
     avatar.cue({ ...cue, messageId: 'second', segmentId: 2, emotion: 'confused', gesture: 'none' });
   });
-  it('keeps the selected happy eye as a brief accent while preserving custom markings and other parameters', () => {
+  it('holds the selected happy eye through the welcome, then exposes the open-eyed face while preserving custom layers', () => {
     for (const happy of [undefined, '＞＜', 'custom-happy']) {
       const { avatar, runtime } = avatarWithMaps({ happy });
       if (happy === 'custom-happy')
@@ -356,7 +356,8 @@ describe('semantic expression afterglow — FR-L2D-004/006/007', () => {
         );
       avatar.cue({ ...cue, gesture: 'none', attitude: 'neutral', stage: 'semantic' });
       expect(runtime.mixer.sample(700).some((l) => l.name.endsWith(':eyes'))).toBe(!!happy);
-      const later = runtime.mixer.sample(1600);
+      expect(runtime.mixer.sample(1700).some((l) => l.name.endsWith(':eyes'))).toBe(!!happy);
+      const later = runtime.mixer.sample(2400);
       expect(later.some((l) => l.name.endsWith(':eyes'))).toBe(false);
       if (happy === 'custom-happy') {
         expect(later.flatMap((l) => l.parameters.map((p) => p.index)).sort()).toEqual(
@@ -366,9 +367,9 @@ describe('semantic expression afterglow — FR-L2D-004/006/007', () => {
       expect(
         (avatar as unknown as { inventory: ModelInventory }).inventory.expressionMap.happy,
       ).toBe(happy);
-      expect(runtime.actor.sample(1600, 0).active).toBe(true);
+      expect(runtime.actor.sample(2400, 0).active).toBe(true);
       avatar.clearCue(cue);
-      expect(runtime.mixer.sample(1600)).toEqual([]);
+      expect(runtime.mixer.sample(2400)).toEqual([]);
     }
   });
   it('allows only the saved blush marker in direct petting and preserves custom props and authored ownership', () => {

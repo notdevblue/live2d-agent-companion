@@ -122,7 +122,7 @@ const scenes = [
     emotion: 'happy',
     attitude: 'neutral',
     savedHappy: true,
-    times: [700, 1500, 2000, 3000, 8000, 16200],
+    times: [700, 1500, 2000, 2300, 3000, 8000, 16200],
   },
   { name: 'clear', emotion: 'happy', gesture: 'explain', clearAt: 8050, times: [8000, 8100] },
   {
@@ -401,6 +401,15 @@ void app.whenReady().then(async () => {
         sample('concerned-tease', 700).values.key6 === 0,
     );
     check(
+      'worried teasing starts attentive and frowning, then gives a closed-mouth playful reply',
+      sample('concerned-tease', 700).values.ParamMouthForm < -0.5 &&
+        sample('concerned-tease', 700).values.ParamEyeLOpen > 0.75 &&
+        sample('concerned-tease', 3000).values.ParamMouthForm > 0.15 &&
+        sample('concerned-tease', 3000).values.ParamMouthOpenY === 0 &&
+        sample('concerned-tease', 3000).values.key13 > 0.5 &&
+        sample('concerned-tease', 3000).values.Movement2 === 0,
+    );
+    check(
       'tease eye art releases independently of the sweat marking',
       sample('concerned-tease', 1400).values.key6 === 0 &&
         sample('concerned-tease', 1400).values.key13 > 0.5,
@@ -417,8 +426,9 @@ void app.whenReady().then(async () => {
     check(
       'saved happy eye accent gives way to the existing open-eyed joy without a new hand',
       sample('saved-joy', 700).values.key5 > 0.5 &&
-        sample('saved-joy', 1500).values.key5 === 0 &&
-        sample('saved-joy', 2000).values.EyeSmile > 0.1 &&
+        sample('saved-joy', 1500).values.key5 > 0.5 &&
+        sample('saved-joy', 2300).values.key5 === 0 &&
+        sample('saved-joy', 3000).values.EyeSmile > 0.1 &&
         sample('saved-joy', 3000).values.ParamEyeLOpen > 0.5 &&
         sample('saved-joy', 3000).values.Movement2 === 0 &&
         !sample('saved-joy', 16200).frame.active,
@@ -456,10 +466,11 @@ void app.whenReady().then(async () => {
         sample('angry', 1000).values.ParamMouthOpenY === 0,
     );
     check(
-      'concerned teasing lowers the actual head before reconnecting without an authored hand',
-      sample('concerned-tease', 1000).values.ParamAngleY < -12 &&
+      'concerned teasing uses a restrained actual bow, then reconnects without an authored hand',
+      sample('concerned-tease', 1000).values.ParamAngleY > -12 &&
+        sample('concerned-tease', 1000).values.ParamAngleY < -4 &&
         sample('concerned-tease', 3000).values.ParamAngleY >
-          sample('concerned-tease', 1000).values.ParamAngleY + 5 &&
+          sample('concerned-tease', 1000).values.ParamAngleY + 2 &&
         sample('concerned-tease', 3000).pose.phase === 'none',
     );
     check(

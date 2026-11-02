@@ -785,7 +785,8 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
       expect(worry.eyeR).toBeGreaterThan(0.75);
       expect(worry.smile).toBeLessThan(-0.7);
       expect(worry.browInner).toBeGreaterThan(0.4);
-      expect(worry.gazeX).toBeLessThan(-0.4);
+      expect(worry.gazeX).toBeLessThan(-0.1);
+      expect(worry.gazeX).toBeGreaterThan(-0.2);
       // Put an idle blink under the delayed wink. Both eyes must not close.
       (actor as unknown as { blinkAt: number }).blinkAt = 1850;
       const wink = advance(actor, 1900, fps, 800);
@@ -893,7 +894,11 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
         const recovered = advance(actor, 2800, fps, time);
         expect(recovered.eyeL).toBeGreaterThan(0.6);
         expect(recovered.eyeR).toBeGreaterThan(0.75);
-        expect(recovered.smile).toBeLessThan(-0.1);
+        expect(recovered.smile).toBeGreaterThan(0.3);
+        expect(recovered.mouthOpen).toBe(0);
+        const held = advance(actor, 8000, fps, 2800);
+        expect(held.smile).toBeLessThan(-0.1);
+        expect(held.browInner).toBeGreaterThan(0.3);
       }
     }
   });
@@ -1072,16 +1077,18 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     }
   });
 
-  it('bows and averts a concerned teasing cue before reconnecting on the same finite clock at every frame rate', () => {
+  it('gives concerned teasing an attentive small bow before reconnecting on the same finite clock', () => {
     const paths = [30, 60, 120].map((fps) => {
       const actor = new ActingController();
       actor.cue({ emotion: 'concerned', attitude: 'tease', gesture: 'none' }, 0);
       const away = advance(actor, 700, fps);
-      expect(away.headY).toBeLessThan(-0.38);
-      expect(away.headX).toBeLessThan(-0.3);
+      expect(away.headY).toBeLessThan(-0.15);
+      expect(away.headY).toBeGreaterThan(-0.27);
+      expect(away.headX).toBeLessThan(-0.15);
+      expect(away.headX).toBeGreaterThan(-0.3);
       const reconnect = advance(actor, 2600, fps, 700);
-      expect(reconnect.headY).toBeGreaterThan(away.headY + 0.2);
-      expect(reconnect.gazeX).toBeGreaterThan(away.gazeX + 0.3);
+      expect(reconnect.headY).toBeGreaterThan(away.headY + 0.06);
+      expect(reconnect.gazeX).toBeGreaterThan(away.gazeX + 0.13);
       expect(reconnect).toMatchObject({ emotion: 'concerned', attitude: 'tease', gesture: 'none' });
       expect(advance(actor, reactionLifetime('tease'), fps, 2600).active).toBe(false);
       return { away, reconnect };
@@ -1090,6 +1097,93 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
       for (const phase of ['away', 'reconnect'] as const)
         for (const key of [...motionKeys, 'offsetY', 'breath', 'mouthOpen'] as const)
           expect(path[phase][key]).toBeCloseTo(paths[0]![phase][key], 7);
+  });
+
+  it('connects attentive concern to the delayed wink, closed-mouth relief and concerned hold at every intensity', () => {
+    for (const [intensity, intensityScale] of [
+      ['quiet', 0.35],
+      ['normal', 0.65],
+      ['expressive', 1],
+    ] as const)
+      for (const reducedMotion of [false, true])
+        for (const variant of [0, 1]) {
+          const reducedScale = reducedMotion ? 0.18 : 1;
+          const scale = intensityScale * reducedScale;
+          const faceScale = Math.min(1, scale / 0.65);
+          const cue = {
+            requestId: 'attentive-concern',
+            messageId: 'm',
+            segmentId: 1,
+            emotion: 'concerned',
+            attitude: 'tease',
+            gesture: 'none',
+          } as const;
+          const paths = [30, 60, 120].map((fps) => {
+            const actor = new ActingController(),
+              idle = new ActingController();
+            for (const a of [actor, idle]) a.configure({ intensity, reducedMotion });
+            if (variant) {
+              actor.cue(cue, 0);
+              actor.reset(0);
+            }
+            actor.cue(cue, 0);
+            const worry = advance(actor, 1000, fps),
+              baseline = advance(idle, 1000, fps);
+            expect(worry.smile).toBeLessThan(-0.7 * faceScale);
+            expect(worry.browInner).toBeGreaterThan(0.65 * scale);
+            expect(worry.eyeL).toBeGreaterThan(1 - 0.13 * reducedScale);
+            expect(worry.eyeR).toBeGreaterThan(1 - 0.05 * reducedScale);
+            // The small downward/side glance still reads as concern while
+            // leaving room below the existing .7 head clamp.
+            expect(worry.headX).toBeGreaterThan(-0.55 * scale);
+            expect(worry.headX).toBeLessThan(-0.3 * scale);
+            expect(worry.headY).toBeGreaterThan(-0.4 * scale);
+            expect(worry.headY).toBeLessThan(-0.25 * scale);
+            expect(worry.breath).toBe(baseline.breath);
+            expect(worry.offsetY).toBe(baseline.offsetY);
+            const winkAt = variant ? 1800 : 2000;
+            (actor as unknown as { blinkAt: number }).blinkAt = winkAt - 50;
+            const wink = advance(actor, winkAt, fps, 1000);
+            const closed = wink[variant ? 'eyeR' : 'eyeL'],
+              open = wink[variant ? 'eyeL' : 'eyeR'];
+            expect(open - closed).toBeGreaterThan(0.7 * reducedScale);
+            expect(open).toBeGreaterThan(1 - 0.13 * reducedScale);
+            expect(closed).toBeLessThan(1 - 0.85 * reducedScale);
+            const relief = advance(actor, 3000, fps, winkAt);
+            expect(relief.smile).toBeGreaterThan(0.35 * faceScale);
+            expect(relief.eyeL).toBeGreaterThan(1 - 0.13 * reducedScale);
+            expect(relief.eyeR).toBeGreaterThan(1 - 0.05 * reducedScale);
+            const held = advance(actor, 8000, fps, 3000);
+            expect(held.smile).toBeLessThan(-0.14 * scale);
+            expect(held.browInner).toBeGreaterThan(0.6 * scale);
+            for (const frame of [worry, wink, relief, held])
+              expect(frame).toMatchObject({
+                emotion: 'concerned',
+                attitude: 'tease',
+                gesture: 'none',
+                active: true,
+                mouthOpen: 0,
+                variant,
+              });
+            const expired = advance(actor, reactionLifetime('tease'), fps, 8000);
+            expect(expired).toMatchObject({ active: false, smile: 0, browInner: 0, mouthOpen: 0 });
+            expect(expired.eyeL).toBe(expired.blink);
+            expect(expired.eyeR).toBe(expired.blink);
+            return [worry, wink, relief, held, expired];
+          });
+          for (const path of paths.slice(1))
+            for (let i = 0; i < path.length; i++)
+              for (const key of [
+                ...motionKeys,
+                'eyeL',
+                'eyeR',
+                'smile',
+                'browInner',
+                'breath',
+                'offsetY',
+              ] as const)
+                expect(path[i]![key]).toBeCloseTo(paths[0]![i]![key], 7);
+        }
   });
 
   it('lets eyes counter-look before the torso settles and retains a side posture within the same slot', () => {

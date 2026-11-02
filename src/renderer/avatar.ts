@@ -492,7 +492,7 @@ export class Avatar {
           : cue.attitude === 'tease'
             ? 1100
             : cue.emotion === 'happy'
-              ? 1500
+              ? 2300
               : undefined,
     );
     // Delivery tone does not override an explicit "no physical gesture" decision.
