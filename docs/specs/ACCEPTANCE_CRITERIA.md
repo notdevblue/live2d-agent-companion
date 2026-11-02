@@ -111,9 +111,17 @@
 - 멈춤/상단 이탈/Shift 해제/버튼 해제/캡처 취소/blur는 짧은 여운 후 복귀로 끝난다. 해제는 최대 .3초 유지+.75초 fade이며 최초 접촉의 12초 한도 안에 끝난다. 중복 종료 이벤트로 여운을 재시작하지 않고 지속 입력도 12초 안에 끝난다. 요청/승인·오류·설정 해제/초기화는 즉시 정리한다. 강도·움직임 줄이기, 특수 눈·authored/physics 채널 우선순위와 30/60/120fps 시간을 유지한다. 직접 입력 종료 후 기존 메시지 여운을 재판단·재시작하지 않는다.
 - 접촉한 로컬 좌표의 좌/우·상/하가 고개·시선 방향에 반영되고 범위 밖·비유한 좌표를 제한한다. 잔여 반응이 없는 새 접촉은 이전 위치를 초기화한다. 복귀 도중 재접촉은 기존 방향·몸 반응을 보존하고 새 좌표로 연속 전환한다. 접촉 해제 후 방향 기여도 같은 envelope로 사라진다. 홍조는 사용자 `embarrassed` 자산의 안전한 표시만 사용하고 옷/소품·physics 출력·authored 채널을 넣지 않는다. 기존 홍조와 중복 가산하지 않는다.
 
-- 유효한 위치/알파 적중의 누적 8px 직접 stroke에서만 검증된 원본 가슴 손 pair를 시작한다. 의미 `gesture=none`만으로 시작하지 않는다. 다른 손/기존 모션을 빼앗지 않고 사용자 custom/빈 매핑·움직임 줄이기·늦은 접촉·부족한 자산은 몸/얼굴만 반응한다.
+- 직접 쓰다듬기의 손은 유효한 위치/알파 적중의 누적8px stroke에서만 검증된 원본 가슴 손 pair를 시작한다. 활성 의미 cue의 `gesture=none`만으로 시작하지 않는다. 별도 local idle owner는 다음 수락 조건을 따른다. 다른 손/기존 모션을 빼앗지 않고 사용자 custom/빈 매핑·움직임 줄이기·늦은 접촉·부족한 자산은 몸/얼굴만 반응한다.
 - 손 진입 중 해제는 마지막 렌더 시각의 원본 진입을 역재생하고 hold 이후에는 원본 복귀를 쓴다. 해제 최대 1.05초·정지 .9초·최초 12초 안에 손과 몸이 끝난다. 정지 이벤트·중복 해제로 기한을 늘리지 않는다. 손이 복귀하는 중 새 접촉도 같은 기존 손 복귀와 기한을 유지한다.
 - 재접촉 첫 프레임의 MVP·고개·눈이 초기값으로 튀지 않는다. 새 stroke 없는 반복 begin/end가 기존 몸 fade를 재활용해 연장하지 않는다. scoped 메시지 clear는 직접 접촉의 손/얼굴을 지우지 않고 새 cue/요청·승인·오류·설정 해제는 즉시 정리한다. 실제 SDK에서 조기 해제·정지·12초·custom/접근성·손 소유권·재접촉/무 stroke·scoped clear를 확인한다.
+
+### 독립된 로컬 대기 손 (`FR-L2D-010`)
+
+- expressive/reducedMotion=false·idle·actor inactive·빈 pose/gesture/state gesture·manager 종료에서만 기존 gaze의 네 번째 슬롯 edge가 한 번 원본 가슴 pair를 시작한다. 새 랜덤 타이머/manager/큐는 없고 진입1133ms→유지600ms→복귀1017ms, 총2750ms에 끝난다. 30/60/120fps와 큰 프레임 건너뜀에서도 한 edge의 재시작·과거 edge 재생이 없다. 기존 의미 손 cooldown과12초 수명은 바꾸지 않는다.
+- active semantic none·thinking/working·blocked/승인·오류·기존 손/모션·pet 손/잔여 반응/held contact는 차단한다. 8px 전 정지 접촉도 차단하고, 부적격 edge를 소비해 cue 종료·설정 변경 직후 자동 재생하지 않는다. normal/quiet/reduced·custom/빈 wave 매핑·부족한 자산/입력/잘못된 endpoint에서 손이 없다. IDLE의 전용 `Movement2`/`Param59~62` 소유는 차단하고 기본 공유 `Param56/57`과 구분한다.
+- `localIdleGesture` 진단과 semantic gesture를 분리하고 actor는 inactive/none으로 남는다. 고개/시선의 손 방향 보간만 추가하며 얼굴/입/호흡/rootY와 physics 출력은 보존한다. 실제 MOC의 entry/hold/exit/최종 endpoint·509개 범위·selector/소품 비침범·alpha를 검사한다. scalar 입력만으로 시각 품질을 판정하지 않는다.
+- idle 손 중 새 pet begin/stroke/end는 기존 손·기한을 재시작·이관·연장·정리하지 않는다. 그 접촉은 몸/얼굴만 반응하며 직접 접촉 방향이 idle 고개/시선보다 우선한다. 자연 종료 직후 draw 사이의 새 접촉도 stale idle flag에 막히지 않고 기존 pet 손 경로를 쓸 수 있다. scoped 메시지 clear는 독립 idle을 보존하고 수락된 새 cue/승격·요청/상태·승인·오류·설정 축소·reset/preview/dispose는 정리한다. 무시된 stale cue는 idle을 지우지 않는다.
+- 실제 production renderer에서 idle 시작→자연 종료·창 위치 불변·설정 보존과 기본 런처 재실행을 확인한다. 합성 cue SDK/영상과 production 실행을 구분하고 provider/Jev 호출0·TTS 제외·물리 마우스/OS 재부팅·재로그인 미수행을 명시한다. 현재 근거와 수치는 [구현 상태](../development/IMPLEMENTATION_STATUS.md#현재-검증영상)와 [Grok 검토](../ux/GROK_VTUBER_REVIEW.md#독립된-expressive-대기-손동작-source-15)를 따른다.
 
 ### Grok 시각 연기 검토 (`FR-L2D-009`)
 
@@ -126,7 +134,7 @@
 - 걱정+장난은 약 .9초 준비 감정 뒤 wink를 내고 눈꺼풀과 idle-blink 억제가 같은 지연 시계를 쓴다. 화남의 눈은 유지 중 더 좁게 보이되 의미 반응·미리보기/delivery의 마지막 fade에서 중립으로 접근한다. 기한 직전까지 반쯤 닫혀 있다가 마지막 한 프레임에 열리지 않는다. 30/60/120fps·강도/접근성·clear/기한과 실제 SDK 종료 직전 값을 확인한다.
 
 - 기존 불규칙 대기 시선 슬롯마다 눈→고개→지연 상체의 한 번의 수평 자세 이동을 제공하고 별도 반복 시계·상하 offset/호흡 증폭을 만들지 않는다. 순수 기쁨/웃음의 손 없는 반응은 1.85~3.7초의 한 번의 청자 확인 시선 뒤 약간 비스듬한 유지로 돌아오며 수줍음/명시적 손의 시계는 보존한다.
-- 초기 기쁨/웃음은 기존 시계 안의 한 번의 몸 접근 뒤 안정하고, 화남은 옆으로 돌기→눈 재접촉 뒤 측면 자세/닫힌 입을 유지한다. 걱정 섞인 장난의 숙임→재접촉은 wink 시계를 보존한다. `gesture=none`에서 authored 팔 포즈를 만들지 않는다. 직접 접촉의 작은 접근도 같은 가중치로 해제하며 더 강한 기존 lean과 ambient offsetY/호흡을 보존한다. 실제 forward branch/physics 출력과 복귀를 SDK에서 확인한다.
+- 초기 기쁨/웃음은 기존 시계 안의 한 번의 몸 접근 뒤 안정하고, 화남은 옆으로 돌기→눈 재접촉 뒤 측면 자세/닫힌 입을 유지한다. 걱정 섞인 장난의 숙임→재접촉은 wink 시계를 보존한다. 활성 의미 cue의 `gesture=none`에서 authored 팔 포즈를 만들지 않는다. 활성 cue 없는 local idle owner와 구분한다. 직접 접촉의 작은 접근도 같은 가중치로 해제하며 더 강한 기존 lean과 ambient offsetY/호흡을 보존한다. 실제 forward branch/physics 출력과 복귀를 SDK에서 확인한다.
 
 - 대기 시선의 좌우 이동은 실제 rig의 고개 회전과 지연된 상체 호응으로 이어진다. 같은 불규칙 시계를 사용하며 고개/상체 범위를 강도·움직임 줄이기로 제한한다. SDK 수락 검사는 입력값뿐 아니라 physics 뒤의 `ParamAngleX`/`ParamBodyAngleX` 변화와 움직임 줄이기의 감소를 확인한다. 상하 offset·호흡·창 위치/배율을 이 변화의 대체 수단으로 키우지 않는다.
 - 쓰다듬기의 접촉 방향은 반대 방향의 기존 시선/고개/상체보다 우선하고, 해제 가중치가 0으로 갈 때 음수 입 형태를 포함한 원래 감정으로 연속 복귀한다. 0 가중치는 원래 frame을 그대로 보존한다.

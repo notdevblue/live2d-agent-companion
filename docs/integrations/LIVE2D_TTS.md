@@ -60,9 +60,19 @@ paired 손은 진입/복귀 클립 시간을 전체 의미 반응 기한에서 �
 
 ### 직접 쓰다듬기의 선택적 손 반응 (2026-11-03)
 
-기본 꺼짐의 직접 입력에만 기존 `PoseSequence`와 원본 가슴 손 pair를 함께 사용한다. 8px의 위치/알파 적중, idle·빈 손 소유권, 기본 wave 매핑, 정확한 7개 비물리 입력/endpoint와 진입1133ms·복귀1017ms를 모두 확인한다. 사용자 다른/빈 매핑·reducedMotion·늦은 접촉이면 몸/얼굴만 반응한다. 새 MotionManager나 의미 감정→자동 팔 연결은 없다.
+기본 꺼짐의 직접 입력에서는 기존 `PoseSequence`와 원본 가슴 손 pair를 함께 사용한다. Source 15의 독립 idle 손도 같은 자산 검증을 공유하며 아래와 같이 별도 소유권으로 처리한다. 8px의 위치/알파 적중, idle·빈 손 소유권, 기본 wave 매핑, 정확한 7개 비물리 입력/endpoint와 진입1133ms·복귀1017ms를 모두 확인한다. 사용자 다른/빈 매핑·reducedMotion·늦은 접촉이면 몸/얼굴만 반응한다. 새 MotionManager나 의미 감정→자동 팔 연결은 없다.
 
 부분 진입의 해제는 마지막 렌더 시각부터 원본 entry를 거꾸로 샘플하며 hold 이후는 원본 exit를 사용한다. 정지/해제/12초 예산 안에 끝내고 원본 selector 전환을 보존한다. 복귀 중 새 접촉은 기존 손·기한과 몸 fade를 유지하고, 새 유효 stroke에만 별도 몸 예산을 준다. 무 stroke begin/end는 이전 fade를 연장하지 않는다. 메시지 scoped clear와 직접 입력의 소유권을 분리하며 새 cue/요청·승인·오류·disable은 즉시 전체 정리한다. 실제 SDK 수락/기본 앱 재실행 근거는 [구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다.
+
+### 활성 cue와 분리된 로컬 대기 손 (Source 15, 2026-11-03)
+
+`5f33da8`은 기존 expressive 설정에서만 활성 cue 없는 idle에 유한한 가슴 손동작을 제공한다(`FR-L2D-010`). `gazeSlotId`의 네 번째 edge를 사용하고 비활성 조건에서도 edge를 소비한다. 놓친 edge를 큐에 넣거나 설정 변경/반응 만료 뒤 재생하지 않는다. 같은 `PoseSequence`의 원본 entry1133ms·hold600ms·exit1017ms, 총2750ms이며 별도 랜덤 타이머·MotionManager·Jev 호출·의미 손 cooldown 변경은 없다.
+
+idle/actor inactive·빈 pose/gesture/state gesture·manager 종료와 expressive/reducedMotion=false를 모두 요구한다. petting의 held contact는8px 전에도 차단하고 잔여 petting·pet 손이 있어도 시작하지 않는다. shared `chestPoseDefinition`이 canonical wave 매핑·7개 비물리 입력/범위/endpoint를 검사해 custom/명시적 빈 선택/없는 자산을 보존한다. 첫 IDLE이 전용 `Movement2`/`Param59~62`를 구동하면 자동 idle 손을 생략하고 공유 selector `Param56/57`만으로는 막지 않는다. 직접 petting과 명시적 semantic 손의 기존 우선권은 바꾸지 않는다.
+
+`localIdleGesture`는 의미 gesture와 별도인 owner/진단 상태다. **활성 의미 cue의 `gesture=none`은 계속 새 authored 손 없음**이며 이 대기 동작은 actor를 active로 만들지 않는다. 손 쪽 고개/시선은 진입·복귀에 맞춰 한 번 보간하고 직접 접촉보다 먼저 적용한다. 얼굴·입·호흡/rootY는 그대로다. idle 중 pet begin/end는 손을 재시작·이관·연장·정리하지 않고 기존 기한까지 둔다. 그 접촉은 몸/얼굴만 반응하고 자연 종료 후 새 접촉부터 기존 pet 손을 사용할 수 있다.
+
+수락된 새 cue/승격·요청·thinking/working·승인·오류·reset/preview/dispose와 normal/quiet/reduced 전환은 idle owner를 정리한다. stale cue와 끝난 메시지의 scoped clear는 독립 owner를 지우지 않는다. 전체590개 unit/contract·SDK67개 수락/236PNG·실제 production 시작→자연 종료·기본 앱 재실행/설정 보존과 영상15를 확인했다. 완료 점수는 Product14=73, Product15=78로85점 종료 조건에 미달이며 [검토·적용/복원](../ux/GROK_VTUBER_REVIEW.md)과 [구현 상태](../development/IMPLEMENTATION_STATUS.md)가 최신 근거다. 물리 마우스·OS 재부팅/재로그인·TTS 검증은 아니다.
 
 ## 전체 표현 점검 (2026-11-01)
 
@@ -84,7 +94,7 @@ paired 손은 진입/복귀 클립 시간을 전체 의미 반응 기한에서 �
 | attitude laugh      | 함께 웃는 농담·재미있는 관찰 → 눈웃음 연기                                       | 눈웃음                                                              |
 | attitude shy        | 수줍음, embarrassed 자산 우선                                                    | 수줍음                                                              |
 | attitude reassure   | 안심시키는 미소·작은 끄덕임                                                      | 안심                                                                |
-| gesture none        | 새 손 포즈 없음, 이전 메시지의 다른 손 포즈 정리                                 | 말투가 손 포즈를 추가하지 않음                                      |
+| gesture none        | 활성 cue의 새 손 포즈 없음, 이전 메시지의 다른 손 포즈 정리                                 | 말투가 손 포즈를 추가하지 않음                                      |
 | gesture wave        | 손 들기 → 유지 → 복귀                                                            | 인사                                                                |
 | gesture explain     | 검지 포즈 → 유지 → 복귀                                                          | 설명                                                                |
 | gesture thinking    | 생각 시선·고개 또는 사용자 생각 자산                                             | 생각, 응답 대기 상태에서도 사용                                     |
@@ -185,7 +195,7 @@ interface SpeechSynthesizer {
 
 ### 초기 감정과 접촉의 유한한 몸 반응
 
-기쁨·웃음은 기존 강조 구간에 한 번의 forward lean과 고개 반응을 만들고 3초 무렵 안정한다. 화남은 옆으로 고개/상체를 돌린 뒤 눈을 부분 재접촉하고 측면 자세를 남긴다. 걱정 섞인 장난의 초기 숙임/회피는 같은 wink 시계로 재접촉한다. `gesture=none`은 authored 팔 포즈를 시작하지 않는다. 여운 동안 새 body/발화 반복 시계는 만들지 않으며 기존 수명/clear·강도·움직임 줄이기를 적용한다.
+기쁨·웃음은 기존 강조 구간에 한 번의 forward lean과 고개 반응을 만들고 3초 무렵 안정한다. 화남은 옆으로 고개/상체를 돌린 뒤 눈을 부분 재접촉하고 측면 자세를 남긴다. 걱정 섞인 장난의 초기 숙임/회피는 같은 wink 시계로 재접촉한다. 활성 의미 cue의 `gesture=none`은 authored 팔 포즈를 시작하지 않는다. 활성 cue 없는 독립 idle owner와 구분한다. 여운 동안 새 body/발화 반복 시계는 만들지 않으며 기존 수명/clear·강도·움직임 줄이기를 적용한다.
 
 직접 쓰다듬기의 접근은 원래 lean에서 최소 .18의 목표로 같은 접촉 가중치만큼 보간한다. 더 강한 기존 양수 lean은 보존하고 해제 시 원래 자세로 돌아간다. 기존 Avatar의 negative `LeanInput` forward branch와 접근용 zoom/anchor 경로를 사용하므로 이 국소 자세의 MVP는 변한다. `offsetY`·ambient 호흡이나 OS 창 위치/저장 배율을 바꾼 것은 아니다. SDK 수락은 실제 forward branch 출력 `Param50`과 최종 해제를 확인하며, 움직임 줄이기에서는 lean을 줄이고 접근 zoom은 사용하지 않는다.
 
