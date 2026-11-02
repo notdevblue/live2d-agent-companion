@@ -44,7 +44,15 @@ unit/contract **539개**, typecheck·format·build·Mock desktop을 통과했다
 
 사용 흐름 영상은 `artifacts/grok-review/story-06-comparison.mp4`(59초·20fps·1180 paired frame)이며 같은 22개 앱 소스를 고정한 실제 연속 Avatar를 사용했다. 소스 해시와 `story-06-results.json`을 보존한다. 합성 cue·로컬 미리보기·무음이라는 범위는 같다. 실제 production renderer를 새 앱 프로세스에서 다시 검사해 설정 UI/저장·reload·직접 획·해제·활성 쓰다듬기→승인 즉시 정리·여운/clear·renderer reload·개인 설정 보존을 확인했다. `.tmp/afterglow-native/round-06-result.json`은 2026-11-03 03:04 KST의 성공 근거이며 provider/Jev 호출은 0이다. 이후 기본 런처로 정상 재실행했다. OS 재부팅/재로그인·물리 마우스 검증은 하지 않았다.
 
-여섯 번째 코드 커밋은 `28a9420`이다. Grok의 이 회차 종합 평가는 진행 중이며 85점 통과로 표시하지 않는다. 적용·복원은 같은 checkout의 build·기본 런처를 사용하며 추가 설정 이관은 없다. 이 회차만 복원하려면 해당 커밋을 revert한 뒤 build·기본 런처로 재실행한다.
+여섯 번째 코드 커밋은 `28a9420`이다. Grok의 이 회차 종합 평가는 **58/100**으로 85점 조건에 못 미쳤다. 초기 감정의 몸짓과 더 촘촘한 시각 근거를 후속으로 보강한다. 적용·복원은 같은 checkout의 build·기본 런처를 사용하며 추가 설정 이관은 없다. 이 회차만 복원하려면 해당 커밋을 revert한 뒤 build·기본 런처로 재실행한다.
+
+### 초기 몸 반응의 추가 보강 (2026-11-03)
+
+현재 기본 코드 `9754202`는 기쁨·웃음의 한 번 다가옴→안정, 화남의 옆으로 돌기→눈 재접촉, 걱정 섞인 장난의 숙임→재접촉과 접촉 중의 작은 접근을 보강한다. 자동 손/새 시계 없이 기존 타이밍을 사용하고, 강도·접근성·clear/승인·12초 접촉 제한을 보존한다. 기존 lean 경로의 내부 zoom/anchor는 이 접근에 따라 의도적으로 바뀌며 ambient offsetY/호흡·OS 창 위치/저장 배율은 같다.
+
+**543개 unit/contract·42개 실제 SDK 수락·102 PNG**, typecheck·format·build·Mock desktop을 통과했다. actual SDK의 509개 parameter 범위 오류/외부 요청 0, 감정 초기 0.3/1/2/3초와 유지/최종 복귀를 확인했다. 실제 몸 비교 40개 체크포인트도 [검토 문서](../ux/GROK_VTUBER_REVIEW.md#초기-감정의-몸짓-보강)에 기록했다. `round-07-expression-results.json`·`story-07-comparison.mp4`/`story-07-results.json`이 로컬 근거다. 기본 production renderer의 새 앱 프로세스에서 설정/합성 Shift stroke/해제/승인·clear/reload·원래 설정 해시 보존을 다시 통과했고, 이후 정상 런처의 프로세스 생존과 설정 보존을 확인했다. 근거는 `.tmp/afterglow-native/round-07-result.json`(2026-11-03 03:17 KST)이다. 물리 마우스·OS 재부팅/재로그인은 하지 않았다.
+
+Grok의 새 종합 평가는 진행 중이며 이전 완료 점수는 58/100이다. 이번 자료는 같은 59초 흐름을 균일 .5초 간격·큰 전신 이미지로 제시하므로 이전 관찰 조건과 구분한다. 적용은 build·같은 기본 런처 재실행, 이 회차 복원은 `9754202` revert 뒤 build·재실행이며 개인 설정 이관은 필요 없다.
 
 ## 감정 여운·추가 감정·쓰다듬기 (2026-11-02)
 
