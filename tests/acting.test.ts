@@ -294,7 +294,7 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
           expect(residue.smile).toBeLessThan(-0.2);
         } else {
           expect(accent.browInner).toBeGreaterThan(0.2);
-          expect(accent.headZ).toBeGreaterThan(0.1);
+          expect(Math.abs(accent.headZ)).toBeGreaterThan(0.08);
           expect(residue.browInner).toBeGreaterThan(0.08);
         }
         expect(residue).toMatchObject({ phase: 'afterglow', expressionWeight: 0.26 });
@@ -448,12 +448,14 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
   it('makes anger a half-eye beat and keeps angry/confused mouths closed through afterglow', () => {
     const actor = new ActingController();
     actor.cue({ emotion: 'angry', gesture: 'none' }, 0);
-    expect(advance(actor, 200).eyeL).toBeLessThan(0.62);
+    const attack = advance(actor, 200);
+    expect(attack.eyeL).toBeGreaterThan(0.75);
+    expect(attack.eyeL).toBeLessThan(0.9);
     const held = advance(actor, 700, 60, 200);
-    expect(held.eyeL).toBeCloseTo(0.55, 3);
+    expect(held.eyeL).toBeCloseTo(0.4, 3);
     expect(held.mouthOpen).toBe(0);
     const returned = advance(actor, 1500, 60, 700);
-    expect(returned.eyeL).toBeCloseTo(0.75, 3);
+    expect(returned.eyeL).toBeCloseTo(0.5, 3);
     expect(Math.abs(returned.headZ)).toBeGreaterThan(0.15);
     const reconnect = advance(actor, 2800, 60, 1500);
     expect(Math.abs(reconnect.headZ)).toBeLessThan(Math.abs(returned.headZ) * 0.7);
@@ -465,16 +467,19 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     }
   });
 
-  it('emphasizes confusion briefly, then glances aside and returns the head to neutral', () => {
+  it('gives confusion one recoil and opposite curious tilt instead of leaving its body unchanged', () => {
     const actor = new ActingController();
     actor.cue({ emotion: 'confused', gesture: 'none' }, 0);
-    const emphasis = advance(actor, 1000);
-    expect(emphasis.headZ).toBeGreaterThan(0.15);
-    const glance = advance(actor, 1800, 60, 1000);
-    expect(glance.gazeX).toBeGreaterThan(emphasis.gazeX + 0.18);
-    expect(Math.abs(glance.headZ)).toBeLessThan(0.03);
-    const settled = advance(actor, 2600, 60, 1800);
-    expect(Math.abs(settled.headZ)).toBeLessThan(0.002);
+    const emphasis = advance(actor, 800);
+    expect(emphasis.headX).toBeLessThan(-0.3);
+    expect(emphasis.bodyX).toBeLessThan(-0.1);
+    expect(emphasis.lean).toBeLessThan(-0.08);
+    expect(emphasis.headZ).toBeLessThan(-0.08);
+    const settled = advance(actor, 2300, 60, 800);
+    expect(settled.headX).toBeGreaterThan(0.1);
+    expect(settled.gazeX).toBeGreaterThan(emphasis.gazeX + 0.3);
+    expect(settled.headZ).toBeGreaterThan(0.25);
+    expect(Math.abs(settled.lean)).toBeLessThan(Math.abs(emphasis.lean) * 0.5);
     expect(settled.eyeL).toBeCloseTo(0.74, 3);
     expect(settled.eyeR).toBeGreaterThan(0.95);
   });
@@ -718,24 +723,31 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
       actor.cue(cue, 0);
       actor.reset(0);
       actor.cue(cue, 0);
-      const wink = advance(actor, 900, fps);
+      const worry = advance(actor, 800, fps);
+      expect(worry.eyeL).toBeGreaterThan(0.6);
+      expect(worry.eyeR).toBeGreaterThan(0.75);
+      expect(worry.smile).toBeLessThan(-0.7);
+      expect(worry.browInner).toBeGreaterThan(0.4);
+      expect(worry.gazeX).toBeLessThan(-0.4);
+      // Put an idle blink under the delayed wink. Both eyes must not close.
+      (actor as unknown as { blinkAt: number }).blinkAt = 1850;
+      const wink = advance(actor, 1900, fps, 800);
       expect(wink).toMatchObject({ emotion: 'concerned', attitude: 'tease', variant: 1 });
       expect(wink.eyeR).toBeLessThan(0.04);
       expect(wink.eyeL).toBeGreaterThan(0.6);
       expect(wink.browInner).toBeGreaterThan(0.3);
-      expect(wink.gazeX).toBeLessThan(-0.4);
-      const returned = advance(actor, 1600, fps, 900);
+      const returned = advance(actor, 2500, fps, 1900);
       expect(returned.eyeR).toBeGreaterThan(0.76);
-      const reconnect = advance(actor, 2600, fps, 1600);
-      expect(Math.abs(reconnect.gazeX)).toBeLessThan(Math.abs(wink.gazeX) * 0.4);
+      const reconnect = advance(actor, 3000, fps, 2500);
+      expect(Math.abs(reconnect.gazeX)).toBeLessThan(Math.abs(worry.gazeX) * 0.4);
       expect(reconnect.browInner).toBeGreaterThan(0.3);
       expect(reconnect.headZ).toBeGreaterThan(0.1);
-      actor.setState('blocked', 2600);
-      expect(actor.sample(2600, 0)).toMatchObject({ eyeL: 1, eyeR: 1, headZ: 0, gazeX: 0 });
-      return { wink, returned, reconnect };
+      actor.setState('blocked', 3000);
+      expect(actor.sample(3000, 0)).toMatchObject({ eyeL: 1, eyeR: 1, headZ: 0, gazeX: 0 });
+      return { worry, wink, returned, reconnect };
     });
     for (const path of paths.slice(1))
-      for (const phase of ['wink', 'returned', 'reconnect'] as const)
+      for (const phase of ['worry', 'wink', 'returned', 'reconnect'] as const)
         for (const key of [...motionKeys, 'eyeL', 'eyeR', 'browInner'] as const)
           expect(path[phase][key]).toBeCloseTo(paths[0]![phase][key], 7);
   });
@@ -814,13 +826,13 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
           actor.reset(0);
         }
         actor.cue(cue, 0);
-        const time = variant ? 900 : 1100;
+        const time = variant ? 1800 : 2000;
         const frame = advance(actor, time, fps);
         expect(frame).toMatchObject({ emotion: 'concerned', attitude: 'tease', variant });
         expect(frame[variant ? 'eyeR' : 'eyeL']).toBeLessThan(0.04);
         expect(frame[variant ? 'eyeL' : 'eyeR']).toBeGreaterThan(0.6);
         expect(frame.browInner).toBeGreaterThan(0.3);
-        const recovered = advance(actor, 1900, fps, time);
+        const recovered = advance(actor, 2800, fps, time);
         expect(recovered.eyeL).toBeGreaterThan(0.6);
         expect(recovered.eyeR).toBeGreaterThan(0.75);
         expect(recovered.smile).toBeLessThan(-0.1);
@@ -1020,6 +1032,167 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
       for (const phase of ['away', 'reconnect'] as const)
         for (const key of [...motionKeys, 'offsetY', 'breath', 'mouthOpen'] as const)
           expect(path[phase][key]).toBeCloseTo(paths[0]![phase][key], 7);
+  });
+
+  it('keeps calibrated angry lids readable at every intensity with reduced motion and an exact deadline', () => {
+    for (const [intensity, scale] of [
+      ['quiet', 0.35],
+      ['normal', 0.65],
+      ['expressive', 1],
+    ] as const)
+      for (const reducedMotion of [false, true]) {
+        const cue = {
+          requestId: 'stern',
+          messageId: 'm',
+          segmentId: 1,
+          emotion: 'angry',
+          gesture: 'none',
+        } as const;
+        const expected = 1 + (0.5 + (0.35 - 0.5) * scale - 1) * (reducedMotion ? 0.18 : 1);
+        const frames = [30, 60, 120].map((fps) => {
+          const actor = new ActingController();
+          actor.configure({ intensity, reducedMotion });
+          actor.cue(cue, 0);
+          const accent = advance(actor, 600, fps);
+          expect(accent.eyeL).toBeCloseTo(1 - 0.6 * (reducedMotion ? 0.18 : 1), 3);
+          const held = advance(actor, 8000, fps, 600);
+          expect(held.eyeL).toBeCloseTo(expected, 6);
+          expect(held.eyeR).toBeCloseTo(expected, 6);
+          expect(held.mouthOpen).toBe(0);
+          expect(advance(actor, reactionLifetime('angry'), fps, 8000)).toMatchObject({
+            active: false,
+            eyeL: 1,
+            eyeR: 1,
+            mouthOpen: 0,
+          });
+          return held;
+        });
+        for (const frame of frames.slice(1))
+          for (const key of [...motionKeys, 'eyeL', 'eyeR', 'mouthOpen'] as const)
+            expect(frame[key]).toBeCloseTo(frames[0]![key], 7);
+        const cleared = new ActingController();
+        cleared.configure({ intensity, reducedMotion });
+        cleared.cue(cue, 0);
+        advance(cleared, 8000);
+        cleared.clearCue(cue);
+        expect(cleared.sample(8000, 0)).toMatchObject({ active: false, eyeL: 1, eyeR: 1 });
+      }
+  });
+
+  it('releases angry lids continuously before semantic, delivery and preview deadlines at every frame rate', () => {
+    for (const mode of ['semantic', 'delivery', 'preview'] as const)
+      for (const intensity of ['quiet', 'normal', 'expressive'] as const)
+        for (const reducedMotion of [false, true]) {
+          const deadline =
+            mode === 'semantic' ? reactionLifetime('angry') : reactionDuration('angry');
+          const paths = [30, 60, 120].map((fps) => {
+            const actor = new ActingController();
+            actor.configure({ intensity, reducedMotion });
+            if (mode === 'preview') actor.preview('angry', 0);
+            else actor.cue({ emotion: 'angry', gesture: 'none', stage: mode }, 0);
+            let clock = 0;
+            const at = (time: number): ActingFrame => {
+              let frame = actor.sample(clock, 0);
+              while (clock + 1000 / fps < time - 1e-7) {
+                clock += 1000 / fps;
+                frame = actor.sample(clock, 1 / fps);
+              }
+              if (time > clock) frame = actor.sample(time, (time - clock) / 1000);
+              clock = time;
+              return frame;
+            };
+            const earlyTail = at(deadline - 600),
+              near = at(deadline - 100),
+              last = at(deadline - 1),
+              end = at(deadline),
+              after = at(deadline + 100);
+            for (const key of ['eyeL', 'eyeR'] as const) {
+              expect(near[key]).toBeGreaterThan(earlyTail[key]);
+              expect(last[key]).toBeGreaterThan(near[key]);
+              expect(last[key]).toBeGreaterThan(0.995);
+              expect(Math.abs(end[key] - last[key])).toBeLessThan(0.002);
+              expect(after[key]).toBeGreaterThanOrEqual(end[key]);
+            }
+            expect(end.active).toBe(false);
+            expect(after.mouthOpen).toBe(0);
+            return [earlyTail, near, last, end, after];
+          });
+          for (const path of paths.slice(1))
+            for (let i = 0; i < path.length; i++)
+              for (const key of ['eyeL', 'eyeR'] as const)
+                expect(path[i]![key]).toBeCloseTo(paths[0]![i]![key], 5);
+        }
+  });
+
+  it('bounds both new emotional sequences on the existing clock across variants, accessibility and frame rates', () => {
+    for (const emotion of ['concerned', 'confused'] as const)
+      for (const variant of [0, 1]) {
+        const cue = {
+          requestId: 'physical',
+          messageId: 'm',
+          segmentId: 1,
+          emotion,
+          attitude: emotion === 'concerned' ? 'tease' : 'neutral',
+          gesture: 'none',
+        } as const;
+        const make = (intensity: 'quiet' | 'normal' = 'normal', reducedMotion = false) => {
+          const actor = new ActingController();
+          actor.configure({ intensity, reducedMotion });
+          if (variant) {
+            actor.cue(cue, 0);
+            actor.reset(0);
+          }
+          actor.cue(cue, 0);
+          return actor;
+        };
+        const paths = [30, 60, 120].map((fps) => {
+          const actor = make(),
+            reduced = make('normal', true),
+            quiet = make('quiet'),
+            idle = new ActingController();
+          const path: ActingFrame[] = [];
+          let start = 0;
+          for (const time of [300, 800, 1500, 2300, 3000, 8000]) {
+            const frame = advance(actor, time, fps, start),
+              r = advance(reduced, time, fps, start),
+              q = advance(quiet, time, fps, start),
+              baseline = advance(idle, time, fps, start);
+            for (const key of motionKeys) {
+              expect(r[key]).toBeCloseTo(frame[key] * 0.18, 7);
+              expect(q[key]).toBeCloseTo((frame[key] * 0.35) / 0.65, 7);
+            }
+            expect(frame.offsetY).toBe(baseline.offsetY);
+            expect(frame.breath).toBe(baseline.breath);
+            expect(frame).toMatchObject({ gesture: 'none', variant });
+            if (emotion === 'confused') expect(frame.mouthOpen).toBe(0);
+            if (emotion === 'concerned' && time === 800) {
+              expect(frame.eyeL).toBeGreaterThan(0.6);
+              expect(frame.eyeR).toBeGreaterThan(0.75);
+              expect(r.smile).toBeCloseTo(frame.smile * 0.18, 7);
+              expect(q.smile).toBeCloseTo((frame.smile * 0.35) / 0.65, 7);
+            }
+            path.push(frame);
+            start = time;
+          }
+          const preset = emotion === 'concerned' ? 'tease' : 'confused';
+          expect(advance(actor, reactionLifetime(preset), fps, start).active).toBe(false);
+          return path;
+        });
+        for (const path of paths.slice(1))
+          for (let i = 0; i < path.length; i++)
+            for (const key of [...motionKeys, 'eyeL', 'eyeR', 'smile', 'browInner'] as const)
+              expect(path[i]![key]).toBeCloseTo(paths[0]![i]![key], 7);
+        for (const boundary of ['clear', 'blocked', 'error', 'reset'] as const) {
+          const actor = make();
+          advance(actor, 800);
+          if (boundary === 'clear') actor.clearCue(cue);
+          else if (boundary === 'reset') actor.reset(800);
+          else actor.setState(boundary, 800);
+          expect(actor.sample(800, 0).active).toBe(false);
+          if (boundary === 'blocked' || boundary === 'reset')
+            expect(actor.sample(800, 0)).toMatchObject({ headX: 0, bodyX: 0, lean: 0 });
+        }
+      }
   });
 
   it('updates accessibility settings while a semantic face is already held', () => {

@@ -120,6 +120,17 @@ const accentTime = (preset: ActingPreset, t: number, variant: number): number =>
   variant && ['happy', 'laugh', 'shy', 'tease', 'angry', 'confused'].includes(preset)
     ? Math.max(0, (t - 0.18) / 1.12)
     : t;
+// Compound emotions get their own first beat before the attitude takes over.
+// Target eyelids and blink suppression must consume this same delayed clock.
+const attitudeTime = (reaction: Reaction, t: number): number =>
+  Math.max(
+    0,
+    t -
+      ((reaction.emotion === 'embarrassed' && reaction.preset === 'laugh') ||
+      (reaction.emotion === 'concerned' && reaction.preset === 'tease')
+        ? 0.9
+        : 0),
+  );
 // A stable integer hash gives irregular schedules without global randomness or wall clocks.
 const random = (n: number): number => {
   let x = Math.imul(n + 173, 0x45d9f3b);
@@ -423,12 +434,7 @@ export class ActingController {
     const age = reaction ? now - reaction.started : 0;
     const weight = reaction ? this.envelope(age, reaction.preset) : 0;
     const performanceAge = reaction
-      ? accentTime(
-          reaction.preset,
-          (age - (reaction.emotion === 'embarrassed' && reaction.preset === 'laugh' ? 900 : 0)) /
-            1000,
-          reaction.variant,
-        ) * 1000
+      ? accentTime(reaction.preset, attitudeTime(reaction, age / 1000), reaction.variant) * 1000
       : 0;
     const wink =
       reaction &&
@@ -654,7 +660,8 @@ export class ActingController {
         (heldFace[key] - accentEye) *
           maintenance.weight *
           { quiet: 0.35, normal: 0.65, expressive: 1 }[this.options.intensity];
-      follow(key, 1 + (eye - 1) * (this.options.reducedMotion ? 0.18 : 1), 28);
+      const eyeWeight = reaction?.preset === 'angry' ? Math.min(1, weight + maintenance.weight) : 1;
+      follow(key, 1 + (eye - 1) * eyeWeight * (this.options.reducedMotion ? 0.18 : 1), 28);
     }
     for (const key of ['eyeSmile', 'browY', 'browInner', 'pout', 'cheek'] as const) {
       const explainBrow = key === 'browY' ? 0.2 * explainBeat : 0;
@@ -728,7 +735,7 @@ export class ActingController {
     if (reaction.emotion === 'angry' || reaction.preset === 'angry') {
       face.smile = -0.5;
       face.eyeSmile = 0;
-      face.eyeL = face.eyeR = 0.55;
+      face.eyeL = face.eyeR = 0.35;
       face.browY = -0.48;
       face.pout = 0.12;
       face.cheek = 0.06;
@@ -806,11 +813,12 @@ export class ActingController {
       pose.lean = 0;
     }
     if (reaction.preset === 'confused') {
-      pose.headZ = direction * 0.16;
-      pose.headY = -0.07;
-      pose.gazeX = 0.3 * glance;
+      pose.headX = direction * 0.12;
+      pose.headZ = direction * 0.22;
+      pose.headY = -0.08;
+      pose.gazeX = direction * (0.1 + 0.18 * glance);
       pose.gazeY = 0.08;
-      pose.lean = -0.04;
+      pose.lean = -0.02;
     }
     if (reaction.emotion === 'concerned') {
       pose.headZ = direction * (0.22 + 0.08 * sway);
@@ -846,20 +854,20 @@ export class ActingController {
 
   private reactionTarget(reaction: Reaction, t: number): Pose {
     const shyLaugh = reaction.emotion === 'embarrassed' && reaction.preset === 'laugh';
-    const target = this.target(
-      reaction.preset,
-      Math.max(0, t - (shyLaugh ? 0.9 : 0)),
-      reaction.variant,
-    );
+    const target = this.target(reaction.preset, attitudeTime(reaction, t), reaction.variant);
     if (reaction.emotion === 'concerned' && reaction.preset === 'tease') {
-      target.browInner = 0.5;
+      const local = accentTime('tease', t, reaction.variant);
+      const worry = 1 - smooth((local - 1.05) / 0.6);
+      target.browInner = 0.5 + 0.22 * worry;
       target.browY = 0.12;
-      target.smile = -0.18;
+      // This rig needs a genuinely downturned mouth before the playful beat.
+      // The legacy smile accent is unscaled, so gate this stronger local face
+      // explicitly when quiet/reduced motion is selected.
+      target.smile = (-0.18 - 0.64 * worry) * Math.min(1, this.scale() / 0.65);
       target.eyeSmile = 0.05;
       // Preserve the source eye closures while changing each lid's neutral shape.
       target.eyeL = (0.64 * target.eyeL) / (reaction.variant ? 0.9 : 0.72);
       target.eyeR = (0.78 * target.eyeR) / (reaction.variant ? 0.66 : 0.98);
-      const local = accentTime('tease', t, reaction.variant);
       const anticipation = beat(local, 0.05, 0.3, 0.65, 0.55);
       const reconnect = smooth((local - 1.2) / 1.0);
       target.headZ = 0.3 + 0.12 * anticipation - 0.16 * reconnect;
@@ -984,7 +992,7 @@ export class ActingController {
     }
     if (preset === 'angry') {
       const anger = beat(t, 0, 0.2, 0.6, 0.4);
-      p.eyeL = p.eyeR = 0.75 - 0.2 * anger;
+      p.eyeL = p.eyeR = 0.5 - 0.1 * anger;
       const direction = variant ? -1 : 1;
       const turn = beat(t, 0.1, 0.35, 0.8, 0.65);
       const reconnect = smooth((t - 1.1) / 1.2);
@@ -1000,15 +1008,21 @@ export class ActingController {
       for (const key of ['browY', 'pout', 'cheek'] as const) p[key] *= soften;
     }
     if (preset === 'confused') {
-      const confusion = beat(t, 0, 0.2, 0.8, 0.4);
-      p.headZ *= confusion;
-      p.headY *= confusion;
-      p.lean *= confusion;
-      p.eyeL = 0.74 - 0.14 * confusion;
+      const recoil = beat(t, 0.05, 0.2, 0.5, 0.75);
+      const curious = smooth((t - 0.85) / 0.9);
+      const direction = variant ? -1 : 1;
+      // One physical double-take: turn/recoil, then inspect from a curious tilt.
+      // BodyX follows this safe head input; neither arms nor rootY are driven.
+      p.headX = direction * (-0.3 * recoil + 0.18 * curious);
+      p.headZ = direction * (-0.12 * recoil + 0.3 * curious);
+      p.headY = 0.14 * recoil - 0.08 * curious;
+      p.lean = -0.22 * recoil - 0.04 * curious;
+      p.gazeX = direction * (-0.28 * recoil + 0.18 * curious);
+      p.gazeY = 0.1 * recoil + 0.05 * curious;
+      p.eyeL = 0.74 - 0.14 * recoil;
       p.eyeR = 0.96;
       p.smile = -0.18;
       p.pout = 0.18;
-      p.gazeX = -0.12 * confusion + 0.22 * beat(t, 1.35, 0.18, 0.25, 0.4);
     }
     if (preset === 'surprised') {
       const recoil = beat(t, 0, 0.09, 0.15, 0.7);

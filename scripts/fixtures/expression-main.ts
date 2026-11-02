@@ -82,12 +82,12 @@ const scenes = [
     reducedMotion: true,
     times: [1000, 8000, 16200],
   },
-  { name: 'angry', emotion: 'angry', times: [300, 1000, 2000, 3000, 8000, 16200] },
+  { name: 'angry', emotion: 'angry', times: [300, 1000, 2000, 3000, 8000, 16100, 16150, 16200] },
   { name: 'confused', emotion: 'confused', times: [1000, 1200, 1250, 1600, 8000, 16200] },
   ...['sad', 'concerned', 'angry', 'confused', 'reassure', 'wave'].map((preview) => ({
     name: `preview-${preview}`,
     preview,
-    times: [1000],
+    times: preview === 'angry' ? [1000, 3900, 4150, 4200] : [1000],
   })),
   { name: 'petting', petting: true, times: [500, 1400, 1800] },
   { name: 'petting-left', petting: true, focusDirection: -1, times: [500, 600, 1800] },
@@ -258,6 +258,36 @@ void app.whenReady().then(async () => {
         sample('concerned-tease', 3000).values.ParamAngleY >
           sample('concerned-tease', 1000).values.ParamAngleY + 5 &&
         sample('concerned-tease', 3000).pose.phase === 'none',
+    );
+    check(
+      'worried teasing keeps an initial concern face before a delayed unilateral wink',
+      sample('concerned-tease', 700).values.ParamEyeLOpen > 0.4 &&
+        sample('concerned-tease', 700).values.ParamEyeROpen > 0.4 &&
+        sample('concerned-tease', 1000).values.ParamMouthForm < -0.6 &&
+        sample('concerned-tease', 2000).values.ParamEyeLOpen < 0.2 &&
+        sample('concerned-tease', 2000).values.ParamEyeROpen > 0.5,
+    );
+    check(
+      'held angry face uses readable procedural half-lids while preserving the closed pout',
+      ['ParamEyeLOpen', 'ParamEyeROpen'].every(
+        (parameter) =>
+          sample('angry', 8000).values[parameter] > 0.35 &&
+          sample('angry', 8000).values[parameter] < 0.5,
+      ) &&
+        sample('angry', 8000).values.key6 === 0 &&
+        sample('angry', 8000).values.ParamMouthOpenY === 0 &&
+        sample('angry', 8000).values.ParamMouthForm < -0.7,
+    );
+    check(
+      'angry lids approach neutral before semantic and preview deadlines instead of snapping open',
+      sample('angry', 16150).frame.eyeL > 0.98 &&
+        sample('angry', 16150).frame.eyeR > 0.98 &&
+        Math.abs(sample('angry', 16200).frame.eyeL - sample('angry', 16150).frame.eyeL) < 0.02 &&
+        sample('preview-angry', 4150).frame.eyeL > 0.98 &&
+        sample('preview-angry', 4150).frame.eyeR > 0.98 &&
+        Math.abs(
+          sample('preview-angry', 4200).frame.eyeL - sample('preview-angry', 4150).frame.eyeL,
+        ) < 0.02,
     );
     check(
       'semantic face remains at eight seconds',
