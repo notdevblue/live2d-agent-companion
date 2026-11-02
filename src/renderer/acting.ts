@@ -799,9 +799,10 @@ export class ActingController {
     }
     if (reaction.preset === 'angry') {
       pose.headZ = -direction * 0.09;
+      pose.headX = -direction * 0.26;
       pose.headY = -0.04;
       pose.gazeY = -0.08;
-      pose.gazeX = direction * 0.16 * glance;
+      pose.gazeX = direction * (-0.12 + 0.2 * glance);
       pose.lean = 0;
     }
     if (reaction.preset === 'confused') {
@@ -863,10 +864,10 @@ export class ActingController {
       const reconnect = smooth((local - 1.2) / 1.0);
       target.headZ = 0.3 + 0.12 * anticipation - 0.16 * reconnect;
       target.headX = -0.18 * anticipation;
-      target.headY = -0.25 + 0.17 * reconnect;
+      target.headY = -0.42 + 0.3 * reconnect;
       target.gazeX = -0.5 * (1 - reconnect) + 0.12 * beat(local, 2.2, 0.2, 0.2, 0.4);
       target.gazeY = -0.28 * (1 - 0.8 * reconnect);
-      target.lean = -0.06;
+      target.lean = -0.04 + 0.12 * reconnect;
     }
     if (shyLaugh) {
       // Emotion supplies the first glance; attitude supplies the delayed laugh.
@@ -895,7 +896,6 @@ export class ActingController {
   private target(preset: ActingPreset, t: number, variant = 0): Pose {
     t = accentTime(preset, t, variant);
     const p = { ...neutral(), ...PROFILES[preset] };
-    const nod = Math.sin(t * 4.8) * Math.exp(-Math.max(0, t - 1) * 0.8);
     if (preset === 'acknowledge') {
       // "No deliberate gesture" still gets a visible, one-shot delivery beat.
       // It remains emotionally neutral and never requests an authored hand pose.
@@ -907,9 +907,14 @@ export class ActingController {
     }
     if (preset === 'happy') {
       p.headZ = (0.16 + 0.3 * beat(t, 0.2, 0.25, 0.7, 0.55)) * (variant ? -1 : 1);
-      p.headY = nod * 0.25 - 0.1 * (1 - smooth((t - 0.9) / 1.0));
-      p.gazeY = -0.12 * beat(t, 0.1, 0.2, 0.6, 0.6);
-      p.gazeX = 0.2 * beat(t, 1.25, 0.25, 0.35, 0.5);
+      const welcome = beat(t, 0.12, 0.32, 0.75, 0.75);
+      const direction = variant ? -1 : 1;
+      p.headX = direction * 0.2 * welcome;
+      p.headY = -0.06 - 0.14 * welcome;
+      p.gazeY = -0.12 * welcome;
+      p.gazeX = direction * (0.08 * welcome + 0.12 * beat(t, 1.25, 0.25, 0.35, 0.5));
+      // A single contextual forward-listening phrase, not a new idle/breath cycle.
+      p.lean = 0.08 + 0.26 * welcome;
       p.eyeSmile = variant ? 1 : 0.95;
       if (variant) p.smile = 0.72;
       p.browY = 0.12;
@@ -965,8 +970,13 @@ export class ActingController {
       p.eyeL = p.eyeR = 1 - 0.9 * laugh;
       // One expressive mouth shape, never a repeated speech/phoneme clock.
       p.mouthOpen = 0.35 * beat(t, 0.65, 0.12, 0.4, 0.2);
-      p.headY = (-0.12 + Math.sin(t * 12) * 0.04) * laugh;
-      p.headZ = (variant ? -1 : 1) * (0.28 * laugh + 0.1 * (1 - smooth((t - 2.6) / 0.6)));
+      const chuckle = beat(t, 0.12, 0.25, 0.8, 0.75);
+      const direction = variant ? -1 : 1;
+      p.headX = direction * 0.18 * chuckle;
+      p.headY = -0.16 * chuckle;
+      p.gazeX = direction * 0.07 * chuckle;
+      p.lean = 0.08 + 0.28 * chuckle;
+      p.headZ = direction * (0.28 * laugh + 0.1 * (1 - smooth((t - 2.6) / 0.6)));
       const settle = 1 - 0.6 * smooth((t - 1.6) / 0.45);
       p.smile *= settle;
       p.eyeSmile *= settle;
@@ -975,10 +985,17 @@ export class ActingController {
     if (preset === 'angry') {
       const anger = beat(t, 0, 0.2, 0.6, 0.4);
       p.eyeL = p.eyeR = 0.75 - 0.2 * anger;
-      p.headY = -0.06 - 0.16 * anger;
-      p.headZ = -0.06 - 0.19 * anger;
+      const direction = variant ? -1 : 1;
+      const turn = beat(t, 0.1, 0.35, 0.8, 0.65);
+      const reconnect = smooth((t - 1.1) / 1.2);
+      // Turn the head/torso aside first, then reluctantly reconnect without
+      // erasing the side posture or frown once the short eye accent ends.
+      p.headX = -direction * (0.42 + 0.08 * turn);
+      p.headY = -0.08 - 0.12 * anger;
+      p.headZ = -direction * (0.12 + 0.12 * turn);
+      p.gazeX = direction * (-0.5 * (1 - reconnect) + 0.12 * reconnect);
       p.gazeY = -0.08 - 0.1 * anger;
-      p.lean = -0.08 * anger;
+      p.lean = -0.06 * turn;
       const soften = 1 - 0.35 * smooth((t - 1.1) / 0.7);
       for (const key of ['browY', 'pout', 'cheek'] as const) p[key] *= soften;
     }

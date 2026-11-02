@@ -454,7 +454,9 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     expect(held.mouthOpen).toBe(0);
     const returned = advance(actor, 1500, 60, 700);
     expect(returned.eyeL).toBeCloseTo(0.75, 3);
-    expect(Math.abs(returned.headZ)).toBeLessThan(Math.abs(held.headZ) * 0.7);
+    expect(Math.abs(returned.headZ)).toBeGreaterThan(0.15);
+    const reconnect = advance(actor, 2800, 60, 1500);
+    expect(Math.abs(reconnect.headZ)).toBeLessThan(Math.abs(returned.headZ) * 0.7);
     for (const emotion of ['angry', 'confused'] as const) {
       const a = new ActingController();
       a.cue({ emotion, gesture: 'none' }, 0);
@@ -955,6 +957,69 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
           for (const key of [...motionKeys, 'offsetY', 'breath'] as const)
             expect(path[i]![key]).toBeCloseTo(frames[0]![i]![key], 7);
     }
+  });
+
+  it('gives anger an early turn-away and reluctant reconnection without clearing the side posture', () => {
+    const actor = new ActingController();
+    actor.cue({ emotion: 'angry', gesture: 'none' }, 0);
+    const away = advance(actor, 1000);
+    expect(away.headX).toBeLessThan(-0.35);
+    expect(away.bodyX).toBeLessThan(-0.14);
+    expect(away.gazeX).toBeLessThan(-0.3);
+    expect(away.gesture).toBe('none');
+    const reconnect = advance(actor, 2800, 60, 1000);
+    expect(reconnect.gazeX).toBeGreaterThan(away.gazeX + 0.3);
+    expect(reconnect.headX).toBeLessThan(-0.15);
+    expect(reconnect.bodyX).toBeLessThan(-0.1);
+    expect(reconnect.mouthOpen).toBe(0);
+    const held = advance(actor, 8000, 60, 2800);
+    expect(held.headX).toBeLessThan(-0.2);
+    expect(held.smile).toBeLessThan(-0.2);
+    actor.setState('blocked', 8000);
+    expect(actor.sample(8000, 0)).toMatchObject({ headX: 0, bodyX: 0, lean: 0 });
+  });
+
+  it('gives joy and laughter one forward body phrase that settles without adding a hand or changing breath', () => {
+    for (const attitude of ['neutral', 'laugh'] as const) {
+      const actor = new ActingController(),
+        reduced = new ActingController(),
+        idle = new ActingController();
+      reduced.configure({ intensity: 'normal', reducedMotion: true });
+      const cue = { emotion: 'happy', attitude, gesture: 'none' } as const;
+      actor.cue(cue, 0);
+      reduced.cue(cue, 0);
+      const accent = advance(actor, 1000),
+        quiet = advance(reduced, 1000),
+        baseline = advance(idle, 1000);
+      expect(accent.lean).toBeGreaterThan(0.18);
+      expect(accent.headX).toBeGreaterThan(0.1);
+      expect(accent.bodyX).toBeGreaterThan(0.04);
+      expect(accent.gesture).toBe('none');
+      expect(quiet.lean).toBeCloseTo(accent.lean * 0.18, 7);
+      expect(accent.offsetY).toBe(baseline.offsetY);
+      expect(accent.breath).toBe(baseline.breath);
+      expect(advance(actor, 3000, 60, 1000).lean).toBeLessThan(accent.lean * 0.5);
+    }
+  });
+
+  it('bows and averts a concerned teasing cue before reconnecting on the same finite clock at every frame rate', () => {
+    const paths = [30, 60, 120].map((fps) => {
+      const actor = new ActingController();
+      actor.cue({ emotion: 'concerned', attitude: 'tease', gesture: 'none' }, 0);
+      const away = advance(actor, 700, fps);
+      expect(away.headY).toBeLessThan(-0.38);
+      expect(away.headX).toBeLessThan(-0.3);
+      const reconnect = advance(actor, 2600, fps, 700);
+      expect(reconnect.headY).toBeGreaterThan(away.headY + 0.2);
+      expect(reconnect.gazeX).toBeGreaterThan(away.gazeX + 0.3);
+      expect(reconnect).toMatchObject({ emotion: 'concerned', attitude: 'tease', gesture: 'none' });
+      expect(advance(actor, reactionLifetime('tease'), fps, 2600).active).toBe(false);
+      return { away, reconnect };
+    });
+    for (const path of paths.slice(1))
+      for (const phase of ['away', 'reconnect'] as const)
+        for (const key of [...motionKeys, 'offsetY', 'breath', 'mouthOpen'] as const)
+          expect(path[phase][key]).toBeCloseTo(paths[0]![phase][key], 7);
   });
 
   it('updates accessibility settings while a semantic face is already held', () => {

@@ -38,8 +38,13 @@ const scenes = [
     reducedMotion: true,
     times: [2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000],
   },
-  { name: 'happy', emotion: 'happy', times: [1000, 8000, 16200] },
-  { name: 'happy-laugh', emotion: 'happy', attitude: 'laugh', times: [1000, 8000, 15600] },
+  { name: 'happy', emotion: 'happy', times: [300, 1000, 2000, 3000, 8000, 16200] },
+  {
+    name: 'happy-laugh',
+    emotion: 'happy',
+    attitude: 'laugh',
+    times: [300, 1000, 2000, 3000, 8000, 15600],
+  },
   {
     name: 'embarrassed-laugh',
     emotion: 'embarrassed',
@@ -50,7 +55,7 @@ const scenes = [
     name: 'concerned-tease',
     emotion: 'concerned',
     attitude: 'tease',
-    times: [700, 1000, 1400, 8000, 16200],
+    times: [300, 700, 1000, 1400, 2000, 3000, 8000, 16200],
   },
   {
     name: 'explain',
@@ -77,7 +82,7 @@ const scenes = [
     reducedMotion: true,
     times: [1000, 8000, 16200],
   },
-  { name: 'angry', emotion: 'angry', times: [1000, 8000, 16200] },
+  { name: 'angry', emotion: 'angry', times: [300, 1000, 2000, 3000, 8000, 16200] },
   { name: 'confused', emotion: 'confused', times: [1000, 1200, 1250, 1600, 8000, 16200] },
   ...['sad', 'concerned', 'angry', 'confused', 'reassure', 'wave'].map((preview) => ({
     name: `preview-${preview}`,
@@ -232,6 +237,29 @@ void app.whenReady().then(async () => {
       sample('saved-happy', 1400).values.key5 === 0,
     );
     check(
+      'joy and laughter make one real forward body phrase and settle without a hand pose',
+      ['happy', 'happy-laugh'].every(
+        (scene) =>
+          sample(scene, 1000).values.Param50 > 0.1 &&
+          sample(scene, 3000).values.Param50 < sample(scene, 1000).values.Param50 * 0.5 &&
+          [300, 1000, 2000, 3000].every((time) => sample(scene, time).pose.phase === 'none'),
+      ),
+    );
+    check(
+      'anger turns the actual head aside and partially reconnects while retaining its side posture',
+      sample('angry', 1000).values.ParamAngleX < -10 &&
+        sample('angry', 3000).values.ParamAngleX > sample('angry', 1000).values.ParamAngleX + 1 &&
+        sample('angry', 3000).values.ParamAngleX < -5 &&
+        sample('angry', 1000).values.ParamMouthOpenY === 0,
+    );
+    check(
+      'concerned teasing lowers the actual head before reconnecting without an authored hand',
+      sample('concerned-tease', 1000).values.ParamAngleY < -12 &&
+        sample('concerned-tease', 3000).values.ParamAngleY >
+          sample('concerned-tease', 1000).values.ParamAngleY + 5 &&
+        sample('concerned-tease', 3000).pose.phase === 'none',
+    );
+    check(
       'semantic face remains at eight seconds',
       sample('happy', 8000).values.ParamMouthForm > 0 &&
         sample('happy', 8000).values.ParamMouthOpenY > 0.1 &&
@@ -337,6 +365,12 @@ void app.whenReady().then(async () => {
       sample('petting', 500).petting.weight > 0.5 &&
         sample('petting', 500).values.EyeSmile > 0.1 &&
         sample('petting', 1800).petting.weight === 0,
+    );
+    check(
+      'petting makes a finite affectionate approach through the real forward-lean physics',
+      sample('petting', 500).values.LeanInput < -1 &&
+        sample('petting', 500).values.Param50 > 0.04 &&
+        sample('petting', 1800).values.Param50 < sample('petting', 500).values.Param50 * 0.5,
     );
     check(
       'petting zone selects only the upper model silhouette',

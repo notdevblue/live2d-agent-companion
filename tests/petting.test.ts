@@ -11,11 +11,13 @@ describe('explicit local petting — FR-L2D-008', () => {
     expect(pet.smile).toBeCloseTo(0.5525);
     expect(pet.offsetY).toBe(frame.offsetY);
     expect(pet.breath).toBe(frame.breath);
+    expect(pet.lean).toBeCloseTo(0.117);
     expect(pet.preset).toBe(frame.preset);
     expect(applyPetting(frame, 0)).toEqual(frame);
     const reduced = applyPetting(frame, 0.65 * 0.18);
     expect(reduced.headZ).toBeCloseTo(pet.headZ * 0.18);
     expect(reduced.gazeY).toBeCloseTo(pet.gazeY * 0.18);
+    expect(reduced.lean).toBeCloseTo(pet.lean * 0.18);
     expect(applyPetting(frame, NaN)).toEqual(frame);
   });
   it('requires a stroke rather than a stationary click and rejects pointer jumps', () => {
@@ -59,7 +61,7 @@ describe('explicit local petting — FR-L2D-008', () => {
       expect(pet.headX).toBeCloseTo(direction * 0.235);
       expect(pet.gazeX).toBeCloseTo(direction * 0.2675);
       expect(pet.bodyX).toBeCloseTo(direction * 0.055);
-      expect(pet.lean).toBe(frame.lean);
+      expect(pet.lean).toBeGreaterThan(frame.lean);
       expect(pet.offsetY).toBe(frame.offsetY);
       expect(pet.bodyY).toBe(frame.bodyY);
     }
@@ -94,9 +96,29 @@ describe('explicit local petting — FR-L2D-008', () => {
     expect(at(300)).toEqual(contact);
     expect(at(500)).toEqual(contact);
     const tail = at(1349);
-    for (const key of ['headX', 'headY', 'gazeX', 'gazeY', 'bodyX', 'smile', 'eyeSmile'] as const)
+    for (const key of [
+      'headX',
+      'headY',
+      'gazeX',
+      'gazeY',
+      'bodyX',
+      'lean',
+      'smile',
+      'eyeSmile',
+    ] as const)
       expect(Math.abs(tail[key] - frame[key])).toBeLessThan(0.00001);
     expect(at(1350)).toBe(frame);
+  });
+  it('approaches gently without overriding a stronger existing lean and releases to the original posture', () => {
+    const frame = { ...new ActingController().sample(0, 0), lean: -0.12 };
+    const touching = applyPetting(frame, 0.65);
+    expect(touching.lean).toBeGreaterThan(0);
+    expect(touching.lean).toBeLessThan(0.18);
+    const stronger = { ...frame, lean: 0.45 };
+    expect(applyPetting(stronger, 0.65).lean).toBe(stronger.lean);
+    expect(applyPetting(frame, 0)).toBe(frame);
+    expect(touching.offsetY).toBe(frame.offsetY);
+    expect(touching.breath).toBe(frame.breath);
   });
   it('returns smoothly after release or leaving the zone, and clears immediately on blocking', () => {
     const pet = new PettingController();

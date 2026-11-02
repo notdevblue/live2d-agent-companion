@@ -20,6 +20,7 @@ const parameters = [
   'AngleZ',
   'PositionX',
   'ParamBodyAngleX',
+  'Param50',
   'ParamAngleY',
   'ParamAngleX',
   'ParamAngleZ',
