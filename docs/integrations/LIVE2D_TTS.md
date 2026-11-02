@@ -70,9 +70,17 @@ paired 손은 진입/복귀 클립 시간을 전체 의미 반응 기한에서 �
 
 idle/actor inactive·빈 pose/gesture/state gesture·manager 종료와 expressive/reducedMotion=false를 모두 요구한다. petting의 held contact는8px 전에도 차단하고 잔여 petting·pet 손이 있어도 시작하지 않는다. shared `chestPoseDefinition`이 canonical wave 매핑·7개 비물리 입력/범위/endpoint를 검사해 custom/명시적 빈 선택/없는 자산을 보존한다. 첫 IDLE이 전용 `Movement2`/`Param59~62`를 구동하면 자동 idle 손을 생략하고 공유 selector `Param56/57`만으로는 막지 않는다. 직접 petting과 명시적 semantic 손의 기존 우선권은 바꾸지 않는다.
 
-`localIdleGesture`는 의미 gesture와 별도인 owner/진단 상태다. **활성 의미 cue의 `gesture=none`은 계속 새 authored 손 없음**이며 이 대기 동작은 actor를 active로 만들지 않는다. 손 쪽 고개/시선은 진입·복귀에 맞춰 한 번 보간하고 직접 접촉보다 먼저 적용한다. 얼굴·입·호흡/rootY는 그대로다. idle 중 pet begin/end는 손을 재시작·이관·연장·정리하지 않고 기존 기한까지 둔다. 그 접촉은 몸/얼굴만 반응하고 자연 종료 후 새 접촉부터 기존 pet 손을 사용할 수 있다.
+`localIdleGesture`는 의미 gesture와 별도인 owner/진단 상태다. **활성 의미 cue의 `gesture=none`은 계속 새 authored 손 없음**이며 이 대기 동작은 actor를 active로 만들지 않는다. 손 쪽 고개/시선은 진입·복귀에 맞춰 한 번 보간하고 직접 접촉보다 먼저 적용한다. Source 15에서는 얼굴·입·호흡/rootY를 그대로 두었다. Source 16의 유한한 얼굴 연결은 아래와 같으며 입 열림·호흡/rootY 보존은 유지한다. idle 중 pet begin/end는 손을 재시작·이관·연장·정리하지 않고 기존 기한까지 둔다. 그 접촉은 몸/얼굴만 반응하고 자연 종료 후 새 접촉부터 기존 pet 손을 사용할 수 있다.
 
-수락된 새 cue/승격·요청·thinking/working·승인·오류·reset/preview/dispose와 normal/quiet/reduced 전환은 idle owner를 정리한다. stale cue와 끝난 메시지의 scoped clear는 독립 owner를 지우지 않는다. 전체590개 unit/contract·SDK67개 수락/236PNG·실제 production 시작→자연 종료·기본 앱 재실행/설정 보존과 영상15를 확인했다. 완료 점수는 Product14=73, Product15=78로85점 종료 조건에 미달이며 [검토·적용/복원](../ux/GROK_VTUBER_REVIEW.md)과 [구현 상태](../development/IMPLEMENTATION_STATUS.md)가 최신 근거다. 물리 마우스·OS 재부팅/재로그인·TTS 검증은 아니다.
+수락된 새 cue/승격·요청·thinking/working·승인·오류·reset/preview/dispose와 normal/quiet/reduced 전환은 idle owner를 정리한다. stale cue와 끝난 메시지의 scoped clear는 독립 owner를 지우지 않는다. Source 15 당시590개 unit/contract·SDK67개 수락/236PNG·실제 production 시작→자연 종료·기본 앱 재실행/설정 보존과 영상15를 확인했다. 완료 점수는 Product14=73, Product15=78로85점 종료 조건에 미달이며 [검토·적용/복원](../ux/GROK_VTUBER_REVIEW.md)과 [구현 상태](../development/IMPLEMENTATION_STATUS.md)가 최신 근거다. 물리 마우스·OS 재부팅/재로그인·TTS 검증은 아니다.
+
+### 저장 눈 강조와 유한한 얼굴 연결 (Source 16, 2026-11-03)
+
+`6be797e`는 happy 눈 층에1500ms 수명/400ms fade를 적용해 선택한 특수 눈 강조 뒤 기존 절차 기쁨 얼굴로 이어지게 한다. confused1400ms·laugh1200ms·tease1100ms 우선순위는 유지한다. 자산 이름이나 저장 매핑/빈 선택을 바꾸지 않고 `setExpression`의 기존 눈/표시/나머지 층 분리를 재사용한다. 사용자 custom 눈과 함께 들어 있는 표시·다른 자산 파라미터까지 짧게 끝내지 않는다.
+
+local idle 얼굴은 기존 pose의 진입·복귀 가중치로 smile .55·eyeSmile .45·눈 열림 .75×blink를 보간한다. hold200~600ms에 눈을 정면으로 돌리고 exit에서 원래 idle로 복귀한다. 같은2750ms 기한·expressive/접근성 gate·직접 접촉 우선권을 유지하며 새 입 열림·호흡/root 운동·손·시계는 없다. 순수 angry preset/gesture none은 기존1.95~3.1초의 한 번의 gaze/눈꺼풀 확인만 pose 적분 뒤 적용한다. 고개/몸의 외면·찡그린 입·입 열림·호흡을 바꾸지 않고 blink·강도/접근성·compound override·clear/종료를 지킨다.
+
+현재595개 unit/contract·SDK70개 수락/245PNG·native16의 production idle 시작/종료와 기존20종 UI·petting/승인·scoped clear·reload/설정 보존을 통과했다. 기본 런처 PID111416으로 정상 복원하고 원래 저장 설정 digest 일치를 확인했다. Source 16 영상도69초·20fps·1380 paired frame 및 소스22개 해시/같은 저장 프로필 검증을 완료했다. Product16의 최종 점수는 아직 없으며 최신 근거와 `6be797e` revert/build/기본 런처 복원은 [Grok 검토](../ux/GROK_VTUBER_REVIEW.md)·[구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다. TTS·물리 마우스·OS 재부팅/재로그인은 이번 검증에 포함하지 않는다.
 
 ## 전체 표현 점검 (2026-11-01)
 

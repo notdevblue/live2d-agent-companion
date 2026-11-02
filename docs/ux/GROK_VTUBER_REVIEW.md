@@ -1,8 +1,8 @@
 # Grok의 VTuber 연기 검토와 반영 결과
 
-**확인일:** 2026-11-03 · **검토:** Grok CLI 1.0.70 / 기본 `grok-4.7`(실제 실행 ID `grok-4.7-build`) · **현재 코드:** `5f33da8` (Source 15) · **범위:** 무음 시각 경험
+**확인일:** 2026-11-03 · **검토:** Grok CLI 1.0.70 / 기본 `grok-4.7`(실제 실행 ID `grok-4.7-build`) · **현재 코드:** `6be797e` (Source 16) · **범위:** 무음 시각 경험
 
-사용자는 Grok의 조사·문서 작성, 개선 반영, 영상과 재검토를 요청했다. 종료 조건은 **Grok의 100점 만점 평가 85점 이상**이다. 점수는 단일 모델의 주관적 UX 평가이며 정확도·성능·사용성 인증이 아니다. TTS·음성·음절 립싱크는 제외했다. 이전 코드 `4771977`의 통제된 normal·새 기본 기쁨 구성 평가는 **67/100**이다. 같은69초 조건에서 `15c37eb`는74점, `b2f1401`은69점이었고, 더 짧은59초의 `3a0fef4`도74점이었다. 점수는 단일 평가자의 주관적 의견이며 코드 효과만의 측정치가 아니다. 같은 코드에 실제 저장 expressive·기쁨 `＞＜` 구성을 적용한 Product14는 **73/100**이었다. 현재 `5f33da8`은 같은 저장 구성을 유지한 Source 15이며 영상 검증과 Grok Product15 평가를 마쳐 **78/100**이었다. 종료 조건85점에는 아직 미달이다.
+사용자는 Grok의 조사·문서 작성, 개선 반영, 영상과 재검토를 요청했다. 종료 조건은 **Grok의 100점 만점 평가 85점 이상**이다. 점수는 단일 모델의 주관적 UX 평가이며 정확도·성능·사용성 인증이 아니다. TTS·음성·음절 립싱크는 제외했다. 이전 코드 `4771977`의 통제된 normal·새 기본 기쁨 구성 평가는 **67/100**이다. 같은69초 조건에서 `15c37eb`는74점, `b2f1401`은69점이었고, 더 짧은59초의 `3a0fef4`도74점이었다. 점수는 단일 평가자의 주관적 의견이며 코드 효과만의 측정치가 아니다. 같은 코드에 실제 저장 expressive·기쁨 `＞＜` 구성을 적용한 Product14는 **73/100**이었다. `5f33da8`의 Source 15도 같은 저장 구성을 유지했고 영상 검증과 Grok Product15 평가를 마쳐 **78/100**이었다. 현재 `6be797e`의 Source 16은 눈 강조·독립 idle 얼굴·화남의 짧은 눈 재접촉을 보강했으며 영상 검증 완료, Grok 평가는 진행 중이다. 종료 조건85점 달성을 아직 주장하지 않는다.
 
 ## 조사 자료와 실제 확인 범위
 
@@ -73,7 +73,7 @@ Source 11에서는 직접 입력에 한해 원본 가슴 손 포즈를 추가했
 
 expressive/움직임 줄이기 꺼짐·idle·actor 반응 없음·빈 pose/gesture/state gesture·모션 manager 종료·pet 손/잔여 반응/held contact 없음이 모두 필요하다. 아직8px를 문지르지 않은 접촉도 `contactHeld`로 차단한다. 직접 petting과 공유하는 canonical wave 매핑·정확한7개 비물리 입력/범위/endpoint 검사를 통과해야 하며 custom/명시적 빈 선택/부족한 자산이면 생략한다. IDLE이 `Movement2`/`Param59~62`를 직접 구동하면 자동 idle 손을 생략하고, 기본 IDLE의 공유 selector `Param56/57`만으로는 차단하지 않는다. 사용자 IDLE·semantic/petting의 기존 우선권은 유지한다.
 
-손을 잠시 내려다보는 고개/시선만 진입·복귀에 맞춰 보간하고 얼굴·입·호흡·rootY는 바꾸지 않는다. 실제 접촉 overlay가 나중에 적용돼 방향 우선권을 가진다. 진행 중 pet begin은 idle 손을 재시작·이관·연장하지 않고 원래 기한대로 끝낸다. 해당 접촉은 몸/얼굴만 반응하며 pet end도 다른 소유자의 idle 손을 지우지 않는다. 자연 종료 뒤 새 접촉부터 기존 pet 손 경로를 다시 사용할 수 있다.
+Source 15에서는 손을 잠시 내려다보는 고개/시선만 진입·복귀에 맞춰 보간하고 얼굴·입·호흡·rootY를 바꾸지 않았다. Source 16의 유한한 미소/눈 재접촉은 아래에 별도로 기록한다. 실제 접촉 overlay가 나중에 적용돼 방향 우선권을 가진다. 진행 중 pet begin은 idle 손을 재시작·이관·연장하지 않고 원래 기한대로 끝낸다. 해당 접촉은 몸/얼굴만 반응하며 pet end도 다른 소유자의 idle 손을 지우지 않는다. 자연 종료 뒤 새 접촉부터 기존 pet 손 경로를 다시 사용할 수 있다.
 
 수락된 새 cue/승격, 요청·thinking/working·승인·오류·reset·preview·dispose는 idle 손을 즉시 정리한다. 무시된 stale cue나 이미 끝난 메시지의 scoped clear는 독립 idle 소유권을 지우지 않는다. normal/quiet·움직임 줄이기로 바꾸면 진행 중 손도 정리한다. 실제 SDK의 양성 대기·설정/매핑/작업/active-none 차단·승인 정리·접촉 중 기존 기한 유지, production renderer의 시작→자연 종료와 설정 보존을 아래 근거로 확인했다.
 
@@ -82,6 +82,12 @@ expressive/움직임 줄이기 꺼짐·idle·actor 반응 없음·빈 pose/gestu
 기쁨/웃음의 유지 얼굴이 같은 눈 열림/미소로 수렴했고, `Math.max(.12, heldFace.mouthOpen)`이 웃음의 명시적 입 열림0을 덮었다. 기본 최소값을 감정별 유지 목표로 옮겨 닫힌 입을 존중하고 neutral acknowledge의 기존 .12만 명시적으로 보존했다. 손 없는 기쁨은 밝은 열린 눈, 웃음은 한 번의 웃음 뒤 닫힌 입의 더 큰 미소로 분리하며 compound 감정 override와 화남 종료 fade를 유지한다. 실제 같은 rig8초에서 기쁨 눈 .844/입 .117, 웃음 눈 .467/입 약0/입꼬리 .52를 확인했다. `.tmp/face-hold12/face-grid.jpg`와 `results.json`은 이 얼굴 변경만의 대조이며 이후 대기 변경의 통합 근거와 구분한다.
 
 대기에서도 눈과 고개를 같은 감소 목표에 묶어 모두 함께 돌아오는 원인이 있었다. 기존 불규칙 슬롯 안에서 눈은 먼저 이동→작은 반대 방향으로 복귀하고 고개/지연 상체는 다음 슬롯까지 측면 목표를 유지하도록 분리했다. Y 복귀·추적 속도·원래 head/body clamp·breath/rootY는 보존한다. 실제 MOC13자세(머리±.3/±.4×눈±.3/0)의 반대 눈 입력은 같은 고개에서 홍채 중심을 약1.59~1.75px 움직이고 눈 흰자·얼굴·코/MVP는 그대로였다. 범위 오류/외부 요청0이며 `.tmp/eye-head-calibration12/proof.json`과 grid가 근거다. 반대쪽을 보는 인상은 확인했지만 사람과의 시선 접촉을 정량 보정한 것은 아니다. 전체 영상과 SDK에서 최종 조합을 별도로 확인했다.
+
+Source 16에서는 저장된 기쁨 눈 아트가 열린 눈의 기쁨 여운을 오래 가리던 경로를 보완했다. `cue.emotion=happy`의 눈 층에1500ms 수명/400ms fade를 적용하되 기존 confused1400ms·laugh1200ms·tease1100ms 우선순위는 유지한다. 저장된 자산 이름·명시적 빈 값·custom 자산을 바꾸지 않으며 눈 이외의 홍조/땀·사용자가 선택한 나머지 자산 파라미터는 기존 층/수명을 따른다. 실제 저장 `＞＜`는5초에 유지되고6~8초에는 열린 눈의 기존 기쁨 얼굴로 이어졌다. `.tmp/charm-gap-review15/proof.json`과 `happy-face-pairs.jpg`는 이 후보의 실제 MOC 대조이며 Source 15 원본은 보존했다. 최종 Source 16도 별도 SDK/영상에서 확인했다.
+
+독립 idle 손의 같은 pose 가중치에 smile .55·eyeSmile .45·눈 열림 .75×blink를 연결했다. 손을 본 뒤 hold200~600ms에 눈만 정면으로 돌아오고 원본 exit와 함께 얼굴도 복귀한다. 새 입 열림·호흡/root 변화·새 시계·손 포즈는 없다. 특수 눈/자산·physics 보호와 직접 접촉 overlay 우선권, expressive/접근성 gate·2750ms 기한도 유지한다. 실제64~65초의 미소/눈 반응과66~67초 기존 idle 복귀를 `idle-face-pairs.jpg`와 최종 영상에서 확인했다. 이 작은 표정 연결의 기하·범위 통과를 매력 향상 점수로 환산하지 않는다.
+
+순수 `angry` preset·`gesture=none`에는 기존 cue1.95~3.1초 안의 한 번의 눈 확인을 더했다. 변주 방향의 gaze .45와 눈 열림 .22에 기존 강도를 적용하고, pose 적분 뒤 눈에만 투영해 시선→고개→상체 추종이 옆으로 돌린 몸을 되돌리지 않게 한다. 같은 입력 대조에서 고개/몸·찡그린 입·입 열림·호흡은 동일하고 blink·원래 기한/clear·compound override는 유지한다. 최종 영상38.25~38.5초의 눈 확인과39.25초 원복을 확인했으며, actual SDK와30/60/120fps·강도/접근성·override·종료 검사를 통과했다. 감정 없는 idle에 화남을 추가하거나 몸 실루엣의 새 개선을 주장하는 변경은 아니다.
 
 ### 몸통 기울임의 누락과 짧은 손 복귀
 
@@ -127,6 +133,7 @@ expressive/움직임 줄이기 꺼짐·idle·actor 반응 없음·빈 pose/gestu
 | Product13           | 67/100 | 몸통 roll·자세 대비·짧은 손 복귀 보강본·통제된 normal/새 기본 기쁨·같은69초/.5초/47페이지                |
 | Product14           | 73/100 | Product13과 같은 코드·실제 저장 expressive/기쁨 `＞＜` 구성·같은69초/.5초/47페이지                       |
 | Product15           | 78/100 | `5f33da8`의 독립 expressive idle 손·Product14와 같은 저장 구성/69초/.5초/47페이지                       |
+| Product16           | 진행 중 | `6be797e`의 짧은 기쁨 눈 강조·idle 얼굴·화남 눈 확인·같은 저장 구성/69초/.5초/47페이지                 |
 
 종합 평가 원문은 `product-XX-score.md`, 실제 세션/모델 metadata는 같은 회차 `.jsonl`이다. Product08 세션은 `01a19d89-3e94-71c3-8147-cb8543ef5546`, Product09는 `01a19d90-d1ae-7b70-8faf-204abd2eb850`이다. 낮은 점수는 지우거나 소급 변경하지 않는다. 새 세션에는 목표/이전 점수·개발 노력/검사 수를 주지 않고 실제 렌더·공개 타임라인만 제공한다. 검토 중 변경이 생기면 기존 자료를 고정해 보존하고 수정본은 새 영상/패킷으로 검토한다. Product09는 걱정·토라짐·수줍음·직접 반응을 읽었지만 감정 피크 뒤의 기본 미소와 몸/팔 동행을 약점으로 봤다. Product10은 재접촉 결함을 독립 검토에서 발견해 **완료 평점 전에 중단**했다(exit130, 완료 metadata/점수 없음). 이전 패킷/로그와 취소 이유를 보존했고 낮은 평점을 버린 회차가 아니다. 수정한 Product11은 기존59초의 모든 입력을 보존하고 추가 입력 없이 마지막 대기를10초 더 관찰하는69초·.5초·47페이지 자료다. 완료 세션은 `01a19dc8-706b-7703-bf0e-9224f2ce35d7`이며69/100을 원문과 함께 보존한다. 쓰다듬기의 손·눈·홍조 조합은 가장 좋은 구간으로 봤고, 긴 대기·웃음 뒤 미소·토라짐의 몸 실루엣은 약점으로 봤다. 일부 손 없는 cue를 깃의 손으로 오독한 지적은 실제 selector/전신과 달라 새 자동 손의 근거로 채택하지 않았다. 더 긴 관찰 창은 별도 조건 변경이며 점수 차이를 코드 효과만으로 해석하지 않는다. Product12 완료 세션은 `01a19dd9-eaf5-7c73-bad2-e4390b2123ea`이며74/100을 보존한다. 감정 구분은 읽었지만 웃음/토라짐의 몸과 긴 대기의 존재감을 약점으로 봤다. 63초의 가슴 손 등 실제 selector0인 구간의 오독도 있어 지적을 그대로 구현 요구로 바꾸지 않는다.
 
@@ -140,16 +147,18 @@ Product13의 완료 세션은 `01a19dfa-a995-7683-8a2d-285d438ceaa6`이며67/100
 
 기존 통제 영상은 normal/bust·새 기본 기쁨(표정 파일 없음)이었지만, 실제 저장 표현은 expressive/bust·reducedMotion=false·기쁨 `＞＜`였다. Product14는 **코드 변경 없이 Product13과 동일한22개 앱 해시**에서 저장된 표현/손 매핑을 production `applyModelMappings`로 적용한 별도 구성이다. 명시적 빈 선택도 유지하고 기록 중의 로컬 쓰다듬기만 켠다. 영구 사용자 설정은 변경하지 않았다. 외부 연결·키·이력 없이 표현 whitelist만 사용한다. `story-14-comparison.mp4`와 `story-14-results.json`에 구성을 명시하고, 다른 설정의 점수 차이를 새 코드 개선량으로 환산하지 않는다. 같은69초 타임라인·20fps·.5초47페이지를 모두 읽은 완료 세션 `01a19e06-490d-70f1-91f0-8da182e70a87`의 점수는73/100이다(`.tmp/grok-grading/product-14-score.md`). 직접 접촉/수줍음·인사는 읽었지만 긴 무입력 대기, 반복되는 기쁨/웃음 그림과 몸의 동행은 약점으로 봤다. 이 구성을 교정한 재검토를 코드 개선이나 점수 재추첨으로 해석하지 않는다.
 
-Product15는 `5f33da8`의 별도 코드 변경이며 같은 저장 프로필·69초 타임라인을 유지한다. `.tmp/grok-story-video15/source-15.json`에22개 소스/import 해시·타임라인·표현 프로필 해시를 고정하고 현재 앱 소스와 일치함을 확인했다. 새 timeline 입력 없이 after의 `localIdleGesture`가63.35초에 켜지고66.05초에 꺼진 것을 관찰했다. 이는50ms 렌더 관찰 시각이며2750ms 내부 수명과 구분한다. 영상 QA와47페이지 패킷을 완료했고 평가자는47페이지를 모두 읽었다. 완료 세션 `01a19e25-7d7a-7410-a797-871a321229b3`의 점수는78/100이다(`.tmp/grok-grading/product-15-score.md`). 실제 idle 손을64~65.5초의 한 번의 몸짓으로 읽었으며 직접 접촉의 정서적 호응을 긍정적으로 봤다. 반복되는 `＞＜`의 기쁨/웃음, 약한 걱정, 감정의 몸 실루엣과 손동작 전후 대기는 여전히 약점으로 평가했다. 관찰하지 않은 장기 반복은 추정하지 않았고85점 종료 조건에는 미달이다.
+Product15는 `5f33da8`의 별도 코드 변경이며 같은 저장 프로필·69초 타임라인을 유지한다. `.tmp/grok-story-video15/source-15.json`에22개 소스/import 해시·타임라인·표현 프로필 해시를 고정하고 당시 `5f33da8` 앱 소스와 일치함을 확인했다. 새 timeline 입력 없이 after의 `localIdleGesture`가63.35초에 켜지고66.05초에 꺼진 것을 관찰했다. 이는50ms 렌더 관찰 시각이며2750ms 내부 수명과 구분한다. 영상 QA와47페이지 패킷을 완료했고 평가자는47페이지를 모두 읽었다. 완료 세션 `01a19e25-7d7a-7410-a797-871a321229b3`의 점수는78/100이다(`.tmp/grok-grading/product-15-score.md`). 실제 idle 손을64~65.5초의 한 번의 몸짓으로 읽었으며 직접 접촉의 정서적 호응을 긍정적으로 봤다. 반복되는 `＞＜`의 기쁨/웃음, 약한 걱정, 감정의 몸 실루엣과 손동작 전후 대기는 여전히 약점으로 평가했다. 관찰하지 않은 장기 반복은 추정하지 않았고85점 종료 조건에는 미달이다.
+
+Product15 당시590개 unit/contract·SDK67개/236PNG, 영상15·native15 시작/종료·기본 런처 PID107169/설정 보존 근거는 그대로 보존한다. Source 16은 같은 저장 프로필과 타임라인을 사용하고 `.tmp/grok-story-video16/source-16.json`의22개 고정 앱 해시는 `6be797e`와 일치한다. 영상 QA 및47페이지 패킷을 완료했으며 Product16의 최종 점수는 아직 없다.
 
 ## 현재 검증·영상·적용과 복원
 
-- **590개 unit/contract**, typecheck·format·build·외부 AI 없는 Mock desktop을 통과했다. 192조합, 30/60/120fps, 저장 매핑/빈 선택, 여운·손 복귀·clear/승인, 12초 접촉·짧은 fade·종료 직전 눈 복귀와 idle edge/소유권·held contact·접근성/매핑·프레임 건너뜀을 포함한다.
-- 실제 SDK/SwiftShader **67개 수락 검사·236개 현재 PNG**(after233/before3)에서 체크포인트마다 509개 parameter 범위 오류/외부 요청 0을 확인했다. `artifacts/grok-review/round-15-expression-results.json`의 assertions와 `artifacts/expression-afterglow/`가 현재 근거다. Source 13의62개/186PNG 결과도 별도 `round-13-expression-results.json`에 보존한다. 50ms 시뮬레이션·지정 rasterize이며 실시간 FPS/CPU 측정이 아니다.
-- `artifacts/grok-review/story-15-comparison.mp4`는 **69초·1120×900·20fps·1380 paired frame**이다. 양측 한 Avatar가 이어지며 22개 앱 소스/실제 import 해시를 고정했다. 각 측 1500회 parameter 검사에서 범위 오류 0, 접촉 62/62 alpha 적중·같은 이동량, 외부 요청 0이다. **합성 cue·로컬 미리보기·무음**이며 실제 provider/IPC 대화 촬영이 아니다. 영상은 Product14와 같은 저장 expressive/bust·기쁨 `＞＜`·매핑을 쓰며 쓰다듬기만 기록용으로 켰다. 개인 저장 설정은 바꾸지 않았다. 접촉 이동량은 양측670.483 CSS px로 같다. 이벤트·해시는 `story-15-results.json`이며 QA montage를 직접 확인했다. Source 13의 통제 normal 영상·Source 14의 저장 구성 영상도 보존한다.
-- 실제 Sway/Xwayland 새 앱 프로세스의 production renderer에서 설정 UI20종·켜기 저장/reload·Shift stroke/창 위치 불변·해제·활성 petting→승인 정리·여운/낡은 clear/정확한 clear·renderer reload·원래 설정 해시 보존을 확인했다. 독립 idle 손의 실제 시작→자연 종료·창 위치 불변도 확인했다. 근거는 ignored `.tmp/afterglow-native/round-15-result.json`, `round-15-idle-native-proof.json`이다. 해제 수신 시각+기한 뒤의 실제 렌더 완료를 기다리도록 검사기를 보강했다(고정 wall-time 조회 시 캐시가 약1초 늦은 관찰 포함). 이후 기본 런처로 정상 재실행해 PID107169 생존과 원래 저장 설정의 canonical digest 일치를 확인했다. provider/Jev 호출은 0이다. 물리 마우스·OS 재부팅/재로그인은 수행하지 않았다.
+- **595개 unit/contract**, typecheck·format·build·외부 AI 없는 Mock desktop을 통과했다. 192조합, 30/60/120fps, 저장 매핑/빈 선택, 여운·손 복귀·clear/승인, 12초 접촉·짧은 fade·종료 직전 눈 복귀와 idle edge/소유권·held contact·접근성/매핑·프레임 건너뜀, custom 눈/표시/나머지 자산 분리와 유한한 idle/화남 눈 반응을 포함한다.
+- 실제 SDK/SwiftShader **70개 수락 검사·245개 현재 PNG**(after242/before3)에서 체크포인트마다 509개 parameter 범위 오류/외부 요청 0을 확인했다. `artifacts/grok-review/round-16-expression-results.json`의 assertions와 `artifacts/expression-afterglow/`가 현재 근거다. Source 13의62개/186PNG 결과도 별도 `round-13-expression-results.json`에 보존한다. 50ms 시뮬레이션·지정 rasterize이며 실시간 FPS/CPU 측정이 아니다.
+- `artifacts/grok-review/story-16-comparison.mp4`는 **69초·1120×900·20fps·1380 paired frame**이다. 양측 한 Avatar가 이어지며 22개 앱 소스/실제 import 해시를 고정했다. 각 측 1500회 parameter 검사에서 범위 오류 0, 접촉 62/62 alpha 적중·같은 이동량, 외부 요청 0이다. **합성 cue·로컬 미리보기·무음**이며 실제 provider/IPC 대화 촬영이 아니다. 영상은 Product14와 같은 저장 expressive/bust·기쁨 `＞＜`·매핑을 쓰며 쓰다듬기만 기록용으로 켰다. 개인 저장 설정은 바꾸지 않았다. 접촉 이동량은 양측670.483 CSS px로 같다. 이벤트·해시는 `story-16-results.json`이며 QA montage와 Source 15/16 얼굴 대조를 직접 확인했다. Source 13의 통제 normal 영상·Source 14/15의 저장 구성 영상도 보존한다.
+- 실제 Sway/Xwayland 새 앱 프로세스의 production renderer에서 설정 UI20종·켜기 저장/reload·Shift stroke/창 위치 불변·해제·활성 petting→승인 정리·여운/낡은 clear/정확한 clear·renderer reload·원래 설정 해시 보존을 확인했다. 독립 idle 손의 실제 시작→자연 종료·창 위치 불변도 확인했다. 근거는 ignored `.tmp/afterglow-native/round-16-result.json`(2026-11-03 06:34:47 KST), `round-16-idle-native-proof.json`, `round-16-release-frame-proof.json`이다. 해제 수신 시각+기한 뒤의 실제 렌더 완료를 기다리도록 검사기를 보강했다(고정 wall-time 조회 시 캐시가 약1초 늦은 관찰 포함). 이후 기본 런처로 정상 재실행해 PID111416 생존과 원래 저장 설정의 canonical digest 일치를 확인했다. provider/Jev 호출은 0이다. 물리 마우스·OS 재부팅/재로그인은 수행하지 않았다.
 
-적용은 현재 checkout에서 `npm run build` 후 앱 종료·기본 `~/.local/bin/live2d-companion` 재실행이다. 별도 시험용 런처나 서비스는 만들지 않았다. Source 15의 독립 idle 변경만 복원하려면 `5f33da8`을 revert한 뒤 build·같은 런처로 재실행한다. 이전 몸통/손 복귀 보강까지 복원할 때는 이어서 `4771977`→`22a2f2d`를 순서대로 revert한다. 전체 Grok 개선을 복원할 때는 코드 커밋 `5f33da8`→`4771977`→`22a2f2d`→`15c37eb`→`b2f1401`→`7e7e0b2`→`3a0fef4`→`9754202`→`28a9420`→`bdce55e`→`116e1b9`를 이 순서로 revert하며(최신→과거) 복원 버전의 문서도 맞춘다. 개인 연결/매핑·위치/배율의 설정 이관은 없다. 초기 감정 추가 이전으로 더 되돌리는 절차는 [구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다. SDK·모델·영상/프레임·개인 설정·Grok 원문 세션은 공개 Git에 넣지 않는다.
+적용은 현재 checkout에서 `npm run build` 후 앱 종료·기본 `~/.local/bin/live2d-companion` 재실행이다. 별도 시험용 런처나 서비스는 만들지 않았다. Source 16의 눈/얼굴 연결만 복원하려면 `6be797e`를 revert한 뒤 build·같은 런처로 재실행한다. Source 15의 독립 idle까지 복원하려면 이어서 `5f33da8`을 revert한다. 이전 몸통/손 복귀 보강까지 복원할 때는 이어서 `4771977`→`22a2f2d`를 순서대로 revert한다. 전체 Grok 개선을 복원할 때는 코드 커밋 `6be797e`→`5f33da8`→`4771977`→`22a2f2d`→`15c37eb`→`b2f1401`→`7e7e0b2`→`3a0fef4`→`9754202`→`28a9420`→`bdce55e`→`116e1b9`를 이 순서로 revert하며(최신→과거) 복원 버전의 문서도 맞춘다. 개인 연결/매핑·위치/배율의 설정 이관은 없다. 초기 감정 추가 이전으로 더 되돌리는 절차는 [구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다. SDK·모델·영상/프레임·개인 설정·Grok 원문 세션은 공개 Git에 넣지 않는다.
 
 ## 근거 자료와 한계
 
