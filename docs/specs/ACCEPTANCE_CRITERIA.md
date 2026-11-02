@@ -115,20 +115,23 @@
 - 손 진입 중 해제는 마지막 렌더 시각의 원본 진입을 역재생하고 hold 이후에는 원본 복귀를 쓴다. 해제 최대 1.05초·정지 .9초·최초 12초 안에 손과 몸이 끝난다. 정지 이벤트·중복 해제로 기한을 늘리지 않는다. 손이 복귀하는 중 새 접촉도 같은 기존 손 복귀와 기한을 유지한다.
 - 재접촉 첫 프레임의 MVP·고개·눈이 초기값으로 튀지 않는다. 새 stroke 없는 반복 begin/end가 기존 몸 fade를 재활용해 연장하지 않는다. scoped 메시지 clear는 직접 접촉의 손/얼굴을 지우지 않고 새 cue/요청·승인·오류·설정 해제는 즉시 정리한다. 실제 SDK에서 조기 해제·정지·12초·custom/접근성·손 소유권·재접촉/무 stroke·scoped clear를 확인한다.
 
-### 독립된 로컬 대기 손 (`FR-L2D-010`)
+### 독립된 로컬 대기 몸짓과 얼굴 (`FR-L2D-010`)
 
 - expressive/reducedMotion=false·idle·actor inactive·빈 pose/gesture/state gesture·manager 종료에서만 기존 gaze의 네 번째 슬롯 edge가 한 번 원본 가슴 pair를 시작한다. 새 랜덤 타이머/manager/큐는 없고 진입1133ms→유지600ms→복귀1017ms, 총2750ms에 끝난다. 30/60/120fps와 큰 프레임 건너뜀에서도 한 edge의 재시작·과거 edge 재생이 없다. 기존 의미 손 cooldown과12초 수명은 바꾸지 않는다.
-- active semantic none·thinking/working·blocked/승인·오류·기존 손/모션·pet 손/잔여 반응/held contact는 차단한다. 8px 전 정지 접촉도 차단하고, 부적격 edge를 소비해 cue 종료·설정 변경 직후 자동 재생하지 않는다. normal/quiet/reduced·custom/빈 wave 매핑·부족한 자산/입력/잘못된 endpoint에서 손이 없다. IDLE의 전용 `Movement2`/`Param59~62` 소유는 차단하고 기본 공유 `Param56/57`과 구분한다.
+- active semantic none·thinking/working·blocked/승인·오류·기존 손/모션·pet 손/잔여 반응/held contact는 차단한다. 8px 전 정지 접촉도 차단하고, 부적격 edge를 소비해 cue 종료·설정 변경 직후 자동 재생하지 않는다. normal/quiet/reduced·custom/빈 wave 매핑·부족한 자산/입력/잘못된 endpoint에서 손이 없다. IDLE의 전용 `Movement2`/`Param59~62` 소유는 차단하고 기본 공유 조명 입력 `Param56/57`(CDI `光2`/`光4`)과 구분한다.
 - `localIdleGesture` 진단과 semantic gesture를 분리하고 actor는 inactive/none으로 남는다. 손 방향 고개/시선과 같은 pose 가중치의 유한한 smile/eyeSmile·눈꺼풀을 연결한다. hold200~600ms에 눈을 정면으로 돌리고 exit와 함께 원래 얼굴로 돌아온다. blink를 지우지 않고 특수 눈/자산 소유권·입 열림/호흡/rootY·physics 출력을 보존한다. 실제 MOC의 entry/hold/exit/최종 endpoint·509개 범위·selector/소품 비침범·alpha를 검사한다. scalar 입력만으로 시각 품질을 판정하지 않는다.
 - idle 손 중 새 pet begin/stroke/end는 기존 손·기한을 재시작·이관·연장·정리하지 않는다. 그 접촉은 몸/얼굴만 반응하며 직접 접촉 방향이 idle 고개/시선보다 우선한다. 자연 종료 직후 draw 사이의 새 접촉도 stale idle flag에 막히지 않고 기존 pet 손 경로를 쓸 수 있다. scoped 메시지 clear는 독립 idle을 보존하고 수락된 새 cue/승격·요청/상태·승인·오류·설정 축소·reset/preview/dispose는 정리한다. 무시된 stale cue는 idle을 지우지 않는다.
-- 실제 production renderer에서 idle 시작→자연 종료·창 위치 불변·설정 보존과 기본 런처 재실행을 확인한다. 합성 cue SDK/영상과 production 실행을 구분하고 provider/Jev 호출0·TTS 제외·물리 마우스/OS 재부팅·재로그인 미수행을 명시한다. 현재 근거와 수치는 [구현 상태](../development/IMPLEMENTATION_STATUS.md#현재-검증영상)와 [Grok 검토](../ux/GROK_VTUBER_REVIEW.md#독립된-expressive-대기-손동작-source-15)를 따른다.
+- 별도 얼굴 owner는 같은 공통 idle gate에서 `gazeSlotId % 8 === 2`와 `gazeSlotStartedAt`만 사용한다.250ms 준비/180ms attack/450ms hold/450ms release 뒤1330ms에 끝나고 smile .5·한 눈 닫힘/반대 눈 .92에 기존 blink를 곱한다.30/60/120fps·큰 프레임 간격에서 시작/종료·한 edge 한 번만 재생을 검사한다.0 가중치는 원래 frame이며 smile/좌우 눈 외 고개/몸/시선/lean·입 열림/호흡/root와 모든 frame 필드는 같은 입력 대조에서 동일하다.
+- 눈인사 edge가 held contact/잔여 petting·활성 semantic none·작업/승인·기존 pose/gesture/manager·normal/quiet/reduced에 겹치면 소비하고 같은 슬롯의 해제 뒤 재개하지 않는다. 첫 IDLE의 눈꺼풀/MouthForm/EyeSmile/특수 눈 입력·EyeBlink 그룹 소유도 차단한다. custom/빈/부족한 wave 자산은 새 손을 막지만 자산 없는 절차 얼굴까지 끄지 않는다. 진행 중 새 pet begin·새 cue/승격·상태/접근성·reset/preview/dispose/context loss/렌더 오류는 눈인사를 즉시 정리하고 stale cue/끝난 scoped clear는 보존한다.
+- `localIdleAttention`은 실제 얼굴 기여와 종료를 표시하고 `motionActive`에 반영한다. actor는 inactive/gesture none, paired pose는 none으로 남으며 기존 네 번째 edge의2750ms 손을 연장/재시작하지 않는다. SDK에서 실제 눈/입·손 없음, 접촉/잔여와 승인 차단을 검사하고 production 시작→종료를 별도 관찰한다. 캐시된 native 조회 간격을 내부 pulse 수명이나 실시간 FPS로 주장하지 않는다.
+- 실제 production renderer에서 idle 손과 눈인사 시작→자연 종료·창 위치 불변·설정 보존과 기본 런처 재실행을 확인한다. 합성 cue SDK/영상과 production 실행을 구분하고 provider/Jev 호출0·TTS 제외·물리 마우스/OS 재부팅·재로그인 미수행을 명시한다. 현재 근거와 수치는 [구현 상태](../development/IMPLEMENTATION_STATUS.md#현재-검증영상)와 [Grok 검토](../ux/GROK_VTUBER_REVIEW.md#독립된-expressive-대기-손동작-source-15)를 따른다.
 
 ### Grok 시각 연기 검토 (`FR-L2D-009`)
 
 - 지원 모델의 torso roll은 PositionZ 등 검증된 upstream으로 구동하고 physics 출력을 직접 쓰지 않는다. 기존 시계의 고개를 지연해 따라가며 actor 강도별±.3 한도, 진행 중 강도/움직임 줄이기 변경의 즉시 제한·clear/blocked/reset을 검사한다. 미지원/physics-owned 입력과 IDLE 자체의 authored roll은 보존한다. 실제 MOC의 어깨/허리 변화·손 합성·root/MVP/호흡 보존과 authored IDLE 대조를 확인한다.
 - 짧은 인사/설명 preview의 실제1500ms hold 끝에서도 손 overlay가 점프하지 않도록 현재 유지 시각을 원본 exit 첫300ms에 연결한다. 중간 강조/이완 도중 복귀를 실제 PoseSequence와 MOC 경계에서 확인한다. 설명의 원본 끝값 .002 차이는 자산 허용값에 포함하고 완전한 subpixel 연속으로 주장하지 않는다. 새 early point도 같은 경로로 복귀하며 selector·손가락·물리 출력과 원래 기한은 보존한다.
 
-- happy의 저장 눈 아트는2300ms 수명/400ms fade 뒤 기존 열린 기쁨 얼굴을 드러낸다. confused1400/laugh1200/tease1100ms의 기존 우선순위·자산 이름/명시적 빈 값은 유지한다. custom 눈과 함께 선택한 표시·나머지 자산 파라미터의 원래 층/수명을 보존하는지 검사하며 실제 MOC에서 강조 후 일반 눈으로의 복귀를 확인한다.
+- happy cue의 저장 눈 아트는2300ms 수명/400ms fade 뒤 기존 열린 기쁨 얼굴을 드러낸다. confused1400/laugh1200/tease1100ms의 기존 우선순위·자산 이름/명시적 빈 값은 유지한다. custom 눈과 함께 선택한 표시·나머지 자산 파라미터의 원래 층/수명을 보존하는지 검사하며 실제 MOC에서 강조 후 일반 눈으로의 복귀를 확인한다.
 - 순수 angry preset/gesture none에서만 기존 cue1.95~3.1초에 한 번의 눈 확인이 나온다. pose 적분 후 gaze/눈꺼풀에만 적용해 고개/몸·찡그린 입·입 열림·호흡이 같은 입력 대조에서 동일하다. 양 변주 방향·blink·30/60/120fps·강도/접근성·compound override·clear/reset/원래 기한을 검사하고 실제 SDK에서 눈 확인/복귀와 손 없음·입 닫힘을 확인한다.
 
 - 손 없는 기쁨의 유지 얼굴은 밝은 열린 눈, 웃음은 한 번의 웃음 뒤 닫힌 입의 미소로 구분한다. 명시적인 유지 입 열림0이 공통 최소값에 덮이지 않고 neutral acknowledge의 기존 작은 입 목표·compound 감정·강도/움직임 줄이기·기한은 보존된다. 실제 SDK8초의 눈/입/입꼬리 차이를 확인한다.

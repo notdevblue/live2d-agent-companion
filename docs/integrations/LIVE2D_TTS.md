@@ -68,7 +68,7 @@ paired 손은 진입/복귀 클립 시간을 전체 의미 반응 기한에서 �
 
 `5f33da8`은 기존 expressive 설정에서만 활성 cue 없는 idle에 유한한 가슴 손동작을 제공한다(`FR-L2D-010`). `gazeSlotId`의 네 번째 edge를 사용하고 비활성 조건에서도 edge를 소비한다. 놓친 edge를 큐에 넣거나 설정 변경/반응 만료 뒤 재생하지 않는다. 같은 `PoseSequence`의 원본 entry1133ms·hold600ms·exit1017ms, 총2750ms이며 별도 랜덤 타이머·MotionManager·Jev 호출·의미 손 cooldown 변경은 없다.
 
-idle/actor inactive·빈 pose/gesture/state gesture·manager 종료와 expressive/reducedMotion=false를 모두 요구한다. petting의 held contact는8px 전에도 차단하고 잔여 petting·pet 손이 있어도 시작하지 않는다. shared `chestPoseDefinition`이 canonical wave 매핑·7개 비물리 입력/범위/endpoint를 검사해 custom/명시적 빈 선택/없는 자산을 보존한다. 첫 IDLE이 전용 `Movement2`/`Param59~62`를 구동하면 자동 idle 손을 생략하고 공유 selector `Param56/57`만으로는 막지 않는다. 직접 petting과 명시적 semantic 손의 기존 우선권은 바꾸지 않는다.
+idle/actor inactive·빈 pose/gesture/state gesture·manager 종료와 expressive/reducedMotion=false를 모두 요구한다. petting의 held contact는8px 전에도 차단하고 잔여 petting·pet 손이 있어도 시작하지 않는다. shared `chestPoseDefinition`이 canonical wave 매핑·7개 비물리 입력/범위/endpoint를 검사해 custom/명시적 빈 선택/없는 자산을 보존한다. 첫 IDLE이 전용 `Movement2`/`Param59~62`를 구동하면 자동 idle 손을 생략하고 공유 조명 입력 `Param56/57`(CDI `光2`/`光4`)만으로는 막지 않는다. 직접 petting과 명시적 semantic 손의 기존 우선권은 바꾸지 않는다.
 
 `localIdleGesture`는 의미 gesture와 별도인 owner/진단 상태다. **활성 의미 cue의 `gesture=none`은 계속 새 authored 손 없음**이며 이 대기 동작은 actor를 active로 만들지 않는다. 손 쪽 고개/시선은 진입·복귀에 맞춰 한 번 보간하고 직접 접촉보다 먼저 적용한다. Source 15에서는 얼굴·입·호흡/rootY를 그대로 두었다. Source 16의 유한한 얼굴 연결은 아래와 같으며 입 열림·호흡/rootY 보존은 유지한다. idle 중 pet begin/end는 손을 재시작·이관·연장·정리하지 않고 기존 기한까지 둔다. 그 접촉은 몸/얼굴만 반응하고 자연 종료 후 새 접촉부터 기존 pet 손을 사용할 수 있다.
 
@@ -88,7 +88,15 @@ Source 16 당시595개 unit/contract·SDK70개 수락/245PNG·native16의 produc
 
 concerned+tease에만 작은 숙임/회피·눈 .88/.96을 적용해 깊은 headY/gaze와 반눈이 headX 한도 부근까지 밀던 조합을 줄였다. 기존 worry→지연 wink/reconnect 시계와 초기 smile−.82를 유지하고 걱정이 풀릴 때 닫힌+.4 미소로 응답한 뒤 기존 concerned 여운으로 돌아간다. 다른47개 emotion/attitude 조합·강도/움직임 줄이기·기한/clear·breath/rootY/lean·입 열림·손 소유권은 보존한다. 땀의 실제 표시는 원본 IDLE의 `SweatBurst1~4` 곡선에 따라 달라지므로 key13만으로 가시성을 판단하거나 authored 출력을 강제하지 않는다.
 
-현재596개 unit/contract·SDK71개 수락/246PNG·native17/기본 런처 PID114906·원래 설정 보존을 확인했다. 최초 SDK의 깊은 숙임 요구는 새 얕은 숙임 의도와 충돌해 실패했고, production 변경 없이 실제 각도/재접촉·닫힌 입/손 없음으로 수락 기준을 갱신한 이력을 보존한다. 영상17은 같은 저장 프로필/69초·20fps·1380 paired frame/22개 소스 고정으로 최종 QA까지 완료했고 점수는 미정이다. 상세 실패/재검사·현재 결과·`3953383`부터의 복원은 [Grok 검토](../ux/GROK_VTUBER_REVIEW.md)·[구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다. TTS·물리 마우스·OS 재부팅/재로그인 검증은 추가하지 않았다.
+Source 17 당시596개 unit/contract·SDK71개 수락/246PNG·native17/기본 런처 PID114906·원래 설정 보존을 확인했다. 최초 SDK의 깊은 숙임 요구는 새 얕은 숙임 의도와 충돌해 실패했고, production 변경 없이 실제 각도/재접촉·닫힌 입/손 없음으로 수락 기준을 갱신한 이력을 보존한다. 영상17은 같은 저장 프로필/69초·20fps·1380 paired frame/22개 소스 고정으로 최종 QA까지 완료했고47페이지를 모두 읽은 Product17은80/100으로 종료했다. 상세 실패/재검사·현재 결과·최신 소스부터의 복원은 [Grok 검토](../ux/GROK_VTUBER_REVIEW.md)·[구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다. TTS·물리 마우스·OS 재부팅/재로그인 검증은 추가하지 않았다.
+
+### 기존 시선 구간의 독립 대기 눈인사 (Source 18, 2026-11-03)
+
+현재 코드 `bda756d`는 활성 cue 없는 expressive idle에 `Avatar.idleFaceSlot` 소유권을 추가한다. 기존 `gazeSlotId % 8 === 2` edge와 읽기 전용 `gazeSlotStartedAt`을 사용하고250ms 준비/180ms attack/450ms hold/450ms release 뒤1330ms에 종료한다. smile .5·한 눈 닫힘/반대 눈 .92를 기존 blink에 곱하며 해당 슬롯마다 눈 방향을 교대한다. 고개/몸/시선/lean·입 열림/호흡/root·자산 시계·기존2750ms 손·의미 cooldown·LLM 예산은 바꾸지 않는다.
+
+`idleEligible`/edge 소비를 기존 손과 공유한다. held contact/잔여 petting·pet 손·활성 cue/pose/gesture·작업/승인·normal/quiet/reduced는 차단하고, 해제된 같은 슬롯에서 뒤늦게 재개하지 않는다. 첫 IDLE의 눈꺼풀/MouthForm/EyeSmile/특수 눈 입력은 새 얼굴보다 우선한다. canonical wave·custom/빈 매핑 검사는 authored 손에만 적용하며 자산 없는 절차 눈인사는 독립이다. actor-only 후보의 pet 해제 잔여 충돌을 피해 Avatar에서 접촉을 검사하고 overlay를 직접 petting보다 먼저 적용한다. pet begin·새 cue/승격·요청/상태·설정 축소·reset/preview/dispose/context loss/렌더 오류는 즉시 정리하고 stale cue/끝난 메시지의 scoped clear는 독립 owner를 보존한다. `localIdleAttention`은 얼굴 기여·`motionActive`는 실제 활성 상태를 표시하며 semantic cue/actor active로 위장하지 않는다.
+
+605개 unit/contract·SDK76개/278PNG(after275/before3)·native18의 눈인사/손 시작→종료와 기존 UI20종·petting/승인·reload/설정 보존을 통과했다. 기본 런처 PID120211의 원래 설정 digest도 확인했다. native 눈인사 기록의 약3초는 캐시/조회 관찰 간격이며 내부1080ms 기여 수명·실시간 FPS가 아니다. 영상18은 같은 저장 profile14·69초 타임라인/22개 소스 고정·20fps/1380 paired frame으로 QA를 완료했고47페이지 평가의 점수는 미정이다. 눈인사57.85~58.95초와 기존 손63.35~66.05초를 관찰했다. 별도 영상 실행의 타 구간 JPEG 완전 일치는 주장하지 않으며 실제 범위·차이 근거를 검토 문서에 구분한다. 최신 검증·`bda756d`부터의 복원은 [구현 상태](../development/IMPLEMENTATION_STATUS.md)와 [Grok 검토](../ux/GROK_VTUBER_REVIEW.md)를 따른다. TTS·물리 마우스·OS 재부팅/재로그인은 검증하지 않았다.
 
 ## 전체 표현 점검 (2026-11-01)
 
@@ -110,7 +118,7 @@ concerned+tease에만 작은 숙임/회피·눈 .88/.96을 적용해 깊은 head
 | attitude laugh      | 함께 웃는 농담·재미있는 관찰 → 눈웃음 연기                                       | 눈웃음                                                              |
 | attitude shy        | 수줍음, embarrassed 자산 우선                                                    | 수줍음                                                              |
 | attitude reassure   | 안심시키는 미소·작은 끄덕임                                                      | 안심                                                                |
-| gesture none        | 활성 cue의 새 손 포즈 없음, 이전 메시지의 다른 손 포즈 정리                                 | 말투가 손 포즈를 추가하지 않음                                      |
+| gesture none        | 활성 cue의 새 손 포즈 없음, 이전 메시지의 다른 손 포즈 정리                      | 말투가 손 포즈를 추가하지 않음                                      |
 | gesture wave        | 손 들기 → 유지 → 복귀                                                            | 인사                                                                |
 | gesture explain     | 검지 포즈 → 유지 → 복귀                                                          | 설명                                                                |
 | gesture thinking    | 생각 시선·고개 또는 사용자 생각 자산                                             | 생각, 응답 대기 상태에서도 사용                                     |
