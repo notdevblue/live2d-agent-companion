@@ -117,6 +117,13 @@ const scenes = [
     savedHappy: true,
     times: [700, 1000, 1400, 8000],
   },
+  {
+    name: 'saved-joy',
+    emotion: 'happy',
+    attitude: 'neutral',
+    savedHappy: true,
+    times: [700, 1500, 2000, 3000, 8000, 16200],
+  },
   { name: 'clear', emotion: 'happy', gesture: 'explain', clearAt: 8050, times: [8000, 8100] },
   {
     name: 'reduced',
@@ -125,7 +132,11 @@ const scenes = [
     reducedMotion: true,
     times: [1000, 8000, 16200],
   },
-  { name: 'angry', emotion: 'angry', times: [300, 1000, 2000, 3000, 8000, 16100, 16150, 16200] },
+  {
+    name: 'angry',
+    emotion: 'angry',
+    times: [300, 1000, 2000, 2200, 2600, 3000, 3150, 8000, 16100, 16150, 16200],
+  },
   { name: 'confused', emotion: 'confused', times: [1000, 1200, 1250, 1600, 8000, 16200] },
   ...['sad', 'concerned', 'angry', 'confused', 'reassure', 'wave'].map((preview) => ({
     name: `preview-${preview}`,
@@ -402,6 +413,31 @@ void app.whenReady().then(async () => {
     check(
       'saved laugh eye artwork releases without changing the saved mapping',
       sample('saved-happy', 1400).values.key5 === 0,
+    );
+    check(
+      'saved happy eye accent gives way to the existing open-eyed joy without a new hand',
+      sample('saved-joy', 700).values.key5 > 0.5 &&
+        sample('saved-joy', 1500).values.key5 === 0 &&
+        sample('saved-joy', 2000).values.EyeSmile > 0.1 &&
+        sample('saved-joy', 3000).values.ParamEyeLOpen > 0.5 &&
+        sample('saved-joy', 3000).values.Movement2 === 0 &&
+        !sample('saved-joy', 16200).frame.active,
+    );
+    check(
+      'local idle hand has one finite smile and returns to the original idle face',
+      sample('idle-expressive', 12500).values.ParamMouthForm >
+        sample('idle-expressive', 14100).values.ParamMouthForm + 0.2 &&
+        sample('idle-expressive', 12500).values.EyeSmile > 0.3 &&
+        sample('idle-expressive', 12500).values.ParamMouthOpenY ===
+          sample('idle-expressive', 14100).values.ParamMouthOpenY,
+    );
+    check(
+      'pure anger briefly checks the listener without losing its closed-mouth frown or starting a hand',
+      sample('angry', 2200).frame.eyeL > sample('angry', 3150).frame.eyeL + 0.05 &&
+        sample('angry', 2600).values.ParamMouthForm < 0 &&
+        sample('angry', 2600).values.ParamMouthOpenY === 0 &&
+        sample('angry', 2600).values.Movement2 === 0 &&
+        sample('angry', 3150).frame.gesture === 'none',
     );
     check(
       'joy and laughter make one real forward body phrase and settle without a hand pose',

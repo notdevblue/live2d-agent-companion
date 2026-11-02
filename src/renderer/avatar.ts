@@ -491,7 +491,9 @@ export class Avatar {
           ? 1200
           : cue.attitude === 'tease'
             ? 1100
-            : undefined,
+            : cue.emotion === 'happy'
+              ? 1500
+              : undefined,
     );
     // Delivery tone does not override an explicit "no physical gesture" decision.
     this.startGesture(motionName, now, lifetime);
@@ -659,13 +661,24 @@ export class Avatar {
           ? Math.max(0, 1 - (pose.timeMs ?? 0) / pose.definition.exitMs)
           : 1;
     const weight = progress * progress * (3 - 2 * progress);
-    // Briefly attend to the chest hand. The direct-contact overlay runs later
-    // and retains priority; face, mouth, breath and root transform stay intact.
+    // One affectionate glance, then reconnect using the same finite pose clock.
+    // The contact overlay runs later and retains priority; mouth/root stay intact.
+    const reconnect =
+      pose.phase === 'hold'
+        ? Math.min(1, Math.max(0, ((pose.timeMs ?? 0) - 200) / 400))
+        : pose.phase === 'exit'
+          ? 1
+          : 0;
+    const returnEyes = reconnect * reconnect * (3 - 2 * reconnect);
     return {
       ...acting,
       headY: acting.headY + (-0.12 - acting.headY) * weight,
-      gazeX: acting.gazeX + (-0.08 - acting.gazeX) * weight,
-      gazeY: acting.gazeY + (-0.18 - acting.gazeY) * weight,
+      gazeX: acting.gazeX + (-0.08 * (1 - returnEyes) - acting.gazeX) * weight,
+      gazeY: acting.gazeY + (-0.18 * (1 - returnEyes) - acting.gazeY) * weight,
+      smile: acting.smile + (0.55 - acting.smile) * weight,
+      eyeSmile: acting.eyeSmile + (0.45 - acting.eyeSmile) * weight,
+      eyeL: acting.eyeL + (0.75 * acting.blink - acting.eyeL) * weight,
+      eyeR: acting.eyeR + (0.75 * acting.blink - acting.eyeR) * weight,
     };
   }
   private startGesture(name: string | undefined, now: number, lifetimeMs?: number): void {

@@ -1380,6 +1380,168 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
       }
   });
 
+  it('checks the listener once with angry eyes while keeping the averted body and frown', () => {
+    for (const [intensity, intensityScale] of [
+      ['quiet', 0.35],
+      ['normal', 0.65],
+      ['expressive', 1],
+    ] as const)
+      for (const reducedMotion of [false, true])
+        for (const variant of [0, 1]) {
+          const cue = {
+            requestId: 'reluctant-check',
+            messageId: 'm',
+            segmentId: 1,
+            emotion: 'angry',
+            gesture: 'none',
+          } as const;
+          const scale = intensityScale * (reducedMotion ? 0.18 : 1);
+          const direction = variant ? -1 : 1;
+          const paths = [30, 60, 120].map((fps) => {
+            const actor = new ActingController();
+            actor.configure({ intensity, reducedMotion });
+            if (variant) {
+              actor.cue(cue, 0);
+              actor.reset(0);
+            }
+            actor.cue(cue, 0);
+            const before = advance(actor, 1900, fps),
+              checking = advance(actor, 2300, fps, 1900),
+              returned = advance(actor, 3100, fps, 2300);
+            for (const eye of ['eyeL', 'eyeR'] as const) {
+              expect(checking[eye]).toBeGreaterThan(before[eye] + 0.2 * scale);
+              expect(checking[eye]).toBeGreaterThan(returned[eye] + 0.2 * scale);
+              expect(returned[eye]).toBeCloseTo(before[eye], 5);
+            }
+            // The eyes counter-look toward the listener; neither the head nor
+            // the shoulders follow them out of the turned-away posture.
+            expect(checking.gazeX * direction).toBeGreaterThan(0.24 * scale);
+            expect(checking.headX * direction).toBeLessThan(-0.2 * scale);
+            expect(checking.bodyX * direction).toBeLessThan(-0.16 * scale);
+            for (const frame of [before, checking, returned]) {
+              expect(frame).toMatchObject({
+                active: true,
+                emotion: 'angry',
+                gesture: 'none',
+                mouthOpen: 0,
+                variant,
+              });
+              expect(frame.browY).toBeLessThan(-0.35 * scale);
+              expect(frame.pout).toBeGreaterThan(0.25 * scale);
+              expect(frame.eyeSmile).toBe(0);
+              expect(Math.abs(frame.headX)).toBeLessThanOrEqual(0.7 * scale);
+              expect(Math.abs(frame.bodyX)).toBeLessThanOrEqual(0.5 * scale);
+            }
+            // After the finite check, the calibrated held face retains its
+            // original bounded lifetime.
+            const held = advance(actor, 8000, fps, 3100);
+            expect(held.eyeL).toBeCloseTo(
+              1 + (0.5 + (0.35 - 0.5) * intensityScale - 1) * (reducedMotion ? 0.18 : 1),
+              6,
+            );
+            expect(advance(actor, reactionLifetime('angry'), fps, 8000)).toMatchObject({
+              active: false,
+              eyeL: 1,
+              eyeR: 1,
+              mouthOpen: 0,
+            });
+            return [before, checking, returned, held];
+          });
+          for (const path of paths.slice(1))
+            for (let i = 0; i < path.length; i++)
+              for (const key of [
+                ...motionKeys,
+                'eyeL',
+                'eyeR',
+                'browY',
+                'pout',
+                'breath',
+                'offsetY',
+              ] as const)
+                expect(path[i]![key]).toBeCloseTo(paths[0]![i]![key], 7);
+        }
+  });
+
+  it('keeps the angry eye check out of other attitudes and explicit gesture intent', () => {
+    for (const attitude of ['tease', 'laugh', 'reassure', 'shy', 'explain'] as const) {
+      const angry = new ActingController(),
+        neutral = new ActingController();
+      angry.cue({ emotion: 'angry', attitude, gesture: 'none' }, 0);
+      neutral.cue({ emotion: 'neutral', attitude, gesture: 'none' }, 0);
+      const emotional = advance(angry, 2300),
+        control = advance(neutral, 2300);
+      for (const key of ['gazeX', 'gazeY', 'eyeL', 'eyeR'] as const)
+        expect(emotional[key]).toBe(control[key]);
+    }
+    for (const gesture of ['thinking', 'explain', 'wave'] as const) {
+      const actor = new ActingController();
+      actor.cue({ emotion: 'angry', gesture }, 0);
+      const frame = advance(actor, 2300);
+      expect(frame.eyeL).toBeCloseTo(0.5, 6);
+      expect(frame.eyeR).toBeCloseTo(0.5, 6);
+      expect(frame.gesture).toBe(gesture);
+    }
+  });
+
+  it('preserves blinks and short preview/delivery deadlines during the angry eye check', () => {
+    for (const fps of [30, 60, 120]) {
+      const blinking = new ActingController();
+      blinking.cue({ emotion: 'angry', gesture: 'none' }, 0);
+      (blinking as unknown as { blinkAt: number }).blinkAt = 2235;
+      const closed = advance(blinking, 2300, fps);
+      expect(closed.eyeL).toBe(0);
+      expect(closed.eyeR).toBe(0);
+      expect(closed.gazeX).toBeGreaterThan(0.3);
+      for (const mode of ['preview', 'delivery'] as const) {
+        const actor = new ActingController();
+        if (mode === 'preview') actor.preview('angry', 0);
+        else actor.cue({ emotion: 'angry', gesture: 'none', stage: 'delivery' }, 0);
+        const checking = advance(actor, 2300, fps);
+        expect(checking.gazeX).toBeGreaterThan(0.3);
+        expect(checking.eyeL).toBeGreaterThan(0.64);
+        const returned = advance(actor, 3100, fps, 2300);
+        expect(returned.eyeL).toBeCloseTo(0.5, 6);
+        expect(advance(actor, reactionDuration('angry'), fps, 3100).active).toBe(false);
+      }
+    }
+  });
+
+  it('clears the early angry eye check on every existing reaction boundary', () => {
+    const cue = {
+      requestId: 'reluctant-check',
+      messageId: 'm',
+      segmentId: 1,
+      emotion: 'angry',
+      gesture: 'none',
+    } as const;
+    for (const fps of [30, 60, 120])
+      for (const boundary of ['clear', 'reset', 'blocked', 'error', 'replace'] as const) {
+        const actor = new ActingController();
+        actor.cue(cue, 0);
+        const checking = advance(actor, 2300, fps);
+        expect(checking.gazeX).toBeGreaterThan(0.2);
+        if (boundary === 'clear') expect(actor.clearCue(cue)).toBe(true);
+        else if (boundary === 'reset') actor.reset(2300);
+        else if (boundary === 'replace') {
+          actor.cue(
+            { ...cue, messageId: 'next', emotion: 'neutral', attitude: 'reassure', segmentId: 2 },
+            2300,
+          );
+          // The previous local pose may blend into this new reaction, but its
+          // independent checking glance must disappear immediately.
+          expect(actor.sample(2300, 0).gazeX).toBeLessThan(checking.gazeX - 0.25);
+          continue;
+        } else actor.setState(boundary, 2300);
+        expect(actor.sample(2300, 0)).toMatchObject({
+          active: false,
+          gazeX: 0,
+          eyeL: 1,
+          eyeR: 1,
+          mouthOpen: 0,
+        });
+      }
+  });
+
   it('releases angry lids continuously before semantic, delivery and preview deadlines at every frame rate', () => {
     for (const mode of ['semantic', 'delivery', 'preview'] as const)
       for (const intensity of ['quiet', 'normal', 'expressive'] as const)

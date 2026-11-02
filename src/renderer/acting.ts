@@ -454,10 +454,18 @@ export class ActingController {
           performanceAge > 2000 &&
           performanceAge < 2800));
     const blink = wink ? 1 : this.pose.blink;
+    // A reluctant eye-only check inside the short angry reaction. Project it
+    // after pose integration so gaze→head→torso following cannot unwind the
+    // averted posture. The existing cue clock returns both eyes by 3.1s.
+    const angryCheck =
+      reaction?.preset === 'angry' && reaction.gesture === 'none'
+        ? beat(attitudeTime(reaction, age / 1000), 1.95, 0.25, 0.25, 0.65) * this.scale()
+        : 0;
     return {
       ...this.pose,
-      eyeL: this.pose.eyeL * blink,
-      eyeR: this.pose.eyeR * blink,
+      gazeX: clamp(this.pose.gazeX + (reaction?.variant ? -1 : 1) * 0.45 * angryCheck),
+      eyeL: clamp(this.pose.eyeL + 0.22 * angryCheck, 0, 1) * blink,
+      eyeR: clamp(this.pose.eyeR + 0.22 * angryCheck, 0, 1) * blink,
       breath: this.state === 'blocked' ? 0.5 : 0.5 + this.breathWave(now) * 0.48 * this.scale(),
       offsetY: this.state === 'blocked' ? 0 : this.breathWave(now) * 0.0045 * this.scale(),
       preset: reaction?.preset ?? this.base(),

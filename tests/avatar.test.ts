@@ -342,6 +342,35 @@ describe('semantic expression afterglow — FR-L2D-004/006/007', () => {
     vi.setSystemTime(2000);
     avatar.cue({ ...cue, messageId: 'second', segmentId: 2, emotion: 'confused', gesture: 'none' });
   });
+  it('keeps the selected happy eye as a brief accent while preserving custom markings and other parameters', () => {
+    for (const happy of [undefined, '＞＜', 'custom-happy']) {
+      const { avatar, runtime } = avatarWithMaps({ happy });
+      if (happy === 'custom-happy')
+        runtime.expressions.set(
+          happy,
+          ['key5', 'key7', 'clothes'].map((id) => ({
+            index: runtime.indexes.get(id)!,
+            value: 1,
+            blend: 'Add' as const,
+          })),
+        );
+      avatar.cue({ ...cue, gesture: 'none', attitude: 'neutral', stage: 'semantic' });
+      expect(runtime.mixer.sample(700).some((l) => l.name.endsWith(':eyes'))).toBe(!!happy);
+      const later = runtime.mixer.sample(1600);
+      expect(later.some((l) => l.name.endsWith(':eyes'))).toBe(false);
+      if (happy === 'custom-happy') {
+        expect(later.flatMap((l) => l.parameters.map((p) => p.index)).sort()).toEqual(
+          [runtime.indexes.get('key7'), runtime.indexes.get('clothes')].sort(),
+        );
+      }
+      expect(
+        (avatar as unknown as { inventory: ModelInventory }).inventory.expressionMap.happy,
+      ).toBe(happy);
+      expect(runtime.actor.sample(1600, 0).active).toBe(true);
+      avatar.clearCue(cue);
+      expect(runtime.mixer.sample(1600)).toEqual([]);
+    }
+  });
   it('allows only the saved blush marker in direct petting and preserves custom props and authored ownership', () => {
     const { avatar, runtime } = avatarWithMaps({ embarrassed: 'custom-blush' });
     expect(runtime.pettingMarks(0.65)).toEqual([]);
@@ -1207,7 +1236,20 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
       expect(glanced.gazeY).toBe(-0.18);
       expect(glanced.headY).toBe(-0.12);
       for (const key of Object.keys(frame) as Array<keyof ActingFrame>)
-        if (!['headY', 'gazeX', 'gazeY'].includes(key)) expect(glanced[key]).toEqual(frame[key]);
+        if (!['headY', 'gazeX', 'gazeY', 'smile', 'eyeSmile', 'eyeL', 'eyeR'].includes(key))
+          expect(glanced[key]).toEqual(frame[key]);
+      expect(glanced.smile).toBe(0.55);
+      expect(glanced.eyeSmile).toBe(0.45);
+      const closed = runtime.idleGestureFrame(
+        { ...frame, blink: 0, eyeL: 0, eyeR: 0 },
+        runtime.poses.sample(1100),
+      );
+      expect(closed.eyeL).toBe(0);
+      expect(closed.eyeR).toBe(0);
+      const hold = runtime.idleGestureFrame(frame, runtime.poses.sample(2100));
+      expect(Math.abs(hold.gazeY)).toBeLessThan(Math.abs(glanced.gazeY));
+      const exiting = runtime.idleGestureFrame(frame, runtime.poses.sample(2700));
+      expect(exiting.smile).toBeLessThan(glanced.smile);
       const touched = applyPetting(glanced, 1, { x: 1, y: 1 });
       expect(touched.gazeY).toBeGreaterThan(glanced.gazeY);
       expect(touched.gazeX).toBeGreaterThan(glanced.gazeX);
