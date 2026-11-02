@@ -698,7 +698,8 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     expect(quiet.headZ).toBeCloseTo(shifted.headZ * 0.18, 7);
     expect(shifted).toMatchObject({ active: false, mouthOpen: 0, smile: 0 });
     const reconnect = advance(actor, 2500, 60, 1400);
-    expect(Math.abs(reconnect.gazeX)).toBeLessThan(Math.abs(shifted.gazeX) * 0.35);
+    expect(Math.abs(reconnect.gazeX)).toBeLessThan(Math.abs(shifted.gazeX) * 0.55);
+    expect(Math.abs(reconnect.gazeX)).toBeGreaterThan(Math.abs(shifted.gazeX) * 0.4);
     expect(Math.abs(reconnect.headZ)).toBeLessThan(Math.abs(shifted.headZ) * 0.5);
     actor.setState('blocked', 2500);
     expect(actor.sample(2500, 0)).toMatchObject({ headZ: 0, gazeX: 0, mouthOpen: 0 });
@@ -885,6 +886,74 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
           'pout',
         ] as const)
           expect(frame[key]).toBeCloseTo(frames[0]![key], 7);
+    }
+  });
+
+  it('turns the head and delayed torso coherently toward idle and authored-hand attention', () => {
+    const idle = new ActingController();
+    const early = advance(idle, 900),
+      looking = advance(idle, 1400, 60, 900);
+    expect(Math.abs(looking.headX)).toBeGreaterThan(0.18);
+    expect(Math.abs(looking.bodyX)).toBeGreaterThan(0.05);
+    expect(looking.headX * looking.gazeX).toBeGreaterThan(0);
+    expect(looking.headX * looking.bodyX).toBeGreaterThan(0);
+    expect(Math.abs(early.bodyX)).toBeLessThan(Math.abs(early.headX) * 0.4);
+    for (const gesture of ['explain', 'wave'] as const) {
+      const actor = new ActingController();
+      const cue = {
+        requestId: 'r',
+        messageId: 'm',
+        segmentId: 1,
+        emotion: 'neutral',
+        gesture,
+      } as const;
+      actor.cue(cue, 0);
+      const attention = advance(actor, 6000);
+      expect(attention).toMatchObject({ phase: 'afterglow', active: true });
+      expect(Math.abs(attention.headX)).toBeGreaterThan(0.35);
+      expect(Math.abs(attention.bodyX)).toBeGreaterThan(0.14);
+      expect(attention.headX * attention.gazeX).toBeGreaterThan(0);
+      expect(attention.headX * attention.bodyX).toBeGreaterThan(0);
+      expect(actor.clearCue(cue)).toBe(true);
+      expect(actor.sample(6000, 0)).toMatchObject({ headX: 0, bodyX: 0, gazeX: 0, active: false });
+    }
+  });
+
+  it('bounds calibrated horizontal poses under large compound cues and preserves quiet/reduced frame trajectories', () => {
+    for (const [intensity, reducedMotion, scale] of [
+      ['expressive', false, 1],
+      ['normal', false, 0.65],
+      ['quiet', false, 0.35],
+      ['normal', true, 0.65 * 0.18],
+    ] as const) {
+      const frames = [30, 60, 120].map((fps) => {
+        const actor = new ActingController();
+        actor.configure({ intensity, reducedMotion });
+        actor.cue({ emotion: 'concerned', attitude: 'tease', gesture: 'none' }, 0);
+        const path: ActingFrame[] = [];
+        let start = 0;
+        for (const time of [1000, 6000, 10500]) {
+          const frame = advance(actor, time, fps, start);
+          expect(Math.abs(frame.headX)).toBeLessThanOrEqual(0.7 * scale + 1e-10);
+          expect(Math.abs(frame.bodyX)).toBeLessThanOrEqual(0.5 * scale + 1e-10);
+          path.push(frame);
+          start = time;
+        }
+        actor.configure({ intensity: 'quiet', reducedMotion: true });
+        expect(Math.abs(actor.sample(10500, 0).headX)).toBeLessThanOrEqual(
+          0.7 * 0.35 * 0.18 + 1e-10,
+        );
+        expect(Math.abs(actor.sample(10500, 0).bodyX)).toBeLessThanOrEqual(
+          0.5 * 0.35 * 0.18 + 1e-10,
+        );
+        actor.setState('blocked', 10500);
+        expect(actor.sample(10500, 0)).toMatchObject({ headX: 0, bodyX: 0, gazeX: 0 });
+        return path;
+      });
+      for (const path of frames.slice(1))
+        for (let i = 0; i < path.length; i++)
+          for (const key of [...motionKeys, 'offsetY', 'breath'] as const)
+            expect(path[i]![key]).toBeCloseTo(frames[0]![i]![key], 7);
     }
   });
 

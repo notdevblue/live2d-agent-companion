@@ -42,6 +42,62 @@ describe('explicit local petting — FR-L2D-008', () => {
     expect(applyPetting(frame, 0.65, { x: NaN, y: Infinity })).toEqual(applyPetting(frame, 0.65));
     expect(applyPetting(frame, 0.65, { x: 99, y: -99 })).toEqual(right);
   });
+  it('gives direct contact priority over opposing idle head, gaze and torso intent', () => {
+    const neutral = new ActingController().sample(0, 0);
+    for (const direction of [-1, 1]) {
+      const frame = {
+        ...neutral,
+        headX: -direction,
+        gazeX: -direction,
+        bodyX: -direction * 0.4,
+        headY: -direction * 0.3,
+        gazeY: -direction * 0.2,
+      };
+      const pet = applyPetting(frame, 0.65, { x: direction, y: direction });
+      for (const key of ['headX', 'gazeX', 'bodyX', 'headY', 'gazeY'] as const)
+        expect(pet[key] * direction).toBeGreaterThan(0);
+      expect(pet.headX).toBeCloseTo(direction * 0.235);
+      expect(pet.gazeX).toBeCloseTo(direction * 0.2675);
+      expect(pet.bodyX).toBeCloseTo(direction * 0.055);
+      expect(pet.lean).toBe(frame.lean);
+      expect(pet.offsetY).toBe(frame.offsetY);
+      expect(pet.bodyY).toBe(frame.bodyY);
+    }
+  });
+  it('preserves the exact nonneutral frame at zero or invalid weight, including negative mouth intent', () => {
+    const frame = {
+      ...new ActingController().sample(0, 0),
+      smile: -0.6,
+      headX: -0.8,
+      bodyX: -0.3,
+      gazeX: 0.7,
+      eyeL: 0.4,
+      eyeR: 1.2,
+    };
+    for (const weight of [0, -1, NaN, Infinity])
+      expect(applyPetting(frame, weight, { x: 1, y: -1 })).toBe(frame);
+  });
+  it('fades direct intent back to an opposing negative-mouth baseline without a final-frame snap', () => {
+    const frame = {
+      ...new ActingController().sample(0, 0),
+      smile: -0.6,
+      headX: -0.8,
+      gazeX: -0.7,
+      bodyX: -0.3,
+    };
+    const pet = new PettingController();
+    pet.begin(0);
+    pet.stroke(10, 20);
+    const at = (now: number) => applyPetting(frame, pet.sample(now) * 0.65, { x: 1, y: 1 });
+    const contact = at(300);
+    pet.end(300);
+    expect(at(300)).toEqual(contact);
+    expect(at(500)).toEqual(contact);
+    const tail = at(1349);
+    for (const key of ['headX', 'headY', 'gazeX', 'gazeY', 'bodyX', 'smile', 'eyeSmile'] as const)
+      expect(Math.abs(tail[key] - frame[key])).toBeLessThan(0.00001);
+    expect(at(1350)).toBe(frame);
+  });
   it('returns smoothly after release or leaving the zone, and clears immediately on blocking', () => {
     const pet = new PettingController();
     pet.begin(0);

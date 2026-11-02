@@ -29,20 +29,25 @@ export function applyPetting(
   focus: { x: number; y: number } = { x: 0, y: 0 },
 ): ActingFrame {
   const amount = Number.isFinite(weight) ? Math.max(0, Math.min(1, weight)) : 0;
+  if (amount === 0) return frame;
   const x = Number.isFinite(focus.x) ? Math.max(-1, Math.min(1, focus.x)) : 0;
   const y = Number.isFinite(focus.y) ? Math.max(-1, Math.min(1, focus.y)) : 0;
   const bounded = (value: number): number => Math.max(-1, Math.min(1, value));
+  // Direct contact owns its intent while active; attenuate the independent
+  // idle/cue direction instead of adding a competing displacement to it.
+  const toward = (base: number, target: number): number => bounded(base + (target - base) * amount);
   return {
     ...frame,
-    smile: Math.max(frame.smile, 0.85 * amount),
-    eyeSmile: Math.max(frame.eyeSmile, 0.9 * amount),
+    smile: toward(frame.smile, Math.max(frame.smile, 0.85)),
+    eyeSmile: toward(frame.eyeSmile, Math.max(frame.eyeSmile, 0.9)),
     eyeL: frame.eyeL * Math.max(0.08, 1 - amount * 1.25),
     eyeR: frame.eyeR * Math.max(0.08, 1 - amount * 1.25),
     headZ: Math.min(1, frame.headZ + 0.35 * amount),
-    headX: bounded(frame.headX + x * 0.72 * amount),
-    headY: bounded(frame.headY + y * 0.22 * amount),
-    gazeX: bounded(frame.gazeX + x * 0.95 * amount),
-    gazeY: bounded(frame.gazeY + (y * 0.45 - 0.25) * amount),
+    headX: toward(frame.headX, x * 0.9),
+    headY: toward(frame.headY, y * 0.22),
+    bodyX: toward(frame.bodyX, x * 0.3),
+    gazeX: toward(frame.gazeX, x * 0.95),
+    gazeY: toward(frame.gazeY, y * 0.45 - 0.25),
   };
 }
 

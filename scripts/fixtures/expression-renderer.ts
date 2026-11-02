@@ -18,6 +18,8 @@ const parameters = [
   'AngleX',
   'AngleY',
   'AngleZ',
+  'PositionX',
+  'ParamBodyAngleX',
   'ParamAngleY',
   'ParamAngleX',
   'ParamAngleZ',
@@ -162,7 +164,7 @@ const api = {
     const start = clock;
     if (scene.petting) avatar.beginPetting();
     else if (scene.preview) avatar.preview(scene.preview);
-    else avatar.cue(cue);
+    else if (!scene.idle) avatar.cue(cue);
     const samples = [];
     let cleared = false;
     for (const time of scene.times) {

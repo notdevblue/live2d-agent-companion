@@ -31,6 +31,13 @@ const leanScenes = [
 ];
 const scenes = [
   ...leanScenes,
+  { name: 'idle-life', idle: true, times: [2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000] },
+  {
+    name: 'idle-life-reduced',
+    idle: true,
+    reducedMotion: true,
+    times: [2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000],
+  },
   { name: 'happy', emotion: 'happy', times: [1000, 8000, 16200] },
   { name: 'happy-laugh', emotion: 'happy', attitude: 'laugh', times: [1000, 8000, 15600] },
   {
@@ -177,6 +184,23 @@ void app.whenReady().then(async () => {
     check(
       'default happy uses procedural eyes',
       sample('happy', 1000).values.key5 === 0 && sample('happy', 1000).values.EyeSmile > 0.05,
+    );
+    const idleSpan = (name: string, parameter: string): number => {
+      const values = scenes
+        .find((scene) => scene.name === name)!
+        .times.map((time) => sample(name, time).values[parameter]);
+      return Math.max(...values) - Math.min(...values);
+    };
+    check(
+      'idle attention reaches readable head and delayed torso physics outputs',
+      idleSpan('idle-life', 'ParamAngleX') > 5 && idleSpan('idle-life', 'ParamBodyAngleX') > 2,
+    );
+    check(
+      'reduced motion suppresses actual idle head and torso outputs',
+      ['ParamAngleX', 'ParamBodyAngleX'].every(
+        (parameter) =>
+          idleSpan('idle-life-reduced', parameter) < idleSpan('idle-life', parameter) * 0.25,
+      ),
     );
     check(
       'happy laugh closes eyes without key5',

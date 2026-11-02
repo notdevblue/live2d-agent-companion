@@ -215,7 +215,11 @@ export class ActingController {
       'gazeX',
       'gazeY',
     ] as const)
-      this.pose[key] = clamp(this.pose[key], -limit, limit);
+      this.pose[key] = clamp(
+        this.pose[key],
+        -limit * (key === 'headX' ? 0.7 : key === 'bodyX' ? 0.5 : 1),
+        limit * (key === 'headX' ? 0.7 : key === 'bodyX' ? 0.5 : 1),
+      );
   }
 
   setState(state: ActingState, nowMs: number): void {
@@ -548,7 +552,7 @@ export class ActingController {
     const idleGaze = !reaction && this.state === 'idle' && this.gazeIndex > 0;
     const idleAge = (now - this.gazeSince) / 1000;
     const idleTilt = idleGaze ? 0.35 * beat(idleAge, 0, 0.35, 0.55, 0.8) : 0;
-    const reconnect = idleGaze ? 1 - 0.8 * smooth((idleAge - 0.65) / 0.85) : 1;
+    const reconnect = idleGaze ? 1 - 0.55 * smooth((idleAge - 0.65) / 0.85) : 1;
     const scale = this.scale();
     const blend = (a: number, b: number): number => a + (b - a) * weight;
     const follow = (key: keyof Pose, value: number, rate: number): void => {
@@ -581,8 +585,15 @@ export class ActingController {
           : 4.5;
     follow(
       'headX',
-      this.pose.gazeX * 0.65 +
-        (blend(base.headX, target.headX) + maintenance.pose.headX * maintenance.weight) * scale,
+      // The actual rig turns visibly around normalized .3–.45 at normal.
+      // Couple gaze to the head before the torso follows, bounding the complete
+      // target so an authored emotional lean cannot add an excessive turn.
+      clamp(
+        this.pose.gazeX * 1.6 +
+          (blend(base.headX, target.headX) + maintenance.pose.headX * maintenance.weight) * scale,
+        -0.7 * scale,
+        0.7 * scale,
+      ),
       headFollow,
     );
     follow(
@@ -602,7 +613,8 @@ export class ActingController {
         scale,
       4,
     );
-    follow('bodyX', this.pose.headX * 0.3, 2.1);
+    // A delayed torso inclination stays inside the measured safe PositionX range.
+    follow('bodyX', clamp(this.pose.headX * 0.65, -0.5 * scale, 0.5 * scale), 2.1);
     follow('bodyY', this.pose.headY * 0.2 + this.breathWave(now) * 0.13 * scale, 2.1);
     follow(
       'lean',
