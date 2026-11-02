@@ -158,6 +158,52 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     expect(ended.mouthOpen).toBeLessThan(0.001);
   });
 
+  it('keeps bright joy distinct from a closed-mouth laugh after the single chuckle', () => {
+    for (const intensity of ['quiet', 'normal', 'expressive'] as const)
+      for (const reducedMotion of [false, true]) {
+        const paths = [30, 60, 120].map((fps) => {
+          const happy = new ActingController(),
+            laugh = new ActingController();
+          for (const actor of [happy, laugh]) actor.configure({ intensity, reducedMotion });
+          happy.cue(
+            { requestId: 'joy', messageId: 'm', segmentId: 1, emotion: 'happy', gesture: 'none' },
+            0,
+          );
+          laugh.cue(
+            {
+              requestId: 'laugh',
+              messageId: 'm',
+              segmentId: 1,
+              emotion: 'happy',
+              attitude: 'laugh',
+              gesture: 'none',
+            },
+            0,
+          );
+          const joy = advance(happy, 7000, fps),
+            grin = advance(laugh, 7000, fps);
+          expect(joy.eyeL).toBeGreaterThan(grin.eyeL);
+          expect(joy.eyeR).toBeGreaterThan(grin.eyeR);
+          expect(grin.smile).toBeGreaterThan(joy.smile);
+          expect(grin.eyeSmile).toBeGreaterThan(joy.eyeSmile);
+          expect(grin.mouthOpen).toBeLessThan(0.00001);
+          expect(joy.mouthOpen).toBeGreaterThan(0);
+          expect(grin).toMatchObject({ active: true, phase: 'afterglow', gesture: 'none' });
+          expect(advance(laugh, reactionLifetime('laugh'), fps, 7000)).toMatchObject({
+            active: false,
+            mouthOpen: 0,
+            eyeL: 1,
+            eyeR: 1,
+          });
+          return { joy, grin };
+        });
+        for (const path of paths.slice(1))
+          for (const name of ['joy', 'grin'] as const)
+            for (const key of ['eyeL', 'eyeR', 'smile', 'eyeSmile', 'mouthOpen'] as const)
+              expect(path[name][key]).toBeCloseTo(paths[0]![name][key], 7);
+      }
+  });
+
   it('clears an already applied semantic cue during afterglow without accepting stale clears', () => {
     const actor = new ActingController();
     const cue = {
@@ -363,7 +409,7 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     expect(advance(actor, 1500, 60, 1000).eyeL).toBeCloseTo(0.7, 3);
   });
 
-  it('makes laughter a visible tilt and one mouth pulse before returning to a thin smile', () => {
+  it('makes laughter a visible tilt and one mouth pulse before settling to a closed-mouth grin', () => {
     const actor = new ActingController(),
       reduced = new ActingController();
     actor.preview('laugh', 0);
@@ -391,7 +437,7 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     const settled = actor.sample(2400, 0);
     expect(settled.mouthOpen).toBeLessThan(0.001);
     expect(settled.eyeL).toBeGreaterThan(0.99);
-    expect(settled.smile).toBeLessThan(0.4);
+    expect(settled.smile).toBeGreaterThan(0.5);
     expect(advance(actor, 3600, 60, 2400).active).toBe(false);
   });
 
@@ -705,7 +751,8 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     expect(quiet.headZ).toBeCloseTo(shifted.headZ * 0.18, 7);
     expect(shifted).toMatchObject({ active: false, mouthOpen: 0, smile: 0 });
     const reconnect = advance(actor, 2500, 60, 1400);
-    expect(Math.abs(reconnect.gazeX)).toBeLessThan(Math.abs(shifted.gazeX) * 0.55);
+    expect(reconnect.gazeX * shifted.gazeX).toBeLessThan(0);
+    expect(reconnect.gazeX * reconnect.headX).toBeLessThan(0);
     expect(Math.abs(reconnect.gazeX)).toBeGreaterThan(Math.abs(shifted.gazeX) * 0.4);
     expect(Math.abs(reconnect.headZ)).toBeLessThan(Math.abs(shifted.headZ) * 0.5);
     actor.setState('blocked', 2500);
@@ -793,8 +840,8 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
       worried = held('concerned', 'tease'),
       playful = held('neutral', 'tease');
     expect(happy.eyeSmile).toBeGreaterThan(0.49);
-    expect(happy.eyeL).toBeGreaterThan(0.37);
-    expect(happy.eyeL).toBeLessThan(0.43);
+    expect(happy.eyeL).toBeGreaterThan(0.8);
+    expect(happy.eyeL).toBeLessThan(0.9);
     expect(happy.smile).toBeGreaterThan(0.35);
     expect(angry.smile).toBeLessThan(-0.2);
     expect(angry.browY).toBeLessThan(-0.25);
@@ -1035,15 +1082,17 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
           expect(path[phase][key]).toBeCloseTo(paths[0]![phase][key], 7);
   });
 
-  it('lets the torso finish an idle gaze shift after the eyes reconnect, then releases the finite posture', () => {
+  it('lets eyes counter-look before the torso settles and retains a side posture within the same slot', () => {
     const actor = new ActingController();
     const looking = advance(actor, 1400);
     const settling = advance(actor, 2200, 60, 1400);
-    expect(Math.abs(settling.gazeX)).toBeLessThan(Math.abs(looking.gazeX) * 0.5);
+    expect(settling.gazeX * looking.gazeX).toBeLessThan(0);
+    expect(settling.gazeX * settling.headX).toBeLessThan(0);
     expect(Math.abs(settling.bodyX)).toBeGreaterThan(Math.abs(looking.bodyX) * 1.7);
     expect(settling.bodyX).toBeLessThan(-0.2);
     const returned = advance(actor, 4500, 60, 2200);
-    expect(Math.abs(returned.bodyX)).toBeLessThan(Math.abs(settling.bodyX) * 0.4);
+    expect(Math.abs(returned.bodyX)).toBeLessThan(Math.abs(settling.bodyX));
+    expect(returned.gazeX * returned.headX).toBeLessThan(0);
     expect(returned).toMatchObject({ active: false, gesture: 'none', mouthOpen: 0 });
   });
 
@@ -1535,7 +1584,9 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
         const frame = actor.sample(time, 1 / 60),
           baseline = idle.sample(time, 1 / 60);
         const axis = preset === 'shake' ? 'headX' : 'headY';
-        values.push(frame[axis] - baseline[axis]);
+        // An independent idle side-turn is no longer a neutral reference for
+        // a shake. Verify its actual left/right excursion; nods remain relative.
+        values.push(preset === 'shake' ? frame[axis] : frame[axis] - baseline[axis]);
         expect(frame.offsetY).toBe(baseline.offsetY);
       }
       // At a +/-30 degree rig, a clear nod must travel at least 6 degrees

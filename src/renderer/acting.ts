@@ -558,9 +558,12 @@ export class ActingController {
     const idleGaze = !reaction && this.state === 'idle' && this.gazeIndex > 0;
     const idleAge = (now - this.gazeSince) / 1000;
     const idleTilt = idleGaze ? 0.35 * beat(idleAge, 0, 0.35, 0.55, 0.8) : 0;
-    const reconnect = idleGaze ? 1 - 0.55 * smooth((idleAge - 0.65) / 0.85) : 1;
-    // One posture shift per existing irregular gaze slot. Eyes lead the turn,
-    // then the torso settles later and both return without another idle clock.
+    // Eyes lead the glance, then counter-look while the head and torso settle
+    // on that side. Shrinking a shared eye/head target only returned the whole
+    // figure together and never produced this independent listening posture.
+    const reconnect = idleGaze ? smooth((idleAge - 0.65) / 0.85) : 0;
+    // One additive posture shift per existing irregular gaze slot. Its beat
+    // returns while the side-facing head target lasts until the next slot.
     const idleDirection = this.gaze.x < 0 ? -1 : 1;
     const idleHeadShift = idleGaze ? idleDirection * 0.22 * beat(idleAge, 0, 0.6, 0.8, 1.6) : 0;
     const idleWeightShift = idleGaze
@@ -575,7 +578,7 @@ export class ActingController {
     };
     follow(
       'gazeX',
-      (this.gaze.x * reconnect * (idleGaze ? 2.5 : 1) +
+      (this.gaze.x * (1 - 2.2 * reconnect) * (idleGaze ? 2.5 : 1) +
         blend(base.gazeX, target.gazeX) +
         maintenance.pose.gazeX * maintenance.weight) *
         scale,
@@ -583,7 +586,7 @@ export class ActingController {
     );
     follow(
       'gazeY',
-      (this.gaze.y * reconnect * (idleGaze ? 2.5 : 1) +
+      (this.gaze.y * (1 - 0.55 * reconnect) * (idleGaze ? 2.5 : 1) +
         blend(base.gazeY, target.gazeY) +
         maintenance.pose.gazeY * maintenance.weight) *
         scale,
@@ -602,7 +605,7 @@ export class ActingController {
       // Couple gaze to the head before the torso follows, bounding the complete
       // target so an authored emotional lean cannot add an excessive turn.
       clamp(
-        this.pose.gazeX * 1.6 +
+        (idleGaze ? this.gaze.x * 2.5 * scale : this.pose.gazeX) * 1.6 +
           (blend(base.headX, target.headX) +
             maintenance.pose.headX * maintenance.weight +
             idleHeadShift) *
@@ -662,9 +665,7 @@ export class ActingController {
       reaction?.preset === 'confused';
     follow(
       'mouthOpen',
-      closedMouth
-        ? 0
-        : (target.mouthOpen * weight + Math.max(0.12, heldFace.mouthOpen) * mouthWeight) * scale,
+      closedMouth ? 0 : (target.mouthOpen * weight + heldFace.mouthOpen * mouthWeight) * scale,
       12,
     );
     for (const key of ['eyeL', 'eyeR'] as const) {
@@ -699,7 +700,11 @@ export class ActingController {
 
   private heldFace(reaction: Reaction | undefined, t: number): Pose {
     const face = neutral();
-    if (!reaction?.afterglow || reaction.preset === 'acknowledge') return face;
+    if (!reaction?.afterglow) return face;
+    if (reaction.preset === 'acknowledge') {
+      face.mouthOpen = 0.12;
+      return face;
+    }
     const glance = Math.abs(beat(t, 5.1, 0.4, 0.65, 0.6) - beat(t, 9.6, 0.4, 0.65, 0.6));
     if (reaction.preset === 'happy' || reaction.preset === 'laugh' || reaction.gesture === 'wave') {
       face.smile = 0.58;
@@ -709,6 +714,15 @@ export class ActingController {
       face.eyeL = face.eyeR = 0.08 + 0.55 * glance;
       face.mouthOpen = reaction.preset === 'happy' ? 0.18 : 0;
       face.browY = 0.12;
+      if (reaction.gesture === 'none' && reaction.preset === 'happy') {
+        // Joy stays bright and attentive; it must not share laughter's narrow lids.
+        face.eyeL = face.eyeR = 0.76 + 0.18 * glance;
+      } else if (reaction.gesture === 'none' && reaction.preset === 'laugh') {
+        // The one chuckle leaves a closed-mouth grin, distinct from open-eyed joy.
+        face.smile = 0.8;
+        face.eyeSmile = 0.9;
+        face.eyeL = face.eyeR = 0.18 + 0.55 * glance;
+      }
     }
     if (reaction.gesture === 'explain' || reaction.preset === 'explain') {
       face.smile = 0.4;
@@ -1019,7 +1033,7 @@ export class ActingController {
       p.gazeX = direction * 0.07 * chuckle;
       p.lean = 0.08 + 0.28 * chuckle;
       p.headZ = direction * (0.28 * laugh + 0.1 * (1 - smooth((t - 2.6) / 0.6)));
-      const settle = 1 - 0.6 * smooth((t - 1.6) / 0.45);
+      const settle = 1 - 0.3 * smooth((t - 1.6) / 0.45);
       p.smile *= settle;
       p.eyeSmile *= settle;
       if (variant === 1) p.eyeR *= 1 - beat(t, 2.1, 0.12, 0.3, 0.25);

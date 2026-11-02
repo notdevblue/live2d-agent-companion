@@ -397,10 +397,25 @@ void app.whenReady().then(async () => {
         ) < 0.02,
     );
     check(
-      'semantic face remains at eight seconds',
+      'semantic joy retains bright eyes and its smile at eight seconds',
       sample('happy', 8000).values.ParamMouthForm > 0 &&
         sample('happy', 8000).values.ParamMouthOpenY > 0.1 &&
-        sample('happy', 8000).values.ParamEyeLOpen < 0.6,
+        sample('happy', 8000).values.ParamEyeLOpen > 0.8,
+    );
+    check(
+      'held laughter has a stronger closed-mouth grin than bright open-eyed joy',
+      sample('happy-laugh', 8000).values.ParamMouthOpenY < 0.00001 &&
+        sample('happy-laugh', 8000).values.ParamMouthForm >
+          sample('happy', 8000).values.ParamMouthForm &&
+        sample('happy', 8000).values.ParamEyeLOpen -
+          sample('happy-laugh', 8000).values.ParamEyeLOpen >
+          0.25,
+    );
+    check(
+      'idle pupil counter-look is independent of the settled side-facing head',
+      sample('idle-life', 3000).values.ParamAngleX *
+        sample('idle-life', 3000).values.ParamEyeBallX <
+        -0.1 && sample('idle-life', 3000).frame.headX * sample('idle-life', 3000).frame.gazeX < 0,
     );
     check(
       'afterglow expires within budget',
