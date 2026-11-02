@@ -1,8 +1,8 @@
 # Grok의 VTuber 연기 검토와 반영 결과
 
-**확인일:** 2026-11-03 · **검토:** Grok CLI 1.0.70 / 기본 `grok-4.7`(실제 실행 ID `grok-4.7-build`) · **현재 코드:** `5f31a2f` (Source 19) · **범위:** 무음 시각 경험
+**확인일:** 2026-11-03 · **검토:** Grok CLI 1.0.70 / 기본 `grok-4.7`(실제 실행 ID `grok-4.7-build`) · **현재 코드:** `7e89a97` (Source 20) · **범위:** 무음 시각 경험
 
-사용자는 Grok의 조사·문서 작성, 개선 반영, 영상과 재검토를 요청했다. 종료 조건은 **Grok의 100점 만점 평가 85점 이상**이다. 점수는 단일 모델의 주관적 UX 평가이며 정확도·성능·사용성 인증이 아니다. TTS·음성·음절 립싱크는 제외했다. 이전 코드 `4771977`의 통제된 normal·새 기본 기쁨 구성 평가는 **67/100**이다. 같은69초 조건에서 `15c37eb`는74점, `b2f1401`은69점이었고, 더 짧은59초의 `3a0fef4`도74점이었다. 점수는 단일 평가자의 주관적 의견이며 코드 효과만의 측정치가 아니다. 같은 코드에 실제 저장 expressive·기쁨 `＞＜` 구성을 적용한 Product14는 **73/100**이었다. `5f33da8`의 Source 15도 같은 저장 구성을 유지했고 영상 검증과 Grok Product15 평가를 마쳐 **78/100**이었다. `6be797e`의 Source 16은 눈 강조·독립 idle 얼굴·화남의 짧은 눈 재접촉을 보강했고 **76/100**이었다. `3953383`의 Source 17은 기쁨 눈 강조 길이와 걱정→장난 자세를 보완했고 **80/100**이었다. `bda756d`의 Source 18은 독립 idle 눈인사를 추가했으며 단위·SDK·native·영상 최종 QA와 Grok 검토를 마쳤으며 Product18은 **74/100**이었다. 현재 `5f31a2f`의 Source 19는 손 없는 감정의 독립 상체 자세를 추가했고 단위·SDK·native·영상 QA를 완료했으며 Product19는 **71/100**이었다. 종료 조건85점에는 미달이다.
+사용자는 Grok의 조사·문서 작성, 개선 반영, 영상과 재검토를 요청했다. 종료 조건은 **Grok의 100점 만점 평가 85점 이상**이다. 점수는 단일 모델의 주관적 UX 평가이며 정확도·성능·사용성 인증이 아니다. TTS·음성·음절 립싱크는 제외했다. 이전 코드 `4771977`의 통제된 normal·새 기본 기쁨 구성 평가는 **67/100**이다. 같은69초 조건에서 `15c37eb`는74점, `b2f1401`은69점이었고, 더 짧은59초의 `3a0fef4`도74점이었다. 점수는 단일 평가자의 주관적 의견이며 코드 효과만의 측정치가 아니다. 같은 코드에 실제 저장 expressive·기쁨 `＞＜` 구성을 적용한 Product14는 **73/100**이었다. `5f33da8`의 Source 15도 같은 저장 구성을 유지했고 영상 검증과 Grok Product15 평가를 마쳐 **78/100**이었다. `6be797e`의 Source 16은 눈 강조·독립 idle 얼굴·화남의 짧은 눈 재접촉을 보강했고 **76/100**이었다. `3953383`의 Source 17은 기쁨 눈 강조 길이와 걱정→장난 자세를 보완했고 **80/100**이었다. `bda756d`의 Source 18은 독립 idle 눈인사를 추가했으며 단위·SDK·native·영상 최종 QA와 Grok 검토를 마쳤으며 Product18은 **74/100**이었다. `5f31a2f`의 Source 19는 손 없는 감정의 독립 상체 자세를 추가했고 단위·SDK·native·영상 QA를 완료했으며 Product19는 **71/100**이었다. 현재 `7e89a97`의 Source 20은 순수 웃음의 크기가 다른 두 박자를 추가했고 단위·SDK·native·영상 최종 QA를 마쳤으며 Product20 평가는 진행 중이다. 종료 조건85점에는 미달이다.
 
 ## 조사 자료와 실제 확인 범위
 
@@ -105,11 +105,15 @@ Source 17은 기쁨 눈 강조를1500→2300ms로 조정해 특수 눈의 정점
 
 머리 자세는 웃음과 토라짐의 유지 기울임을 반대 방향으로 더 구분하고 대기 tilt를 기존 불규칙 슬롯 안에서 보강했다. 실제 결합142PNG·4,519,920회 parameter 검사에서 오류/외부 요청0, MVP·breath·offsetY 변화0이었다. idle2.2초 어깨/몸통 차이는 약+1.64°/3.58px, laugh4초−2.33°/5.10px, angry4초+1.01°/2.21px였다. normal/expressive 손과 reduced explain도 대조했다. `.tmp/posture13c/proof.json`이 근거이며 정점 변화량을 매력 점수로 환산하지 않는다.
 
-Source 19는 몸통 X/Z가 주로 고개를 추종해 감정별 자세가 비슷해지는 경로를 보완했다. `gesture=none`일 때만 기존 강조+유지 가중치(합계 상한1)로 독립 목표를 혼합한다. 기본 변주의 bodyX/Z 목표는 순수 happy .10/.04, happy·neutral의 laugh −.26/.28, shy 또는 embarrassed+laugh .24/−.28, angry −.44/.22이며 다른 변주는 방향을 반전한다. 기존 강도별 X±.5/Z±.3 한도와2.1/s 추종을 유지한다. idle·명시적 제스처·대상 밖 말투는 기존 고개 추종을 유지하고 머리/시선/얼굴/bodyY·lean·입 열림/호흡/root·MVP·손/자산·외부 판단을 바꾸지 않는다.
+Source 19는 몸통 X/Z가 주로 고개를 추종해 감정별 자세가 비슷해지는 경로를 보완했다. `gesture=none`일 때만 기존 강조+유지 가중치(합계 상한1)로 독립 목표를 혼합한다. Source 19에서 정한 기본 변주의 bodyX/Z 유지 목표는 순수 happy .10/.04, happy·neutral의 laugh −.26/.28, shy 또는 embarrassed+laugh .24/−.28, angry −.44/.22이며 다른 변주는 방향을 반전한다. 기존 강도별 X±.5/Z±.3 한도와2.1/s 추종을 유지한다. idle·명시적 제스처·대상 밖 말투는 기존 고개 추종을 유지한다. Source 19 당시 머리/시선/얼굴/bodyY·lean·입 열림/호흡/root·MVP·손/자산·외부 판단은 바꾸지 않았으며, Source 20의 짧은 웃음 강조는 아래와 같이 구분한다.
 
 실제 bust MOC 후보의 expressive 기본 변주3초 어깨선은 happy−.46°/laugh−4.05°/shy+4.02°/angry−3.43°였다. 편안한 기쁨·반대쪽 웃음/수줍음·옆으로 돌린 화남의 자세를 구분했지만 웃음/화남은 기울기만으로 비슷하며 네 개의 완전히 다른 몸짓이나 풍부한 시간 연기를 입증하지 않는다. `.tmp/body-intent18/{REVIEW.md,proof.json}`은36장면/144PNG·11,700회 범위 검사 오류/외부 요청0, bodyX/Z 외 actor 필드·표본 MVP 보존을 기록한다. 기존2.1/s 보간 때문에16.2초 active=false/weight0에도 몸통 차이가 최대3.29px 남았다. 의도는 원래 기한에 끝나고 기존 추종으로 돌아가며, production SDK는18.2초의 근접 복귀를 별도 확인한다. 즉시 baseline 일치로 주장하지 않는다.
 
 `Avatar`는 기존 Z 보호와 같이 첫 IDLE이 `PositionX`/`ParamBodyAngleX`를 구동하면 bodyX binding을 끈다. `.tmp/idle-ownership19/{REVIEW.md,proof.json}`의 실제24장면/48PNG·1464체크포인트에서 범위 오류/외부 요청0을 확인했다. 원본 모델은 수정하지 않고 메모리 IDLE에만 X=5 또는 Z=5를 추가해 네 감정×expressive/reduced의0~3초 실제 값5 보존을 검사했다. 기본 IDLE은 채널을 유지하며 채택 후보와 actor 궤적·1/3초509개 parameter/MVP·수집117 mesh·전체 viewport PNG가 동일했다. 다른 rig·X 별칭·모든 프레임의 전체 정점·종료 직후 복귀까지 검증한 근거는 아니다.
+
+Source 20은 `preset=laugh`·emotion happy/neutral·`gesture=none`에만 기존 변주 강조 시계의 두 번 웃음을 적용한다. 첫 박자는 local .15초부터 attack .25/hold .15/release .5초, 둘째는1.25초부터 .18/.12/.5초다. headY는 첫−.24·둘째−.14, headZ는 첫+.24·둘째−.17의 강조와 기존 변주 방향을 사용한다. 웃음의 bodyX/Z 유지 목표−.26/.28에는 첫+.14/−.18·둘째−.10/+.02의 유한한 offset을 더한 뒤 유지값으로 돌아간다. bodyY는 바뀐 headY를 기존 결합으로 따라갈 뿐 별도 Y pulse가 없다. embarrassed+laugh의 최초 회피·다른 감정·명시적 gesture는 그대로다. 새 타이머/랜덤/loop·입/눈·lean/호흡/root/MVP·손/자산/매핑은 추가하지 않고 기존 cap·수명/clear·움직임 줄이기를 유지한다.
+
+실제 MOC 후보는24장면/168PNG·2184×509 parameter 검사에서 범위 오류/외부 요청0, 모든 표본 MVP 동일을 확인했다. expressive 기본 변주의 headY 최저는 .70초−.2893·1.70초−.2011, 사이1.30초−.0757로 첫 숙임보다 두 번째가 작았다. 몸통 변화는 머리보다 작아 큰 몸 웃음이나 장시간 자연스러움을 입증하지 않는다. 선택7시각의336개 손 bbox는 측면 잘림0이며 모든 중간 프레임의 기하 검사는 아니다. `.tmp/laugh-rhythm19/{REVIEW.md,proof.json,production-match.json}`은 후보/포맷된 production actor의17,472프레임 차이0과 비대상/허용 필드 보존을 기록한다. 현재 actor SHA는 `551b69e8c9424574fc229a2f9377f0708c0b6d63ab5189ddcd5e8168b590d7e3`이다. 메인이 expressive 변주0·normal 변주1의 비교 그림과 수치를 직접 확인했으며 점수 상승의 근거로 환산하지 않는다.
 
 설명에는 짧은 미리보기 안의 두 번째 고개/눈썹 박자와 검증된 Param41의 유한한 point를 더했다. 또 짧은 미리보기의 손은 기본1500ms hold여서 explain은2750ms, wave는2633ms에 복귀를 시작한다. 기존 overlay가 이를 fully relaxed 상태로 가정해 손을 뛰게 했다. `PoseFrame.heldMs`로 실제 유지 끝의 overlay를 평가하고 원본 복귀의 첫300ms에 합류하도록 고쳤다. 실제1ms 경계 손 최대 이동은 explain48.92→2.10px, wave14.23→.031px였다(`.tmp/preview-return13/proof.json`). explain의 남은 차이는 원본 Param41 끝값 .702→.700 불일치가 주원인이다. 이를 상쇄한 ignored 진단만 .661px였으며 production 결과로 주장하지 않는다. 원본 미세 불연속은 남기고 실제 자산 차이를 포함한 수락 허용값을 명시했다.
 
@@ -117,11 +121,15 @@ Source 19는 몸통 X/Z가 주로 고개를 추종해 감정별 자세가 비슷
 
 ### 기각한 자산과 종료 경계 수정
 
+걱정 몸통의 작은 이동 후보는 실제 normal/expressive에서 걱정 가독성을 높이지 못해 채택하지 않았다. 눈썹 upstream과 표정/IDLE 소유권은 정상이며 `.tmp/concern-body19/REVIEW.md`에 근거를 남겼다. 별도 `.tmp/torso-dynamics19/REVIEW.md`에서 PositionY는 주로 어깨·허리의 공통 높이 이동, 유효 LeanInput은 전후/원근 변화로 보여 국소 몸 수축의 새 연기로 채택하지 않았다. 최초 actor.lean 실험은 MVP 변화까지 섞여 무효였고 원시 결과를 보존한 뒤 upstream 하나만 대체해 다시 검사했다. Source 20에 독립 Y/Lean pulse는 넣지 않았다.
+
 알려진 `屑屑眼`(key6)도 실제 MOC에서는 눈뿐 아니라 입을 작은 원으로 바꿨다. MouthForm −1·MouthOpen0에서도 같아 닫힌 화남을 강화하는 자산으로 채택하지 않았다. 절차 눈 열림 .7/.5/.4/.3을 비교해 normal 약 .4를 택했고, .3은 졸린 인상이라 피했다. `.tmp/face-probe/angry08-lids-grid.jpg`와 기각한 key6 비교를 보존한다. 미확인 분노 effect·Emotion/Emotion2·탈포착·새 리깅은 연결하지 않았다.
 
 코드 검토에서 화남의 눈꺼풀이 기존 envelope를 우회해 약 .5를 유지하다 기한에 1로 뛰는 원인을 찾았다. 화남의 계산된 눈 모양에 기존 강조+유지 가중치를 적용해 중립으로 복귀하도록 고쳤다. 8초 유지값 .4025는 같다. 실제 의미 반응 16100/16199/16200ms는 약 .99184/.99896/1, 미리보기 4150/4200ms는 약 .99086/.99736이었다. 종료 직전·미리보기/delivery·정확한 clear·30/60/120fps·강도/접근성을 검사했다. `.tmp/angry-tail-fix/proof.json`과 현재 SDK 결과가 근거다. 이 수정 전 Round08과 수정 후 Round09를 같은 소스라고 표기하지 않는다.
 
 ## 평가 방법과 보존한 점수
+
+2026-11-03의 별도 기능 검사에서는 동일 MP4를 CLI `read_file`로 한 번 열었지만 `Cannot read binary file`로 실패했다(세션 `01a19e89-66c1-7713-9956-91b97229ad44`, `.tmp/grok-grading/video-capability20.jsonl`). [공식 FAQ](https://docs.x.ai/grok/faq#what-file-types-can-i-upload-to-grok)의 웹·앱 MP4 업로드 지원과 CLI 도구를 구분한다. 이 기능 검사는 점수를 매기지 않았고 Product20의 재평가가 아니다. 현재 검토는 계속 프레임 자료이며 실제 MP4 연속 시청으로 주장하지 않는다.
 
 처음 메인이 추가한 고정 평가는 **기존 그림을 제외한 연기 기여도**였다. 사용자 원문의 전체 VTuber/오타쿠 매력보다 좁아, 이후 기존 아트를 포함한 종합 평가를 별도로 받았다. 둘을 같은 점수의 상승으로 합치지 않는다. 초기 일반 10점 의견도 별도 척도다.
 
@@ -135,22 +143,23 @@ Source 19는 몸통 X/Z가 주로 고개를 추종해 감정별 자세가 비슷
 
 이 원문들은 ignored `.tmp/grok-grading/`에 보존한다. 다섯 항목(감정 가독성·시간 리듬·채널 조합/생동감·캐릭터 매력/변주·직접 입력 반응)을 각 0~20으로 평가했다. 고정 before는 `29b85f0`이고 긴 비교 영상은 `artifacts/grok-review/round-XX-comparison.mp4`다. 뒤의 유지/손 복귀까지 포함한 최종 긴 자료는 167.5초·3350 paired frame이다.
 
-| 전체 그림+연출 종합 | 점수   | 관찰 조건·판단                                                                                           |
-| ------------------- | ------ | -------------------------------------------------------------------------------------------------------- |
-| Product05           | 60/100 | 59초, 1초 간격, 얼굴5/몸8페이지. 일러스트 호감보다 정적인 유지가 약점                                    |
-| Product06           | 58/100 | 같은 1초 자료. 고개/몸 보정만으로 충분한 생동감으로 읽히지 않음                                          |
-| Product07           | 72/100 | 같은59초, 균일 .5초+마지막119시각, 큰 전신 포함40페이지로 변경                                           |
-| Product08           | 72/100 | 같은 .5초/40페이지. 걱정→장난·혼란·화남 대비 보강, 입력 표식 제거. 종료 경계 수정 전 소스                |
-| Product09           | 74/100 | 종료 페이드 수정본·같은59초/.5초/40페이지                                                                |
-| Product11           | 69/100 | 대기/직접 접촉 손 보강본·69초/.5초/47페이지. 추가된 긴 대기의 정적 인상과 같은 유지 미소를 약점으로 평가 |
-| Product12           | 74/100 | 유지 얼굴/입0·눈/고개 독립 복귀 수정본·같은69초/.5초/47페이지. 몸 반응과 대기가 여전히 약하다는 평가     |
-| Product13           | 67/100 | 몸통 roll·자세 대비·짧은 손 복귀 보강본·통제된 normal/새 기본 기쁨·같은69초/.5초/47페이지                |
-| Product14           | 73/100 | Product13과 같은 코드·실제 저장 expressive/기쁨 `＞＜` 구성·같은69초/.5초/47페이지                       |
-| Product15           | 78/100 | `5f33da8`의 독립 expressive idle 손·Product14와 같은 저장 구성/69초/.5초/47페이지                        |
-| Product16           | 76/100 | `6be797e`의 짧은 기쁨 눈 강조·idle 얼굴·화남 눈 확인·같은 저장 구성/69초/.5초/47페이지                   |
-| Product17           | 80/100 | `3953383`의2300ms 기쁨 눈 강조·걱정→장난 자세 보완·같은 저장 구성/69초/.5초/47페이지                     |
-| Product18           | 74/100 | `bda756d`의 독립 idle 눈인사·같은 저장 구성/69초 타임라인, 영상 QA 완료·47페이지 평가 완료               |
-| Product19           | 71/100 | `5f31a2f`의 손 없는 감정별 상체 자세·같은 저장 구성/69초/.5초/47페이지, 영상 QA 완료                     |
+| 전체 그림+연출 종합 | 점수    | 관찰 조건·판단                                                                                           |
+| ------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| Product05           | 60/100  | 59초, 1초 간격, 얼굴5/몸8페이지. 일러스트 호감보다 정적인 유지가 약점                                    |
+| Product06           | 58/100  | 같은 1초 자료. 고개/몸 보정만으로 충분한 생동감으로 읽히지 않음                                          |
+| Product07           | 72/100  | 같은59초, 균일 .5초+마지막119시각, 큰 전신 포함40페이지로 변경                                           |
+| Product08           | 72/100  | 같은 .5초/40페이지. 걱정→장난·혼란·화남 대비 보강, 입력 표식 제거. 종료 경계 수정 전 소스                |
+| Product09           | 74/100  | 종료 페이드 수정본·같은59초/.5초/40페이지                                                                |
+| Product11           | 69/100  | 대기/직접 접촉 손 보강본·69초/.5초/47페이지. 추가된 긴 대기의 정적 인상과 같은 유지 미소를 약점으로 평가 |
+| Product12           | 74/100  | 유지 얼굴/입0·눈/고개 독립 복귀 수정본·같은69초/.5초/47페이지. 몸 반응과 대기가 여전히 약하다는 평가     |
+| Product13           | 67/100  | 몸통 roll·자세 대비·짧은 손 복귀 보강본·통제된 normal/새 기본 기쁨·같은69초/.5초/47페이지                |
+| Product14           | 73/100  | Product13과 같은 코드·실제 저장 expressive/기쁨 `＞＜` 구성·같은69초/.5초/47페이지                       |
+| Product15           | 78/100  | `5f33da8`의 독립 expressive idle 손·Product14와 같은 저장 구성/69초/.5초/47페이지                        |
+| Product16           | 76/100  | `6be797e`의 짧은 기쁨 눈 강조·idle 얼굴·화남 눈 확인·같은 저장 구성/69초/.5초/47페이지                   |
+| Product17           | 80/100  | `3953383`의2300ms 기쁨 눈 강조·걱정→장난 자세 보완·같은 저장 구성/69초/.5초/47페이지                     |
+| Product18           | 74/100  | `bda756d`의 독립 idle 눈인사·같은 저장 구성/69초 타임라인, 영상 QA 완료·47페이지 평가 완료               |
+| Product19           | 71/100  | `5f31a2f`의 손 없는 감정별 상체 자세·같은 저장 구성/69초/.5초/47페이지, 영상 QA 완료                     |
+| Product20           | 대기 중 | `7e89a97`의 순수 웃음 두 박자·같은 저장 구성/69초/.5초/47페이지, 영상 QA 완료·평가 진행 중               |
 
 종합 평가 원문은 `product-XX-score.md`, 실제 세션/모델 metadata는 같은 회차 `.jsonl`이다. Product08 세션은 `01a19d89-3e94-71c3-8147-cb8543ef5546`, Product09는 `01a19d90-d1ae-7b70-8faf-204abd2eb850`이다. 낮은 점수는 지우거나 소급 변경하지 않는다. 새 세션에는 목표/이전 점수·개발 노력/검사 수를 주지 않고 실제 렌더·공개 타임라인만 제공한다. 검토 중 변경이 생기면 기존 자료를 고정해 보존하고 수정본은 새 영상/패킷으로 검토한다. Product09는 걱정·토라짐·수줍음·직접 반응을 읽었지만 감정 피크 뒤의 기본 미소와 몸/팔 동행을 약점으로 봤다. Product10은 재접촉 결함을 독립 검토에서 발견해 **완료 평점 전에 중단**했다(exit130, 완료 metadata/점수 없음). 이전 패킷/로그와 취소 이유를 보존했고 낮은 평점을 버린 회차가 아니다. 수정한 Product11은 기존59초의 모든 입력을 보존하고 추가 입력 없이 마지막 대기를10초 더 관찰하는69초·.5초·47페이지 자료다. 완료 세션은 `01a19dc8-706b-7703-bf0e-9224f2ce35d7`이며69/100을 원문과 함께 보존한다. 쓰다듬기의 손·눈·홍조 조합은 가장 좋은 구간으로 봤고, 긴 대기·웃음 뒤 미소·토라짐의 몸 실루엣은 약점으로 봤다. 일부 손 없는 cue를 깃의 손으로 오독한 지적은 실제 selector/전신과 달라 새 자동 손의 근거로 채택하지 않았다. 더 긴 관찰 창은 별도 조건 변경이며 점수 차이를 코드 효과만으로 해석하지 않는다. Product12 완료 세션은 `01a19dd9-eaf5-7c73-bad2-e4390b2123ea`이며74/100을 보존한다. 감정 구분은 읽었지만 웃음/토라짐의 몸과 긴 대기의 존재감을 약점으로 봤다. 63초의 가슴 손 등 실제 selector0인 구간의 오독도 있어 지적을 그대로 구현 요구로 바꾸지 않는다.
 
@@ -182,7 +191,11 @@ Product18 완료 세션은 `01a19e55-1aaa-75c1-b73d-694130cae6a8`이며74/100과
 
 Source 18 native의 근거는 `.tmp/afterglow-native/round-18-{result,idle-native-proof,attention-native-proof,release-frame-proof}.json`(2026-11-03 07:09:58 KST)과 기본 런처 PID120211/설정 보존이다. 눈인사32598.8ms/frame88→35624.9ms/frame91은 캐시/조회 간격을 포함한 약3초 관찰이며 내부1080ms 수명·실시간 FPS가 아니다. 검사기만 자기 overlay를 `moveTop`으로 올렸고 저장 설정은 바꾸지 않았다. 당시605개 unit·SDK76개/278PNG의 `round-18-expression-results.json`도 보존한다.
 
-Product19 완료 세션은 `01a19e75-073c-7d52-bfe4-38f73c1eb2a8`이며71/100과 `.tmp/grok-grading/product-19-score.md`를 보존한다. 기본 `grok-4.7-build`가47페이지를 모두 읽었으며 종료 metadata와 이미지 읽기 완료를 확인했다. 수줍음·토라짐·직접 접촉의 호응은 읽었지만 감정이 여전히 얼굴 중심이고 기쁨/웃음이 닮았으며 걱정과 대기가 약하다고 평가했다. 몸통 수치 변화가 시각 매력 상승을 입증하지 않는다는 결과로 받아들이며85점 종료 조건에는 미달이다. 후속 걱정 몸통 후보도 실제 normal/expressive 대조에서 의미가 더 분명해지지 않아 채택하지 않았다. 눈썹 upstream·표정/IDLE 소유권은 정상임을 확인했으며, 같은 자료를 재채점하지 않고 연기 시간 흐름과 실제 rig의 가능한 몸 변형을 조사한다.
+Product19 완료 세션은 `01a19e75-073c-7d52-bfe4-38f73c1eb2a8`이며71/100과 `.tmp/grok-grading/product-19-score.md`를 보존한다. 기본 `grok-4.7-build`가47페이지를 모두 읽었으며 end_turn 종료 metadata와 이미지 읽기 완료를 확인했다. 수줍음·토라짐·직접 접촉의 호응은 읽었지만 감정이 여전히 얼굴 중심이고 기쁨/웃음이 닮았으며 걱정과 대기가 약하다고 평가했다. 몸통 수치 변화가 시각 매력 상승을 입증하지 않는다는 결과로 받아들이며85점 종료 조건에는 미달이다. 후속 걱정 몸통 후보도 실제 normal/expressive 대조에서 의미가 더 분명해지지 않아 채택하지 않았다. 눈썹 upstream·표정/IDLE 소유권은 정상임을 확인했으며, 같은 자료를 재채점하지 않고 연기 시간 흐름과 실제 rig의 가능한 몸 변형을 조사한다.
+
+Source 19의 `artifacts/grok-review/story-19-comparison.mp4`/`story-19-results.json`은 **69초·1120×900·20fps·1380 paired frame**으로 최종 QA를 완료했다. 동결22개 앱/import 해시는 당시 `5f31a2f`, 저장 프로필은 profile14와 일치한다. 원래59초 입력과 추가10초 무입력 대기·타임라인은 같다. 양측1500회·전체509개 parameter 범위 오류0, alpha62/62·접촉670.483 CSS px·외부 요청0이다. Source 18/19 QA 그림에서 감정별 어깨 변화와 접촉/idle 보존을 직접 확인했으며 별도 실행 간 픽셀 동일은 주장하지 않는다. 눈인사57.85→58.95초·손63.35→66.05초는 같은50ms 관찰 시각이다.139개 균일 샘플/얼굴12+몸35의47페이지 패킷을 모두 읽은 Product19는71/100이었다. 무음 합성 cue·로컬 미리보기이며 실제 provider/IPC 대화나 실시간 FPS 검사는 아니다.
+
+Source 19 당시610개 unit/SDK79개·304PNG의 `round-19-expression-results.json`, native19의07:48 KST `round-19-result.json`/torso·idle·attention·release 근거와 기본 런처 PID128797/설정 보존도 유지한다.
 
 ### 독립된 대기 눈인사 (Source 18)
 
@@ -194,10 +207,12 @@ Product19 완료 세션은 `01a19e75-073c-7d52-bfe4-38f73c1eb2a8`이며71/100과
 
 ## 현재 검증·영상·적용과 복원
 
-- **610개 unit/contract**, typecheck·format·build·외부 AI 없는 Mock desktop을 통과했다. 192조합, 30/60/120fps, 저장 매핑/빈 선택, 여운·손 복귀·clear/승인, 12초 접촉·짧은 fade·종료 직전 눈 복귀와 idle edge/소유권·held contact·접근성/매핑·프레임 건너뜀, custom 눈/표시/나머지 자산 분리와 유한한 idle/화남 눈 반응·기쁨 눈 기한·걱정 조합의 제한된 보정과 독립 눈인사의30/60/120fps·blink/다른 frame 필드 보존·접촉/잔여/점유 차단·edge 소비·IDLE 얼굴 소유권·즉시 정리, 감정별 상체 목표/변주·강도/접근성·원래 기한/clear·다른 필드 및 명시적 제스처 보존을 포함한다.
-- 실제 SDK/SwiftShader **79개 수락 검사·304개 현재 PNG**(after301/before3)에서 체크포인트마다 509개 parameter 범위 오류/외부 요청 0을 확인했다. `artifacts/grok-review/round-19-expression-results.json`의 assertions와 `artifacts/expression-afterglow/`가 현재 근거다. Source 13의62개/186PNG 결과도 별도 `round-13-expression-results.json`에 보존한다. 50ms 시뮬레이션·지정 rasterize이며 실시간 FPS/CPU 측정이 아니다.
-- Source 19의 `artifacts/grok-review/story-19-comparison.mp4`/`story-19-results.json`은 **69초·1120×900·20fps·1380 paired frame**으로 최종 QA를 완료했다. 동결22개 앱/import 해시는 현재 `5f31a2f`, 저장 프로필은 profile14와 일치한다. 원래59초 입력과 추가10초 무입력 대기·타임라인은 같다. 양측1500회·전체509개 parameter 범위 오류0, alpha62/62·접촉670.483 CSS px·외부 요청0이다. Source 18/19 QA 그림에서 감정별 어깨 변화와 접촉/idle 보존을 직접 확인했으며 별도 실행 간 픽셀 동일은 주장하지 않는다. 눈인사57.85→58.95초·손63.35→66.05초는 같은50ms 관찰 시각이다.139개 균일 샘플/얼굴12+몸35의47페이지 패킷을 모두 읽은 Product19는71/100이었다. 무음 합성 cue·로컬 미리보기이며 실제 provider/IPC 대화나 실시간 FPS 검사는 아니다.
-- 실제 Sway/Xwayland production renderer에서 네 개의 합성 gesture-none 감정 화면과 기존 UI20종·petting/승인·낡은/정확한 clear·reload·idle 얼굴/손 시작→종료·원래 설정 보존을 확인했다. 근거는 `.tmp/afterglow-native/round-19-result.json`(2026-11-03 07:48 KST), `round-19-torso-native-proof.json`과 같은 회차 idle/attention/release 근거다. 자기 창 합성 입력이며 provider/Jev 호출0이다. 이후 기본 `~/.local/bin/live2d-companion`으로 정상 재실행해 PID128797 생존·기본 진입점·원래 설정 canonical digest 일치를 확인했다. 물리 마우스·OS 재부팅/재로그인은 수행하지 않았다.
+- **613개 unit/contract·26개 파일**, typecheck·format·build·외부 AI 없는 Mock desktop을 통과했다. 192조합, 30/60/120fps, 저장 매핑/빈 선택, 여운·손 복귀·clear/승인, 12초 접촉·짧은 fade·종료 직전 눈 복귀와 idle edge/소유권·held contact·접근성/매핑·프레임 건너뜀, custom 눈/표시/나머지 자산 분리와 유한한 idle/화남 눈 반응·기쁨 눈 기한·걱정 조합의 제한된 보정과 독립 눈인사의30/60/120fps·blink/다른 frame 필드 보존·접촉/잔여/점유 차단·edge 소비·IDLE 얼굴 소유권·즉시 정리, 감정별 상체 목표/변주·강도/접근성·원래 기한/clear·다른 필드 및 명시적 제스처 보존과 순수 웃음의 두 박자·비대상/clear/기한 검사를 포함한다.
+- 실제 SDK/SwiftShader **82개 수락 검사·317개 현재 PNG**(after314/before3)에서 체크포인트마다 509개 parameter 범위 오류/외부 요청 0을 확인했다. `artifacts/grok-review/round-20-expression-results.json`의 assertions와 `artifacts/expression-afterglow/`가 현재 근거다. Source 13의62개/186PNG 결과도 별도 `round-13-expression-results.json`에 보존한다. 50ms 시뮬레이션·지정 rasterize이며 실시간 FPS/CPU 측정이 아니다.
+- Source 20의 `artifacts/grok-review/story-20-comparison.mp4`/`story-20-results.json`은 **69초·1120×900·20fps·1380 paired frame**으로 export/ffprobe/최종 QA를 통과했다. 동결22개 앱/import 해시는 현재 `7e89a97`, 저장 profile14와 기존 입력 타임라인도 같다. 양측1500회·전체509개 범위 오류0/외부 요청0, alpha62/62·접촉670.483 CSS px다. Source 19/20 QA 그림에서 첫 큰 웃음 숙임→복귀→작은 두 번째 숙임과 다른 기쁨/수줍음/토라짐·접촉/idle 보존을 시각 확인했다. 별도 실행 간 픽셀 동일은 주장하지 않는다. 눈인사57.85→58.95초·손63.35→66.05초의50ms 관찰은 그대로이며139개 균일 .5초+마지막68.95초 샘플/얼굴12+몸35의47페이지로 새 Product20 평가가 진행 중이다. 무음 합성 cue·로컬 미리보기이며 실제 provider/IPC 대화·실시간 FPS 검사는 아니다.
+- 실제 Sway/Xwayland production renderer의 `.tmp/afterglow-native/round-20-result.json`(2026-11-03 08:06:49 KST)과 같은 회차 torso/idle/attention/release 근거에서 네 개의 합성 gesture-none 화면·기존 UI20종·petting/승인/clear/reload·idle 얼굴/손 시작→종료·설정 보존을 확인했다. native의 약3초 상태 화면은 두 박자의 정확한 시간 증거가 아니며 그 검증은 SDK/연속 MOC probe가 맡는다. provider/Jev 호출0이며 기본 런처 PID134947·기본 진입점 생존/원래 설정 digest 일치를 확인했다. 물리 마우스·OS 재부팅/재로그인은 수행하지 않았다.
+
+Source 20 최초 SDK 병행 실행은120초 프로세스 한도에서 exit1로 끝났다. `.tmp/grok-vtuber-review/round-20-sdk-process-timeout.json`과 로그를 보존하고 production·fixture·120초 한도를 바꾸지 않은 단독 재실행에서82개를 통과했다(`round-20-sdk-isolated.log`). 자원 경합을 원인으로 확정하지 않는다.
 
 Source 19 최초 SDK의 `mouth==0` 검사는 기존 지수 보간 잔차 약1.6e−31에서 실패했다. production 변경 없이1e−6 허용값으로 고쳤으며 `.tmp/grok-vtuber-review/round-19-sdk-exact-mouth-zero-assertion.json`을 보존한다. 최초 native fixture는 segment1을 재사용해 정상적으로 stale 거절됐으므로 입력 ID만 증가시키고 다시 검사했다. `.tmp/afterglow-native/round-19-stale-segment-fixture-error.txt`에 실패를 남겼으며 실제 제품의 stale 차단을 해제하지 않았다.
 
@@ -207,7 +222,7 @@ Source 17/18 별도 영상 실행의 “눈인사 외 모든 JPEG 픽셀이 동�
 
 Source 17의 초기 SDK 실행은 기존 `ParamAngleY<-12`와 재접촉 변화+5°의 깊은 숙임 수락 조건에서 실패했다(exit1). 당시 실제1000ms−7.34466°→3000ms−3.58427°는 의도한 얕은 숙임/재접촉이었으며, production 값은 바꾸지 않고 기준을−12°<초기<−4°·재접촉+2°로 갱신했다. 닫힌 입/손 없음과 새 걱정→장난 얼굴 검사도 유지했다. 실패 JSON `.tmp/grok-vtuber-review/round-17-sdk-old-deep-bow-assertion.json`·`round-17-sdk.log`와 최종71개 통과의 `round-17-sdk-verified.log`를 모두 보존한다. 실패/재검사에서 실제 값도 같아 수락 의도 변경과 production 수정을 혼동하지 않는다.
 
-적용은 현재 checkout에서 `npm run build` 후 앱 종료·기본 `~/.local/bin/live2d-companion` 재실행이다. 별도 시험용 런처나 서비스는 만들지 않았다. Source 19의 독립 상체 자세와 X 소유권 보호만 복원하려면 `5f31a2f`를 revert한 뒤 build·같은 런처로 재실행한다. Source 18의 독립 눈인사까지 복원하려면 이어서 `bda756d`를 revert한다. Source 17의 기쁨/걱정 조정까지 복원하려면 이어서 `3953383`을 revert한다. Source 16의 눈/얼굴 연결까지 복원하려면 이어서 `6be797e`를 revert한다. Source 15의 독립 idle까지 복원하려면 이어서 `5f33da8`을 revert한다. 이전 몸통/손 복귀 보강까지 복원할 때는 이어서 `4771977`→`22a2f2d`를 순서대로 revert한다. 전체 Grok 개선을 복원할 때는 코드 커밋 `5f31a2f`→`bda756d`→`3953383`→`6be797e`→`5f33da8`→`4771977`→`22a2f2d`→`15c37eb`→`b2f1401`→`7e7e0b2`→`3a0fef4`→`9754202`→`28a9420`→`bdce55e`→`116e1b9`를 이 순서로 revert하며(최신→과거) 복원 버전의 문서도 맞춘다. 개인 연결/매핑·위치/배율의 설정 이관은 없다. 초기 감정 추가 이전으로 더 되돌리는 절차는 [구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다. SDK·모델·영상/프레임·개인 설정·Grok 원문 세션은 공개 Git에 넣지 않는다.
+적용은 현재 checkout에서 `npm run build` 후 앱 종료·기본 `~/.local/bin/live2d-companion` 재실행이다. 별도 시험용 런처나 서비스는 만들지 않았다. Source 20의 두 박자 웃음만 복원하려면 `7e89a97`을 revert한 뒤 build·같은 런처로 재실행한다. Source 19의 독립 상체 자세와 X 소유권 보호까지 복원하려면 이어서 `5f31a2f`를 revert한다. Source 18의 독립 눈인사까지 복원하려면 이어서 `bda756d`를 revert한다. Source 17의 기쁨/걱정 조정까지 복원하려면 이어서 `3953383`을 revert한다. Source 16의 눈/얼굴 연결까지 복원하려면 이어서 `6be797e`를 revert한다. Source 15의 독립 idle까지 복원하려면 이어서 `5f33da8`을 revert한다. 이전 몸통/손 복귀 보강까지 복원할 때는 이어서 `4771977`→`22a2f2d`를 순서대로 revert한다. 전체 Grok 개선을 복원할 때는 코드 커밋 `7e89a97`→`5f31a2f`→`bda756d`→`3953383`→`6be797e`→`5f33da8`→`4771977`→`22a2f2d`→`15c37eb`→`b2f1401`→`7e7e0b2`→`3a0fef4`→`9754202`→`28a9420`→`bdce55e`→`116e1b9`를 이 순서로 revert하며(최신→과거) 복원 버전의 문서도 맞춘다. 개인 연결/매핑·위치/배율의 설정 이관은 없다. 초기 감정 추가 이전으로 더 되돌리는 절차는 [구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다. SDK·모델·영상/프레임·개인 설정·Grok 원문 세션은 공개 Git에 넣지 않는다.
 
 ## 근거 자료와 한계
 
