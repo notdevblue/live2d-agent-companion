@@ -293,6 +293,13 @@ export class Avatar {
         if (group.toLowerCase() === 'idle' && !this.idle) {
           this.idle = motion;
           motion.setLoop(true);
+          // The new torso-roll input must not replace a model's authored idle.
+          if (
+            ['PositionZ', 'ParamBodyAngleZ'].some((id) =>
+              this.motionInfo.get(name)!.parameters.has(id),
+            )
+          )
+            delete this.channels.bodyZ;
         }
       }
     for (const [enter, exit, parameter] of [

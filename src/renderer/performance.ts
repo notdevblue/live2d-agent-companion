@@ -180,13 +180,14 @@ export interface FaceFrame {
   mouthOpen?: number;
 }
 export type ActingChannel =
-  'headX' | 'headY' | 'headZ' | 'bodyX' | 'bodyY' | 'lean' | 'gazeX' | 'gazeY' | 'smile';
+  'headX' | 'headY' | 'headZ' | 'bodyX' | 'bodyY' | 'bodyZ' | 'lean' | 'gazeX' | 'gazeY' | 'smile';
 const candidates: Record<ActingChannel, string[]> = {
   headX: ['AngleX', 'ParamAngleX'],
   headY: ['AngleY', 'ParamAngleY'],
   headZ: ['AngleZ', 'ParamAngleZ'],
   bodyX: ['PositionX', 'ParamBodyAngleX'],
   bodyY: ['PositionY', 'ParamBodyAngleY'],
+  bodyZ: ['PositionZ', 'ParamBodyAngleZ'],
   lean: ['LeanInput'],
   gazeX: ['ParamEyeBallX'],
   gazeY: ['ParamEyeBallY'],
@@ -332,6 +333,8 @@ export interface PoseFrame {
   timeMs?: number;
   /** Sample the authored entry backwards rather than seeking into its return. */
   reverseEntry?: boolean;
+  /** Completed hold duration, allowing overlays to join an early return. */
+  heldMs?: number;
 }
 export class PoseSequence {
   private definition?: PoseDefinition;
@@ -402,6 +405,7 @@ export class PoseSequence {
         phase: 'exit',
         definition: this.definition,
         timeMs: elapsed - enterMs - this.holdMs,
+        heldMs: this.holdMs,
       };
     this.clear();
     return { phase: 'none' };

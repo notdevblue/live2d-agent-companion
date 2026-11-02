@@ -20,6 +20,18 @@ describe('explicit local petting — FR-L2D-008', () => {
     expect(reduced.lean).toBeCloseTo(pet.lean * 0.18);
     expect(applyPetting(frame, NaN)).toEqual(frame);
   });
+  it('gives contact priority over an opposing torso roll and releases it continuously', () => {
+    const base = new ActingController().sample(0, 0);
+    for (const weight of [0.35, 0.65, 1]) {
+      const frame = { ...base, bodyZ: -0.3 * weight };
+      const pet = applyPetting(frame, weight);
+      expect(pet.bodyZ).toBeGreaterThan(0);
+      expect(pet.bodyZ).toBeLessThanOrEqual(0.3);
+      expect(applyPetting(frame, 0)).toBe(frame);
+      expect(applyPetting(frame, weight / 2).bodyZ).toBeLessThan(pet.bodyZ);
+    }
+  });
+
   it('requires a stroke rather than a stationary click and rejects pointer jumps', () => {
     const pet = new PettingController();
     pet.stroke(50, 0);

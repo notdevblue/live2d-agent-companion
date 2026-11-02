@@ -29,6 +29,7 @@ export interface ActingFrame extends FaceFrame {
   headZ: number;
   bodyX: number;
   bodyY: number;
+  bodyZ: number;
   lean: number;
   gazeX: number;
   gazeY: number;
@@ -55,6 +56,7 @@ type Pose = Pick<
   | 'headZ'
   | 'bodyX'
   | 'bodyY'
+  | 'bodyZ'
   | 'lean'
   | 'gazeX'
   | 'gazeY'
@@ -93,6 +95,7 @@ const neutral = (): Pose => ({
   headZ: 0,
   bodyX: 0,
   bodyY: 0,
+  bodyZ: 0,
   lean: 0,
   gazeX: 0,
   gazeY: 0,
@@ -222,15 +225,14 @@ export class ActingController {
       'headZ',
       'bodyX',
       'bodyY',
+      'bodyZ',
       'lean',
       'gazeX',
       'gazeY',
-    ] as const)
-      this.pose[key] = clamp(
-        this.pose[key],
-        -limit * (key === 'headX' ? 0.7 : key === 'bodyX' ? 0.5 : 1),
-        limit * (key === 'headX' ? 0.7 : key === 'bodyX' ? 0.5 : 1),
-      );
+    ] as const) {
+      const range = key === 'headX' ? 0.7 : key === 'bodyX' ? 0.5 : key === 'bodyZ' ? 0.3 : 1;
+      this.pose[key] = clamp(this.pose[key], -limit * range, limit * range);
+    }
   }
 
   setState(state: ActingState, nowMs: number): void {
@@ -548,16 +550,19 @@ export class ActingController {
       for (const key of ['headX', 'headY', 'headZ', 'gazeX', 'gazeY'] as const)
         target[key] += (gesture[key] - target[key]) * 0.7;
     }
-    // Authored explain hands enter around 1.25s. Synchronize two finite local
-    // head/brow beats without shortening the hand hold or reviving body accents.
+    // Authored explain hands enter around 1.25s. Synchronize finite local
+    // head/brow accents without shortening the hand hold. The second early beat
+    // remains inside a short preview; the later one also serves semantic holds.
     const explainBeat =
       reaction?.gesture === 'explain'
-        ? beat(age / 1000, 1.05, 0.15, 0.1, 0.35) + beat(age / 1000, 7.25, 0.15, 0.1, 0.35)
+        ? beat(age / 1000, 1.05, 0.15, 0.1, 0.35) +
+          beat(age / 1000, 2.35, 0.18, 0.12, 0.45) +
+          beat(age / 1000, 7.25, 0.15, 0.1, 0.35)
         : 0;
     const maintenance = this.maintenanceTarget(reaction, age / 1000);
     const idleGaze = !reaction && this.state === 'idle' && this.gazeIndex > 0;
     const idleAge = (now - this.gazeSince) / 1000;
-    const idleTilt = idleGaze ? 0.35 * beat(idleAge, 0, 0.35, 0.55, 0.8) : 0;
+    const idleTilt = idleGaze ? 0.55 * beat(idleAge, 0, 0.35, 0.55, 0.8) : 0;
     // Eyes lead the glance, then counter-look while the head and torso settle
     // on that side. Shrinking a shared eye/head target only returned the whole
     // figure together and never produced this independent listening posture.
@@ -639,6 +644,9 @@ export class ActingController {
       2.1,
     );
     follow('bodyY', this.pose.headY * 0.2 + this.breathWave(now) * 0.13 * scale, 2.1);
+    // PositionZ is a distinct torso-roll upstream on this rig. Its authored
+    // physics counterbalances the shoulders against the head's inclination.
+    follow('bodyZ', clamp(this.pose.headZ * 0.7, -0.3 * scale, 0.3 * scale), 2.1);
     follow(
       'lean',
       (blend(base.lean, target.lean) + maintenance.pose.lean * maintenance.weight) * scale,
@@ -813,6 +821,11 @@ export class ActingController {
       if (reaction.gesture === 'none' && reaction.emotion !== 'embarrassed') {
         pose.headX += direction * 0.12;
         pose.gazeX += direction * 0.08;
+        if (
+          reaction.preset === 'laugh' &&
+          (reaction.emotion === 'happy' || reaction.emotion === 'neutral')
+        )
+          pose.headZ = direction * (0.4 + 0.1 * sway);
       }
     }
     if (reaction.preset === 'tease') {
@@ -837,7 +850,7 @@ export class ActingController {
       pose.lean = -0.04;
     }
     if (reaction.preset === 'angry') {
-      pose.headZ = -direction * 0.09;
+      pose.headZ = -direction * 0.24;
       pose.headX = -direction * 0.26;
       pose.headY = -0.04;
       pose.gazeY = -0.08;

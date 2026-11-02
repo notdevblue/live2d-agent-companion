@@ -8,7 +8,17 @@ import {
 } from '../src/renderer/acting.js';
 import { ATTITUDES, EMOTIONS, GESTURES } from '../src/shared/contracts.js';
 
-const motionKeys = ['headX', 'headY', 'headZ', 'bodyX', 'bodyY', 'lean', 'gazeX', 'gazeY'] as const;
+const motionKeys = [
+  'headX',
+  'headY',
+  'headZ',
+  'bodyX',
+  'bodyY',
+  'bodyZ',
+  'lean',
+  'gazeX',
+  'gazeY',
+] as const;
 function advance(actor: ActingController, end: number, fps = 60, start = 0): ActingFrame {
   let frame = actor.sample(start, 0);
   const count = Math.round(((end - start) * fps) / 1000);
@@ -530,7 +540,7 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     expect(settled.eyeR).toBeGreaterThan(0.95);
   });
 
-  it('gives an explain hand two emphases and one return acknowledgment within its original lifetime', () => {
+  it('gives an explain hand two early emphases, a later emphasis and one return acknowledgment within its original lifetime', () => {
     const actor = new ActingController(),
       baseline = new ActingController();
     actor.cue({ emotion: 'happy', gesture: 'explain' }, 0);
@@ -544,17 +554,17 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
       const nodding = sample.headY < plain.headY - 0.1;
       if (nodding && !wasNodding) intervals++;
       wasNodding = nodding;
-      if (frame === 75 || frame === 450) {
+      if (frame === 75 || frame === 160 || frame === 450) {
         if (frame === 75) expect(sample.headY).toBeLessThan(-0.3);
         else expect(sample.headY).toBeLessThan(plain.headY - 0.1);
-        expect(sample.browY).toBeGreaterThan(plain.browY + 0.08);
+        expect(sample.browY).toBeGreaterThan(plain.browY + (frame === 160 ? 0.04 : 0.08));
       }
       expect(sample.offsetY).toBe(plain.offsetY);
       expect(sample.breath).toBe(plain.breath);
       if (frame === 960) expect(sample.active).toBe(true);
       if (frame === 972) expect(sample.active).toBe(false);
     }
-    expect(intervals).toBe(3);
+    expect(intervals).toBe(4);
     const toneOnly = new ActingController();
     toneOnly.cue({ emotion: 'neutral', attitude: 'explain', gesture: 'none' }, 0);
     expect(advance(toneOnly, 7500).headY).toBeGreaterThan(-0.05);
@@ -1094,6 +1104,100 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     expect(Math.abs(returned.bodyX)).toBeLessThan(Math.abs(settling.bodyX));
     expect(returned.gazeX * returned.headX).toBeLessThan(0);
     expect(returned).toMatchObject({ active: false, gesture: 'none', mouthOpen: 0 });
+  });
+
+  it('keeps laughter tilted toward the listener and sulking tilted away through their holds', () => {
+    for (const variant of [0, 1])
+      for (const reducedMotion of [false, true]) {
+        const direction = variant ? -1 : 1;
+        const paths = [30, 60, 120].map((fps) => {
+          const frames = ['happy', 'laugh', 'angry'].map((kind) => {
+            const actor = new ActingController();
+            actor.configure({ intensity: 'normal', reducedMotion });
+            const cue = {
+              emotion: kind === 'angry' ? 'angry' : 'happy',
+              attitude: kind === 'laugh' ? 'laugh' : 'neutral',
+              gesture: 'none',
+            } as const;
+            if (variant) {
+              actor.cue(cue, 0);
+              actor.reset(0);
+            }
+            actor.cue(cue, 0);
+            const held = advance(actor, 8000, fps);
+            expect(held.gesture).toBe('none');
+            expect(advance(actor, reactionLifetime(held.preset), fps, 8000).active).toBe(false);
+            return held;
+          });
+          const [happy, laugh, angry] = frames as [ActingFrame, ActingFrame, ActingFrame];
+          expect(laugh.headZ * direction).toBeGreaterThan(happy.headZ * direction);
+          expect(angry.headZ * direction).toBeLessThan(0);
+          expect(laugh.headZ * direction).toBeGreaterThan(0);
+          expect(angry.mouthOpen).toBe(0);
+          expect(angry.offsetY).toBe(laugh.offsetY);
+          expect(angry.breath).toBe(laugh.breath);
+          return frames;
+        });
+        for (const path of paths.slice(1))
+          for (let i = 0; i < path.length; i++)
+            expect(path[i]!.headZ).toBeCloseTo(paths[0]![i]!.headZ, 7);
+      }
+  });
+
+  it('lets the torso roll follow the head later within intensity limits and clears it with the cue', () => {
+    for (const [intensity, reducedMotion, scale] of [
+      ['quiet', false, 0.35],
+      ['normal', false, 0.65],
+      ['expressive', false, 1],
+      ['normal', true, 0.65 * 0.18],
+    ] as const) {
+      const frames = [30, 60, 120].map((fps) => {
+        const actor = new ActingController();
+        actor.configure({ intensity, reducedMotion });
+        const cue = {
+          requestId: 'roll',
+          messageId: 'm',
+          segmentId: 1,
+          emotion: 'happy',
+          attitude: 'laugh',
+          gesture: 'none',
+        } as const;
+        actor.cue(cue, 0);
+        const early = advance(actor, 300, fps);
+        expect(Math.abs(early.bodyZ)).toBeLessThan(Math.abs(early.headZ));
+        const held = advance(actor, 8000, fps, 300);
+        expect(held.bodyZ).toBeGreaterThan(0);
+        expect(Math.abs(held.bodyZ)).toBeLessThanOrEqual(0.3 * scale + 1e-10);
+        expect(actor.clearCue(cue)).toBe(true);
+        expect(actor.sample(8000, 0).bodyZ).toBe(0);
+        actor.setState('blocked', 8000);
+        expect(actor.sample(9000, 1).bodyZ).toBe(0);
+        return held.bodyZ;
+      });
+      for (const frame of frames.slice(1)) expect(frame).toBeCloseTo(frames[0]!, 7);
+    }
+  });
+
+  it('limits an already visible torso roll immediately when intensity or reduced motion changes', () => {
+    for (const [intensity, reducedMotion, scale] of [
+      ['quiet', false, 0.35],
+      ['normal', false, 0.65],
+      ['expressive', true, 0.18],
+      ['normal', true, 0.65 * 0.18],
+      ['quiet', true, 0.35 * 0.18],
+    ] as const) {
+      const actor = new ActingController();
+      actor.configure({ intensity: 'expressive', reducedMotion: false });
+      actor.cue({ emotion: 'happy', attitude: 'laugh', gesture: 'none' }, 0);
+      expect(advance(actor, 8000).bodyZ).toBeGreaterThan(0.25);
+      actor.configure({ intensity, reducedMotion });
+      expect(Math.abs(actor.sample(8000, 0).bodyZ)).toBeLessThanOrEqual(0.3 * scale + 1e-10);
+      expect(Math.abs(advance(actor, 8100, 60, 8000).bodyZ)).toBeLessThanOrEqual(
+        0.3 * scale + 1e-10,
+      );
+      actor.reset(8100);
+      expect(actor.sample(8100, 0).bodyZ).toBe(0);
+    }
   });
 
   it('keeps idle posture slots continuous, deterministic through frame gaps and bounded by accessibility', () => {

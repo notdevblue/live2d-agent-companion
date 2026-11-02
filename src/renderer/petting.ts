@@ -46,6 +46,7 @@ export function applyPetting(
     headX: toward(frame.headX, x * 0.9),
     headY: toward(frame.headY, y * 0.22),
     bodyX: toward(frame.bodyX, x * 0.3),
+    bodyZ: toward(frame.bodyZ, 0.3),
     // A finite affectionate approach uses the existing rig lean path and
     // releases with this contact envelope, without changing the ambient breath.
     lean: toward(frame.lean, Math.max(frame.lean, 0.18)),

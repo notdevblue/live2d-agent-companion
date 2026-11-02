@@ -412,6 +412,17 @@ describe('model performance composition', () => {
     expect(channels.gazeX?.index).toBe(3);
     expect(actingChannels(new Map(), new Set())).toEqual({});
   });
+  it('resolves optional torso roll upstream and omits a physics-owned or missing input', () => {
+    const parameters = new Map([
+      ['PositionZ', { index: 1, min: -30, max: 30, neutral: 0 }],
+      ['ParamBodyAngleZ', { index: 2, min: -30, max: 30, neutral: 0 }],
+    ]);
+    expect(actingChannels(parameters, new Set(['ParamBodyAngleZ'])).bodyZ?.index).toBe(1);
+    parameters.delete('PositionZ');
+    expect(actingChannels(parameters, new Set(['ParamBodyAngleZ'])).bodyZ).toBeUndefined();
+    expect(actingChannels(new Map(), new Set()).bodyZ).toBeUndefined();
+  });
+
   it('uses runtime neutral and asymmetric bounds; nonfinite commands return neutral', () => {
     const range = { index: 0, min: -10, max: 30, neutral: 5 };
     expect(parameterValue(range, -0.5)).toBe(-2.5);
