@@ -80,7 +80,15 @@ idle/actor inactive·빈 pose/gesture/state gesture·manager 종료와 expressiv
 
 local idle 얼굴은 기존 pose의 진입·복귀 가중치로 smile .55·eyeSmile .45·눈 열림 .75×blink를 보간한다. hold200~600ms에 눈을 정면으로 돌리고 exit에서 원래 idle로 복귀한다. 같은2750ms 기한·expressive/접근성 gate·직접 접촉 우선권을 유지하며 새 입 열림·호흡/root 운동·손·시계는 없다. 순수 angry preset/gesture none은 기존1.95~3.1초의 한 번의 gaze/눈꺼풀 확인만 pose 적분 뒤 적용한다. 고개/몸의 외면·찡그린 입·입 열림·호흡을 바꾸지 않고 blink·강도/접근성·compound override·clear/종료를 지킨다.
 
-현재595개 unit/contract·SDK70개 수락/245PNG·native16의 production idle 시작/종료와 기존20종 UI·petting/승인·scoped clear·reload/설정 보존을 통과했다. 기본 런처 PID111416으로 정상 복원하고 원래 저장 설정 digest 일치를 확인했다. Source 16 영상도69초·20fps·1380 paired frame 및 소스22개 해시/같은 저장 프로필 검증을 완료했다. Product16의 최종 점수는 아직 없으며 최신 근거와 `6be797e` revert/build/기본 런처 복원은 [Grok 검토](../ux/GROK_VTUBER_REVIEW.md)·[구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다. TTS·물리 마우스·OS 재부팅/재로그인은 이번 검증에 포함하지 않는다.
+Source 16 당시595개 unit/contract·SDK70개 수락/245PNG·native16의 production idle 시작/종료와 기존20종 UI·petting/승인·scoped clear·reload/설정 보존을 통과했다. 기본 런처 PID111416으로 정상 복원하고 원래 저장 설정 digest 일치를 확인했다. Source 16 영상도69초·20fps·1380 paired frame 및 소스22개 해시/같은 저장 프로필 검증을 완료했다. Product16은47페이지를 모두 읽은76/100 평가로 종료했으며 당시 근거와 적용/복원은 [Grok 검토](../ux/GROK_VTUBER_REVIEW.md)·[구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다. TTS·물리 마우스·OS 재부팅/재로그인은 이번 검증에 포함하지 않는다.
+
+### 기쁨의 정점과 걱정→장난 자세 보정 (Source 17, 2026-11-03)
+
+`3953383`은 happy 눈 강조를2300ms/fade400ms로 정해 약2.1초의 특수 눈 정점 뒤 기존 열린 기쁨으로 이어지게 한다. Source 16의1500ms 설정을 대체하며 confused1400/laugh1200/tease1100ms 우선순위·자산 선택/빈 값·custom 나머지/홍조/땀은 유지한다. 같은 저장 profile14를 사용하고 새 손·시계·LLM·입 열림을 추가하지 않는다.
+
+concerned+tease에만 작은 숙임/회피·눈 .88/.96을 적용해 깊은 headY/gaze와 반눈이 headX 한도 부근까지 밀던 조합을 줄였다. 기존 worry→지연 wink/reconnect 시계와 초기 smile−.82를 유지하고 걱정이 풀릴 때 닫힌+.4 미소로 응답한 뒤 기존 concerned 여운으로 돌아간다. 다른47개 emotion/attitude 조합·강도/움직임 줄이기·기한/clear·breath/rootY/lean·입 열림·손 소유권은 보존한다. 땀의 실제 표시는 원본 IDLE의 `SweatBurst1~4` 곡선에 따라 달라지므로 key13만으로 가시성을 판단하거나 authored 출력을 강제하지 않는다.
+
+현재596개 unit/contract·SDK71개 수락/246PNG·native17/기본 런처 PID114906·원래 설정 보존을 확인했다. 최초 SDK의 깊은 숙임 요구는 새 얕은 숙임 의도와 충돌해 실패했고, production 변경 없이 실제 각도/재접촉·닫힌 입/손 없음으로 수락 기준을 갱신한 이력을 보존한다. 영상17은 같은 저장 프로필/69초·20fps·1380 paired frame/22개 소스 고정으로 최종 QA까지 완료했고 점수는 미정이다. 상세 실패/재검사·현재 결과·`3953383`부터의 복원은 [Grok 검토](../ux/GROK_VTUBER_REVIEW.md)·[구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다. TTS·물리 마우스·OS 재부팅/재로그인 검증은 추가하지 않았다.
 
 ## 전체 표현 점검 (2026-11-01)
 
