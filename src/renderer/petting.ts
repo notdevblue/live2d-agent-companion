@@ -1,4 +1,5 @@
 import type { OverlayInputRegion } from '../shared/contracts.js';
+import type { ActingFrame } from './acting.js';
 
 const smooth = (value: number): number => {
   const t = Math.max(0, Math.min(1, value));
@@ -21,6 +22,30 @@ export function pettingBounds(region: OverlayInputRegion): PettingBounds | undef
   return { x: left, y: top, width: right - left, height: (bottom - top) * 0.4 };
 }
 
+/** Local direct-input overlay. Never changes window position or the underlying cue clock. */
+export function applyPetting(
+  frame: ActingFrame,
+  weight: number,
+  focus: { x: number; y: number } = { x: 0, y: 0 },
+): ActingFrame {
+  const amount = Number.isFinite(weight) ? Math.max(0, Math.min(1, weight)) : 0;
+  const x = Number.isFinite(focus.x) ? Math.max(-1, Math.min(1, focus.x)) : 0;
+  const y = Number.isFinite(focus.y) ? Math.max(-1, Math.min(1, focus.y)) : 0;
+  const bounded = (value: number): number => Math.max(-1, Math.min(1, value));
+  return {
+    ...frame,
+    smile: Math.max(frame.smile, 0.85 * amount),
+    eyeSmile: Math.max(frame.eyeSmile, 0.9 * amount),
+    eyeL: frame.eyeL * Math.max(0.08, 1 - amount * 1.25),
+    eyeR: frame.eyeR * Math.max(0.08, 1 - amount * 1.25),
+    headZ: Math.min(1, frame.headZ + 0.35 * amount),
+    headX: bounded(frame.headX + x * 0.72 * amount),
+    headY: bounded(frame.headY + y * 0.22 * amount),
+    gazeX: bounded(frame.gazeX + x * 0.95 * amount),
+    gazeY: bounded(frame.gazeY + (y * 0.45 - 0.25) * amount),
+  };
+}
+
 /** Direct, bounded strokes. No provider calls, pointer polling or global input. */
 export class PettingController {
   private held = false;
@@ -35,7 +60,7 @@ export class PettingController {
     this.held = true;
     this.began = now;
   }
-  stroke(distance: number, now: number): void {
+  stroke(distance: number, now: number): boolean {
     if (
       !this.held ||
       !Number.isFinite(distance) ||
@@ -43,16 +68,18 @@ export class PettingController {
       distance > 80 ||
       now - this.began >= 12000
     )
-      return;
+      return false;
     this.travel += distance;
-    if (this.travel < 8) return;
+    if (this.travel < 8) return true;
     this.started ??= now;
     this.until = Math.min(this.began + 12000, now + 900);
+    return true;
   }
   end(now: number): void {
+    if (!this.held) return;
     const weight = this.sample(now);
     this.held = false;
-    this.release = { at: now, until: Math.min(this.until, now + 450), weight };
+    this.release = { at: now, until: Math.min(this.began + 12000, now + 1050), weight };
   }
   clear(): void {
     this.held = false;
@@ -65,7 +92,10 @@ export class PettingController {
     if (this.started === undefined) return 0;
     if (this.release) {
       const { at, until, weight } = this.release;
-      return until > at ? weight * smooth((until - now) / (until - at)) : 0;
+      // Reserve the fade first when the original twelve-second cap truncates
+      // release. Keeping almost the whole short budget as hold caused a 1ms snap.
+      const hold = Math.min(300, Math.max(0, until - at - 750));
+      return until > at ? weight * (1 - smooth((now - at - hold) / (until - at - hold))) : 0;
     }
     return smooth((now - this.started) / 180) * smooth((this.until - now) / 650);
   }

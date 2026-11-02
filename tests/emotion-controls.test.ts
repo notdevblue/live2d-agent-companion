@@ -18,13 +18,35 @@ describe('protected anger and optional local interaction controls', () => {
       ['ParamBrowLAngle', { index: 5, min: -1, max: 1, neutral: 0 }],
       ['Emotion', { index: 6, min: 0, max: 1, neutral: 0 }],
       ['Angry', { index: 7, min: 0, max: 1, neutral: 0 }],
+      ['ParamMouthForm', { index: 8, min: -2, max: 1, neutral: 0 }],
+      ['ParamBrowLForm', { index: 9, min: -1, max: 1, neutral: 0 }],
     ]);
-    const result = angryExpression(parameters, new Set(['ParamBrowRY']), new Set(['CheeckPuff']));
+    const result = angryExpression(
+      parameters,
+      new Set(['ParamBrowRY', 'ParamBrowLAngle']),
+      new Set(['CheeckPuff']),
+    );
     expect(result).toEqual([
       { index: 1, value: -1.1, blend: 'Overwrite' },
       { index: 3, value: expect.closeTo(0.83, 8), blend: 'Overwrite' },
+      { index: 8, value: -2, blend: 'Overwrite' },
+      { index: 9, value: -0.45, blend: 'Overwrite' },
     ]);
     expect(angryExpression(new Map(), new Set())).toEqual([]);
+  });
+  it('never applies the angry mouth or brows over an authored clip or physics output', () => {
+    const parameters = new Map([
+      ['ParamMouthForm', { index: 0, min: -1, max: 1, neutral: 0 }],
+      ['ParamBrowLAngle', { index: 1, min: -1, max: 1, neutral: 0 }],
+      ['ParamBrowRForm', { index: 2, min: -1, max: 1, neutral: 0 }],
+    ]);
+    expect(
+      angryExpression(
+        parameters,
+        new Set(['ParamBrowLAngle']),
+        new Set(['ParamMouthForm', 'ParamBrowRForm']),
+      ),
+    ).toEqual([]);
   });
 
   it('recognizes the local angry mapping, honors saved empty/custom mappings and labels it in Korean', () => {

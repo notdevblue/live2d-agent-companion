@@ -14,10 +14,38 @@ export interface ExpressionTarget {
   parameters: readonly ExpressionParameter[];
   weight?: number;
   afterglowWeight?: number;
+  /** Optional accent deadline including its fade; other layers keep the cue lifetime. */
+  durationMs?: number;
+  fadeOutMs?: number;
 }
 export interface ExpressionTransition {
   afterglowMs?: number;
   afterglowWeight?: number;
+}
+
+/** Discrete eye artwork replaces the iris shape. Crossfading two drawings leaves
+ * ghost irises, so hand ownership to one drawing at the midpoint; markings and
+ * continuous face inputs retain their ordinary crossfade. Last target wins ties. */
+export function selectEyeArtwork(
+  layers: readonly ExpressionLayer[],
+  eyeIndexes: ReadonlySet<number>,
+): ExpressionLayer[] {
+  const isArtwork = (layer: ExpressionLayer): boolean =>
+    layer.name.endsWith(':eyes') &&
+    layer.parameters.some((p) => eyeIndexes.has(p.index) && p.value > 0);
+  let owner: ExpressionLayer | undefined;
+  let weight = 0;
+  for (const layer of layers)
+    if (isArtwork(layer)) {
+      weight += layer.weight;
+      if (layer.weight >= (owner?.weight ?? 0)) owner = layer;
+    }
+  // A rapid third transition can split a full drawing among three snapshots,
+  // none above .5. Gate their combined visibility, then choose one owner.
+  if (weight < 0.5) owner = undefined;
+  return layers.flatMap((layer) =>
+    !isArtwork(layer) ? [layer] : layer === owner ? [{ ...layer, weight: 1 }] : [],
+  );
 }
 const clamp = (value: number, min = 0, max = 1): number => Math.max(min, Math.min(max, value));
 const smooth = (value: number): number => {
@@ -90,11 +118,15 @@ export class ExpressionMixer {
       const sustained = Number.isFinite(target.afterglowWeight)
         ? clamp(target.afterglowWeight!)
         : this.afterglowWeight;
-      const accent = smooth((this.until - now) / 450);
+      const until = Number.isFinite(target.durationMs)
+        ? this.started + clamp(target.durationMs!, 0, this.until - this.started)
+        : this.until;
+      const fade = Number.isFinite(target.fadeOutMs) ? clamp(target.fadeOutMs!, 1, 1000) : 450;
+      const accent = smooth((until - now) / fade);
       const remaining = glow
         ? (accent + sustained * (1 - accent) * this.afterglowScale) *
           smooth((this.afterglowUntil - now) / 1000)
-        : smooth((this.until - now) / 450);
+        : accent;
       const targetWeight = Number.isFinite(target.weight) ? clamp(target.weight!) : 1;
       const identity = key(target);
       const previous = layers.get(identity)?.weight ?? 0;
@@ -256,6 +288,12 @@ export function angryExpression(
       ['ParamBrowRY', -0.55],
       ['Mouthpucker', 0.35],
       ['CheeckPuff', 0.2],
+      // Verified rig: -.6 is still a flat/W mouth; near -1 creates a frown.
+      ['ParamMouthForm', -1],
+      ['ParamBrowLAngle', -0.45],
+      ['ParamBrowRAngle', -0.45],
+      ['ParamBrowLForm', -0.45],
+      ['ParamBrowRForm', -0.45],
     ] as const
   ).flatMap<ExpressionParameter>(([id, amount]) => {
     const range = parameters.get(id);

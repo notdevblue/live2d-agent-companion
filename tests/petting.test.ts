@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { PettingController, pettingBounds } from '../src/renderer/petting.js';
+import { PettingController, applyPetting, pettingBounds } from '../src/renderer/petting.js';
+import { ActingController } from '../src/renderer/acting.js';
 
 describe('explicit local petting — FR-L2D-008', () => {
+  it('adds a readable local head tilt and downward gaze while preserving the cue and window-independent motion', () => {
+    const frame = new ActingController().sample(0, 0);
+    const pet = applyPetting(frame, 0.65);
+    expect(pet.headZ - frame.headZ).toBeCloseTo(0.2275);
+    expect(pet.gazeY - frame.gazeY).toBeCloseTo(-0.1625);
+    expect(pet.smile).toBeCloseTo(0.5525);
+    expect(pet.offsetY).toBe(frame.offsetY);
+    expect(pet.breath).toBe(frame.breath);
+    expect(pet.preset).toBe(frame.preset);
+    expect(applyPetting(frame, 0)).toEqual(frame);
+    const reduced = applyPetting(frame, 0.65 * 0.18);
+    expect(reduced.headZ).toBeCloseTo(pet.headZ * 0.18);
+    expect(reduced.gazeY).toBeCloseTo(pet.gazeY * 0.18);
+    expect(applyPetting(frame, NaN)).toEqual(frame);
+  });
   it('requires a stroke rather than a stationary click and rejects pointer jumps', () => {
     const pet = new PettingController();
     pet.stroke(50, 0);
@@ -13,6 +29,19 @@ describe('explicit local petting — FR-L2D-008', () => {
     pet.stroke(6, 30);
     expect(pet.sample(300)).toBeGreaterThan(0.9);
   });
+  it('looks toward the current local contact and releases that contribution with the touch', () => {
+    const frame = new ActingController().sample(0, 0);
+    const left = applyPetting(frame, 0.65, { x: -1, y: 1 });
+    const right = applyPetting(frame, 0.65, { x: 1, y: -1 });
+    expect(left.gazeX).toBeLessThan(frame.gazeX);
+    expect(right.gazeX).toBeGreaterThan(frame.gazeX);
+    expect(left.headX).toBeLessThan(right.headX);
+    expect(left.headY).toBeGreaterThan(right.headY);
+    expect(left.gazeY).toBeGreaterThan(right.gazeY);
+    expect(applyPetting(frame, 0, { x: 1, y: 1 })).toEqual(frame);
+    expect(applyPetting(frame, 0.65, { x: NaN, y: Infinity })).toEqual(applyPetting(frame, 0.65));
+    expect(applyPetting(frame, 0.65, { x: 99, y: -99 })).toEqual(right);
+  });
   it('returns smoothly after release or leaving the zone, and clears immediately on blocking', () => {
     const pet = new PettingController();
     pet.begin(0);
@@ -21,12 +50,15 @@ describe('explicit local petting — FR-L2D-008', () => {
     const before = pet.sample(300);
     pet.end(300);
     expect(pet.sample(300)).toBe(before);
-    expect(pet.sample(500)).toBeGreaterThan(0);
-    expect(pet.sample(751)).toBe(0);
+    expect(pet.sample(500)).toBe(before);
+    expect(pet.sample(751)).toBeGreaterThan(0);
+    const tail = pet.sample(1000);
     pet.stroke(40, 800);
-    expect(pet.sample(1000)).toBe(0);
-    pet.begin(1200);
-    pet.stroke(10, 1220);
+    pet.end(1000);
+    expect(pet.sample(1000)).toBe(tail);
+    expect(pet.sample(1351)).toBe(0);
+    pet.begin(1400);
+    pet.stroke(10, 1420);
     pet.clear();
     expect(pet.sample(1500)).toBe(0);
   });
@@ -39,6 +71,32 @@ describe('explicit local petting — FR-L2D-008', () => {
     expect(pet.sample(12000)).toBe(0);
     pet.stroke(10, 12500);
     expect(pet.sample(12600)).toBe(0);
+  });
+  it('caps the release afterglow at the original twelve-second budget and does not restart it', () => {
+    const pet = new PettingController();
+    pet.begin(0);
+    for (let now = 20; now <= 11820; now += 200) pet.stroke(10, now);
+    const before = pet.sample(11900);
+    expect(before).toBeGreaterThan(0);
+    pet.end(11900);
+    expect(pet.sample(11900)).toBe(before);
+    expect(pet.sample(12000)).toBe(0);
+    pet.end(12100);
+    expect(pet.sample(12200)).toBe(0);
+  });
+  it('keeps a gradual fade when release is shortened near the twelve-second cap', () => {
+    const pet = new PettingController();
+    pet.begin(0);
+    for (let now = 20; now <= 11620; now += 200) pet.stroke(10, now);
+    pet.end(11700);
+    const start = pet.sample(11700);
+    expect(start).toBeGreaterThan(0.4);
+    expect(pet.sample(11800)).toBeLessThan(start);
+    expect(pet.sample(11900)).toBeGreaterThan(0);
+    expect(pet.sample(11900)).toBeLessThan(start * 0.8);
+    expect(pet.sample(11999)).toBeLessThan(start * 0.01);
+    pet.end(11999);
+    expect(pet.sample(12000)).toBe(0);
   });
   it('has the same envelope at 30/60/120fps without accumulating per-frame input', () => {
     const values: number[][] = [];

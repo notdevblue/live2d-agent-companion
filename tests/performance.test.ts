@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   actingChannels,
   expressionValues,
+  selectEyeArtwork,
   ExpressionMixer,
   parameterValue,
   facialValues,
@@ -12,6 +13,110 @@ import {
 } from '../src/renderer/performance.js';
 
 describe('model performance composition', () => {
+  it('keeps one eye drawing through rapid three-way crossfades without reviving weak expired art', () => {
+    const mixer = new ExpressionMixer();
+    const targets = (name: string, index: number) => [
+      { name: `${name}:eyes`, parameters: [{ index, value: 1, blend: 'Add' as const }] },
+    ];
+    mixer.transitionMany(targets('a', 3), 0);
+    mixer.transitionMany(targets('b', 4), 1000);
+    mixer.transitionMany(targets('c', 5), 1080);
+    const raw = mixer.sample(1180);
+    expect(raw.every((layer) => layer.weight < 0.5)).toBe(true);
+    const selected = selectEyeArtwork(raw, new Set([3, 4, 5]));
+    expect(selected).toHaveLength(1);
+    expect(selected[0]!.weight).toBe(1);
+    expect(
+      selectEyeArtwork(
+        raw.map((layer) => ({ ...layer, weight: 0.1 })),
+        new Set([3, 4, 5]),
+      ),
+    ).toEqual([]);
+  });
+  it('switches special eye drawings without gray ghost eyes or overlapping shapes', () => {
+    const eye = (name: string, index: number, weight: number) => ({
+      name: `${name}:eyes`,
+      parameters: [{ index, value: 1, blend: 'Add' as const }],
+      weight,
+    });
+    const marking = { ...eye('blush', 7, 0.35), name: 'blush:markings' };
+    const ids = new Set([3, 4]);
+    expect(selectEyeArtwork([eye('old', 3, 0.6), eye('new', 4, 0.4), marking], ids)).toEqual([
+      eye('old', 3, 1),
+      marking,
+    ]);
+    expect(selectEyeArtwork([eye('old', 3, 0.5), eye('new', 4, 0.5), marking], ids)).toEqual([
+      eye('new', 4, 1),
+      marking,
+    ]);
+    expect(selectEyeArtwork([eye('new', 4, 0.49), marking], ids)).toEqual([marking]);
+    const custom = eye('custom', 4, 1);
+    custom.parameters[0]!.value = 0.7;
+    expect(selectEyeArtwork([custom], ids)).toEqual([custom]);
+  });
+  it('expires short eye accents independently while blush and the semantic afterglow remain', () => {
+    const mixer = new ExpressionMixer();
+    mixer.transitionMany(
+      [
+        {
+          name: 'eyes',
+          parameters: [{ index: 5, value: 1, blend: 'Add' }],
+          durationMs: 1200,
+          fadeOutMs: 400,
+          afterglowWeight: 0,
+        },
+        { name: 'blush', parameters: [{ index: 7, value: 1, blend: 'Add' }] },
+      ],
+      0,
+      3600,
+      { afterglowMs: 12000, afterglowWeight: 0.4 },
+    );
+    expect(mixer.sample(700).map((l) => l.name)).toEqual(['eyes', 'blush']);
+    expect(mixer.sample(1000).find((l) => l.name === 'eyes')?.weight).toBeCloseTo(0.5);
+    expect(mixer.sample(1400).map((l) => l.name)).toEqual(['blush']);
+    expect(mixer.sample(8000, 0.65)).toMatchObject([{ name: 'blush', weight: 0.26 }]);
+    expect(mixer.sample(15600)).toEqual([]);
+    mixer.clear(8000, true);
+    expect(mixer.sample(8000)).toEqual([]);
+  });
+  it('keeps short-layer expiry independent of sample cadence and clamps invalid local timing', () => {
+    const outputs = [];
+    for (const fps of [30, 60, 120]) {
+      const mixer = new ExpressionMixer();
+      mixer.transitionMany(
+        [
+          {
+            name: 'eye',
+            parameters: [{ index: 3, value: 1, blend: 'Add' }],
+            durationMs: 1400,
+            fadeOutMs: 400,
+          },
+        ],
+        0,
+        4200,
+      );
+      for (let n = 0; n < fps; n++) mixer.sample((n * 1000) / fps);
+      outputs.push(mixer.sample(1200));
+      expect(mixer.sample(1400)).toEqual([]);
+    }
+    expect(outputs[0]).toEqual(outputs[1]);
+    expect(outputs[1]).toEqual(outputs[2]);
+    const mixer = new ExpressionMixer();
+    mixer.transitionMany(
+      [
+        {
+          name: 'eye',
+          parameters: [{ index: 3, value: 1, blend: 'Add' }],
+          durationMs: Infinity,
+          fadeOutMs: NaN,
+        },
+      ],
+      0,
+      4200,
+    );
+    expect(mixer.sample(1000)).toMatchObject([{ name: 'eye', weight: 1 }]);
+    expect(mixer.sample(4200)).toEqual([]);
+  });
   const face: FaceFrame = {
     eyeL: 1,
     eyeR: 1,
