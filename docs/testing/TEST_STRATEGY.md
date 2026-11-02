@@ -13,16 +13,16 @@
 
 ## 계약 테스트 매트릭스
 
-| 테스트 | Hermes | Grok(실증 후) | Mock |
-|---|---|---|---|
-| 텍스트 왕복 | required | conditional | required |
-| 텍스트 delta 스트리밍 | required where supported | not assumed | required |
-| 기존 Bot Chat 바인딩 | spike | spike | simulated |
-| 승인 요청/거절 | required where supported | not assumed | required |
-| 취소/interrupt | required where supported | not assumed | required |
-| webhook accepted ≠ completed | n/a | required | required |
-| 중복/late/잘못된 callback | n/a | required if callback | required |
-| 오프라인·재시작 복구 | required | required if available | required |
+| 테스트                       | Hermes                   | Grok(실증 후)         | Mock      |
+| ---------------------------- | ------------------------ | --------------------- | --------- |
+| 텍스트 왕복                  | required                 | conditional           | required  |
+| 텍스트 delta 스트리밍        | required where supported | not assumed           | required  |
+| 기존 Bot Chat 바인딩         | spike                    | spike                 | simulated |
+| 승인 요청/거절               | required where supported | not assumed           | required  |
+| 취소/interrupt               | required where supported | not assumed           | required  |
+| webhook accepted ≠ completed | n/a                      | required              | required  |
+| 중복/late/잘못된 callback    | n/a                      | required if callback  | required  |
+| 오프라인·재시작 복구         | required                 | required if available | required  |
 
 ## 중요 시나리오
 
@@ -69,3 +69,9 @@ E-012~018은 [ADR-0003](../planning/adrs/0003-request-recovery-and-approvals.md)
 현재 `npm run typecheck`, `npm test`, `npm run build`, `npm run test:desktop`이 있다. CI 자동 실행은 아직 없다. desktop 검사는 모델/SDK를 준비한 뒤 실행하며 기본은 Mock 응답+명시적 표현 fixture이다. 실제 Hermes/Jev 검사는 별도 로컬 연결 설정과 비밀 입력으로만 수행하며 CI fixture로 키/자산을 업로드하지 않는다.
 
 - 메시지/배경 연기 우선순위: streaming 기본 상태, 생각/도구 상태 변화 중 동일 reaction 궤적, 짧은 반응 뒤 긴 paired pose의 복귀 완주, 사용자 대기 clip 교체와 cooldown, 새 요청/승인/복구/취소 경계 정리를 검사한다(`director.test.ts`, `acting.test.ts`, `avatar.test.ts`). 실제 DeepSeek/SDK fixture 수치 검증과 실서비스 진행 응답 품질 검증은 구분한다.
+
+## 실제 모델의 표현 렌더 검사
+
+`npm run test:expression -- --model <로컬 model3.json>`은 실제 SDK와 모델로 고정 시각을 렌더한다. 수백 PNG를 생성하는 전체 작업과 한 장면의 정체를 구분한다. renderer 준비·장면 시작·이미지 저장의 IPC 진행을 받을 때90초 정체 제한만 갱신하며, 전체300초 상한은 갱신하지 않는다. timeout은 마지막 mode/scene·경과 시간과 실패 결과를 남긴다. 진행 없는 지연·전체 한도·늦은 성공 종료가 실패를 성공으로 바꾸지 않는 경계도 확인한다. 이 제한은 검사 프로세스의 장애 감지용이며 실시간 FPS·제품 성능 수락 기준이 아니다.
+
+구조 정리는 cue 소유권과 상태를 `acting.ts`에, 상태 없는 시간/자세/얼굴 계산을 `acting-phrases.ts`에 둔다. 외부 API와 기존 의미/미리보기·강도/접근성·수명/clear 출력 보존을 확인한 근거는 [연기 설계](../ux/ACTING_DESIGN.md#구조-정리-검증-2026-11-03)와 [구현 상태](../development/IMPLEMENTATION_STATUS.md)에 연결한다.

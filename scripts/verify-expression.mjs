@@ -78,24 +78,65 @@ const child = spawn(
   {
     cwd: root,
     env,
-    stdio: ['ignore', 'inherit', 'inherit'],
+    stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
   },
 );
-// Direct-input hand cases rasterize contact/return frames to validate own-canvas alpha.
-const timer = setTimeout(async () => {
-  console.error('표현 렌더 검증이 120초 제한을 넘었습니다.');
-  await writeFile(
-    join(output, 'results.json'),
-    JSON.stringify({ passed: false, error: '120 second process timeout' }),
-  );
-  child.kill('SIGKILL');
-}, 120000);
+// Hundreds of software-rendered captures need a workload deadline, while a
+// stalled scene must fail independently of how many earlier scenes completed.
+const started = Date.now();
+let lastProgress = { stage: 'startup' };
+let timedOut = false;
+let stallTimer;
+const failTimeout = async (reason) => {
+  if (timedOut) return;
+  timedOut = true;
+  clearTimeout(stallTimer);
+  clearTimeout(totalTimer);
+  console.error(`표현 렌더 검증 시간 초과: ${reason} (${JSON.stringify(lastProgress)})`);
+  process.exitCode = 1;
+  try {
+    await writeFile(
+      join(output, 'results.json'),
+      JSON.stringify({
+        passed: false,
+        error: reason,
+        elapsedMs: Date.now() - started,
+        lastProgress,
+      }),
+    );
+  } catch (error) {
+    console.error(`검사 실패 결과를 저장하지 못했습니다: ${error.message}`);
+  } finally {
+    child.kill('SIGKILL');
+  }
+};
+const armStallTimer = () => {
+  clearTimeout(stallTimer);
+  stallTimer = setTimeout(() => void failTimeout('90 second progress timeout'), 90000);
+};
+const totalTimer = setTimeout(() => void failTimeout('300 second process timeout'), 300000);
+armStallTimer();
+child.on('message', (message) => {
+  if (timedOut || !message || typeof message !== 'object') return;
+  const progress = message;
+  if (progress.kind !== 'expression-progress' || typeof progress.stage !== 'string') return;
+  lastProgress = {
+    stage: progress.stage,
+    ...(typeof progress.mode === 'string' ? { mode: progress.mode } : {}),
+    ...(typeof progress.scene === 'string' ? { scene: progress.scene } : {}),
+  };
+  armStallTimer();
+});
+const clearTimers = () => {
+  clearTimeout(stallTimer);
+  clearTimeout(totalTimer);
+};
 child.on('error', (error) => {
-  clearTimeout(timer);
+  clearTimers();
   console.error(error.message);
   process.exitCode = 1;
 });
 child.on('exit', (code) => {
-  clearTimeout(timer);
-  process.exitCode = code ?? 1;
+  clearTimers();
+  process.exitCode = timedOut ? 1 : (code ?? 1);
 });

@@ -358,6 +358,7 @@ void app.whenReady().then(async () => {
         callback({ cancel: true });
       },
     );
+    process.send?.({ kind: 'expression-progress', stage: 'model-load' });
     const library = new ModelLibrary();
     const inventory = await library.load(arg('--model'));
     protocol.handle('app', (request) => {
@@ -379,6 +380,7 @@ void app.whenReady().then(async () => {
       return new Response('', { status: 404 });
     });
     for (const mode of ['before', 'after']) {
+      process.send?.({ kind: 'expression-progress', stage: 'renderer-setup', mode });
       window = new BrowserWindow({
         width: 360,
         height: 560,
@@ -404,6 +406,12 @@ void app.whenReady().then(async () => {
           ),
           `${scene.name}: capture times must increase strictly`,
         );
+        process.send?.({
+          kind: 'expression-progress',
+          stage: 'scene-start',
+          mode,
+          scene: scene.name,
+        });
         const samples = await js(`expressionAcceptance.run(${JSON.stringify(scene)})`);
         result[mode][scene.name] = samples;
         for (const sample of samples) {
@@ -417,12 +425,19 @@ void app.whenReady().then(async () => {
           const image = `${mode}-${scene.name}-${sample.time}.png`;
           await writeFile(join(output, image), Buffer.from(png.split(',')[1], 'base64'));
           sample.image = image;
+          process.send?.({
+            kind: 'expression-progress',
+            stage: 'capture-written',
+            mode,
+            scene: scene.name,
+          });
           assert.ok(
             sample.opaquePixels > 1000,
             `${mode}/${scene.name}: blank render (${JSON.stringify(sample.status)})`,
           );
         }
       }
+      process.send?.({ kind: 'expression-progress', stage: 'renderer-complete', mode });
       window.destroy();
       window = undefined;
     }
