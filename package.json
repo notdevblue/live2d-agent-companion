@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "format:check": "prettier --check src tests \"scripts/*.mjs\" package.json tsconfig.json vitest.config.ts",
+    "format:check": "prettier --check src tests \"scripts/**/*.{mjs,ts}\" package.json tsconfig.json vitest.config.ts",
     "test": "vitest run",
     "build": "node scripts/build.mjs",
     "start": "electron .",
@@ -20,7 +20,8 @@
     "setup:electron": "install-electron",
     "configure:local": "node scripts/configure-local.mjs",
     "test:desktop": "node scripts/smoke-desktop.mjs",
-    "test:x11": "node scripts/test-x11-input.mjs"
+    "test:x11": "node scripts/test-x11-input.mjs",
+    "test:expression": "node scripts/verify-expression.mjs"
   },
   "dependencies": {
     "markdown-it": "15.0.3",

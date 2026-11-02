@@ -1,6 +1,6 @@
 # 구현 및 검증 상태
 
-**확인일:** 2026-11-01 · **버전:** 0.1.0-alpha.1 · **배포:** 로컬 개발용, Windows 릴리스 검증 전
+**확인일:** 2026-11-02 · **버전:** 0.1.0-alpha.1 · **배포:** 로컬 개발용, Windows 릴리스 검증 전
 
 ## 구현 범위
 
@@ -11,7 +11,7 @@
 | Electron | typed IPC, sender/mainFrame 검사, sandbox/contextIsolation, renderer 외부 네트워크 차단 | Windows 실제 창/입력 미검증 |
 | Chat | 직접 전송 시 하단 이동, 응답 하단 추적/과거 위치 유지, 실시간·복원 답변의 Markdown 문단/강조/목록/코드/표 | 링크는 이동 없는 표시, 이미지는 alt text. 코드 문법 강조 없음 |
 | 첨부 | 이미지/일반 파일 선택·드롭·paste·초안 미리보기/삭제, Hermes SSH 실제 이미지/파일 전달 | 10개·파일당 10 MiB·전체 25 MiB. HTTP/Grok 미지원, 첨부-only의 로컬 history 복원은 기본 텍스트 표시이며 첨부 thumbnail/파일명 이력 보존은 미구현 |
-| UI/Live2D | 투명 Overlay, 모니터 이동·부분 표시·휠 배율, 로컬 actor의 시선/고개/몸 연기·표정 crossfade·paired 손 포즈, 강도/구도/배치 잠금/움직임 줄이기/미리보기 | Windows·실제 고 DPI·성능 수락 전. 마우스 시선 추적/쓰다듬기/TTS 없음 |
+| UI/Live2D | 투명 Overlay, 모니터 이동·부분 표시·휠 배율, 로컬 actor의 시선/고개/몸 연기·표정 crossfade·paired 손 포즈, 강도/구도/배치 잠금/움직임 줄이기/미리보기 | Windows·실제 고 DPI·성능 수락 전. 선택적 직접 쓰다듬기 제공. 마우스 시선 추적/TTS 없음 |
 | Linux/Sway | Xwayland의 non-focusable Overlay, 입력 전용 XShape로 빈 영역 통과·모델 재진입, 실패 시 전체 입력 복구 | 현재 SwayFX 환경에서 실증. native Wayland 클릭 통과는 미지원 |
 | Core | binding/turn/request 검사, dedupe, lease, reconciling, 승인/취소, 원문 없는 복원 | 원문 히스토리 영구 저장 안 함 |
 | Hermes SSH | 기존 owner의 native control/ticket/WebSocket, 명시적 세션 선택, 동일 세션 표시용 history 복원, 전용 테스트 세션 실제 왕복·새 연결 receipt 복구 | canonical Bot Chat 미검증, 실제 진행 중 취소/승인은 계약 테스트만 |
@@ -19,6 +19,58 @@
 | Grok Bot | Webhook 인증 제출, 200→accepted/awaiting_result | 실계정 미실증, callback 미구현, 양방향 채팅 미지원 |
 | Jev | 메시지당 대표 Choice emotion/gesture/선택적 attitude 1회, 800자·요청당 8회·짧은 수집/판단 기한, 문장 재생 큐 없음 | 진행 응답의 빈도/감정 품질은 모델·작업에 따라 다름 |
 | 인증키 | async safeStorage, 서버별 credential scope, 사용자 `.env` 시작 시 입력 | 현재 headless 환경은 보호 저장소 불가. 앱 보관은 메모리 전용이며 사용자 `.env`는 별도 유지 |
+
+## 감정 여운·추가 감정·쓰다듬기 (2026-11-02)
+
+사용자 요청에 따라 [구현 인계](../ux/EMOTION_EXPRESSION_HANDOFF.md)의 5항목을 기본 renderer/매핑 경로에 통합하고 화남·당황 및 직접 쓰다듬기를 추가했다. 관련 요구사항은 `FR-L2D-004~008`, `FR-DIR-005~006`, `FR-SET-003`이며 [수락 기준](../specs/ACCEPTANCE_CRITERIA.md#감정-여운과-합성-fr-l2d-004006007-fr-dir-005)을 갱신했다. TTS/립싱크·커서 시선 추적·새 리깅은 포함하지 않는다.
+
+- 기존 강조 뒤 최대 12초의 얼굴 여운을 추가했다. 미소·눈웃음·눈썹·홍조·땀은 기준 .4에 강도를 적용하고 입 열림은 범위의 .12 이하를 사용한다. 마지막 1초 fade 및 정확한 기한 정리를 제공하며 대기 시선·blink·호흡과 기존 상하 offset 한도는 유지한다. 몸의 끄덕임/웃음을 여운 동안 반복하지 않는다. preview/delivery는 기존 짧은 길이이며 중립 승격은 원래 시작 시각을 유지해 끄덕임을 재시작하지 않는다.
+- `ExpressionMixer.transitionMany`는 눈 아트와 표시 층을 분리해 홍조+웃음·식은땀+장난·여러 표시 키의 조합과 240ms crossfade를 제공한다. 자동 보조 자산의 옷·소품은 제외하고 직접 선택한 자산은 보존한다. 새 기본 happy는 파일 없는 미소·눈웃음이며 이미 저장한 `＞＜`/빈 선택은 보존한다. 일반 눈웃음을 원하면 설정에서 기쁨을 ‘기본 연기만’으로 선택한다. 강도/움직임 줄이기는 진행 중 여운에도 적용한다.
+- paired 손은 전체 의미 반응 기한에서 진입/복귀 시간을 뺀 동안 유지하고 authored 복귀를 끝낸다. 새 메시지 첫 글자의 scoped `cue.clear`로 이전 여운/표정/손을 정리한다. 같은 손의 6.2초 반복 억제는 clear 후에도 유지하고 다른 손/none은 즉시 반영한다. 정정·승인·취소·오류·reset에서도 정리하며 오래된 clear는 현재 메시지를 지우지 않는다.
+- body lean 계수 .35/.7을 같은 actor·모델·구도로 비교한 뒤 .7을 채택했다. 실제 1초 upstream `LeanInput`은 기쁨 약 −.933→−1.865, 장난 −1.748→−3.496, 슬픔 1.163→2.325였다. PNG를 직접 비교했고 상하 offset·호흡·고개 추적 속도는 유지했다.
+- 감정 enum은 `angry`/`confused`를 더한 8종이다. 화남은 지원 눈썹·입·볼 upstream의 범위 기반 합성이고 혼란은 존재하는 `圈圈眼`과 시선·고개를 조합한다. 없는 채널/자산은 생략하며 미확인 `Emotion`/`Emotion2`/`脱捕`는 연결하지 않는다. 감정 8×말투 6×제스처 4의 192조합을 검사하고 미리보기는 슬픔·걱정·안심·인사·화남·혼란을 더한 20종이다. 매핑 schema도 같은 enum을 사용해 새 행의 저장·빈 선택·복원을 허용한다.
+- 쓰다듬기는 설정의 `pettingEnabled`(기본 꺼짐)와 **Shift+왼쪽으로 캐릭터 상단을 문지르는 입력**만 사용한다. 자기 canvas 알파 실루엣의 상단 40%이며 해부학적 머리 인식은 아니다. 8 CSS px 이상 stroke에서 눈웃음·미소·작은 기울임을 합성하고 정지 시 .9초, 해제 시 최대 .45초의 연속 fade로 복귀한다. 지속 입력도 12초 한도이며 요청·승인 중 시작 금지/새 요청·승인·오류·설정 해제 즉시 정리를 제공한다. 일반 클릭·드래그/휠 배율과 분기하고 위치 잠금에서도 쓸 수 있다. 전역 커서·화면·외부 서비스는 읽지 않는다.
+
+### 재현 가능한 검증과 근거
+
+- `npm run typecheck`, `npm test`의 **490개**, 전체 `format:check`, `build`, 외부 AI 없는 Mock Electron 검사를 통과했다. actor/mixer/손의 30/60/120fps, 여운 중 강도/접근성 변경, 엄격한 신규 감정 매핑, 의미 적용 후 clear와 중립 승격, 같은 손 반복 억제, 쓰다듬기 임계값·상단·종료/타임아웃 검사를 포함한다. 관련 `tests/acting.test.ts`, `performance.test.ts`, `avatar.test.ts`, `director.test.ts`, `emotion-controls.test.ts`, `petting.test.ts`, `model-library.test.ts`, `validation.test.ts`, `adapters.test.ts`가 코드 근거다.
+- `npm run test:expression -- --model 'local-assets/DeepSeek/大肥鱼.model3.json'`은 일반 앱 설정·키·공급자와 격리된 실제 SDK/SwiftShader 검증이다. 최종 **49개 PNG·수락 검사 22개**, 체크포인트마다 실제 509개 parameter 범위 오류 0개·외부 요청 0개를 확인했다. 기쁨·기쁨+웃음·홍조+웃음·걱정+장난, 새 화남/혼란·미리보기 6종, 두 손의 진입/8초 유지/복귀, clear·움직임 줄이기·쓰다듬기/상단 판정을 포함한다. 로컬 근거는 ignored `artifacts/expression-afterglow/results.json`과 `*.png`다. 50ms 시뮬레이션 간격으로 모델/physics를 진행하고 체크포인트만 실제 rasterize한 검사이며 실시간 FPS/CPU·음성 동기 측정은 아니다.
+- 실제 모델의 부끄러움+웃음 1초에서 `key7=1`, `EyeSmile≈.585`, 8초에서 각각 .26/.234를 확인하고 이미지를 직접 확인했다. 설명 손 `Movement3`는 8초에 1, 16.2초에 0이며 손/손목/손가락 endpoint 복귀를 검사했다. Idle이 계속 구동하는 조명 곡선은 정적인 손 endpoint 판정에서 제외했다. 새 화남 1초의 눈썹 입력은 −.55, 삐죽 .35이고 혼란 `key3=1`이다. 쓰다듬기는 실제 모델에서 미소/눈웃음과 종료 복귀를 확인했다.
+- 실제 Jev에는 합성 한국어 대조 5개만 보냈다. 화자 분노→angry(.98), 화자 혼란→confused(.92), 분노 주제의 사실 설명→neutral(1.0), 화난 사용자에게 위로→concerned(.98)/reassure(1.0), 차분한 숙고→neutral(1.0)이었다. 이는 채널 confidence이며 최종 통합 confidence와 다르다. 기존 질문 3개·호출 1회·한도/임계값을 유지했고, Hermes prompt·실제 사용자 이력은 보내지 않았다. 원문/키 없이 선택·확신도만 ignored `.tmp/expression-afterglow/jev-controls.json`에 보관했다. 5개 대조 결과가 전체 의미 정확도를 보장하지 않는다.
+
+- 실제 Sway/Xwayland의 새 앱 프로세스에서 production renderer와 설정 UI에 합성 pointer 입력(CDP)을 보내 20종 버튼, 쓰다듬기 켜기 저장·설정 renderer reload 복원, Shift stroke의 얼굴 반응·창 위치 불변·해제 복귀·승인 즉시 정리를 확인했다. 감정 여운 단계의 손 hold와 낡은 clear 무시/정확한 clear 정리, 모델 renderer reload 로드·원래 설정 해시 보존도 확인했다. 입력 검증 도중 처음에는 테스트 주입의 screen 좌표가 움직이지 않는 차이를 발견해 petting 이동량을 CSS client 좌표로 계산하도록 고쳤다. 직접 petting에는 창이 움직이지 않으므로 이 기준이 맞고 일반 드래그의 screen 기준은 유지한다. 근거는 ignored `.tmp/afterglow-native/result.json`이다. 실제 손으로 마우스를 문지른 검증/OS 재부팅·재로그인 검증과는 구분한다. 이 앱 검사에서 provider prompt/Jev 호출은 0회다. 테스트 종료 시 개인 설정을 원래 값으로 복원했으므로 쓰다듬기는 사용자가 설정에서 켜야 한다.
+
+### 적용·복원과 지속성
+
+적용은 `npm run build` 뒤 기존 앱을 종료하고 기본 `~/.local/bin/live2d-companion` 런처로 실행한다. 런처는 이 checkout의 기본 Electron 진입점을 읽으므로 별도 시험 경로·서비스·자동 실행 항목은 없다. 쓰다듬기 설정은 기존 settings 저장/부트스트랩과 presentation 이벤트를 사용하고, 예전 설정에 필드가 없으면 꺼짐으로 해석한다. 기존 개인 연결/세션/모델/표정 매핑·위치·배율은 자동 이관하지 않는다. 새 happy 기본이 이미 저장된 사용자의 `＞＜`를 덮지 않는다.
+
+복원은 이 변경 커밋을 revert하고 `npm run build` 뒤 같은 기본 런처로 재실행한다. 되돌린 버전은 새 감정/쓰다듬기 필드를 모를 수 있으므로, **되돌리기 전에** 현재 버전 설정에서 새 angry/confused 매핑 행과 `presentation.pettingEnabled`만 제거한 기존 형태의 비밀 없는 설정 백업으로 복원한다. 개인 연결 값·비밀·대화는 저장소에 넣지 않는다. 모델/SDK 자산 추가 배포는 없다. 실제 앱 재실행 검증과 OS 재부팅/재로그인 검증을 구분하며 이번에 OS 재부팅·재로그인은 수행하지 않았다.
+
+
+Linux에서 구버전으로 돌아갈 때 새 설정 필드를 제거하는 예시다. **앱을 먼저 종료**하고 실행한다. 백업에는 개인 연결 메타데이터가 들어갈 수 있으므로 사용자 설정 디렉터리에만 두고 저장소에 추가하지 않는다.
+
+```bash
+python3 - <<'PYCONFIG'
+import json, os, shutil, tempfile
+from pathlib import Path
+root = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'Live2D Agent Companion'
+file = root / 'settings.json'
+backup = root / 'settings.before-expression-revert.json'
+shutil.copy2(file, backup)
+os.chmod(backup, 0o600)
+data = json.loads(file.read_text())
+settings = data['settings']
+for key in ('angry', 'confused'):
+    settings.get('expressionMap', {}).pop(key, None)
+settings.get('presentation', {}).pop('pettingEnabled', None)
+with tempfile.NamedTemporaryFile(mode='w', dir=root, delete=False) as output:
+    os.chmod(output.name, 0o600)
+    json.dump(data, output, ensure_ascii=False, indent=2)
+os.replace(output.name, file)
+PYCONFIG
+```
+
+그 뒤 구현 커밋 `57bf907`을 revert하고 build·기본 런처 재실행한다. 다시 최신 버전을 사용할 때는 로컬 백업으로 선택 설정을 복원할 수 있다. 위 rollback 명령은 이번 검증에서 실행하지 않았다.
 
 ## 완료 본문 판단과 정정 처리 개선 (2026-11-01)
 

@@ -24,7 +24,7 @@ DeepSeek-chan은 `.model3.json`에 표정/모션 참조가 없어 `Exp3/`, `Anim
 
 기본 매핑의 누락을 막기 위해 `thinking → @companion/thinking`, `surprised → @companion/surprised`를 제공한다. 이는 모델 파일 이름이 아닌 앱 로컬 연기 ID다. 생각은 기존 시선·고개 연기를 재사용하며, 놀람은 지원되는 눈·눈썹·입 파라미터의 실제 중립값/범위 안에서 합성하고 physics 출력·없는 채널은 생략한다. 저장된 사용자 자산 매핑과 명시적인 빈 값은 보존한다. 생각 미리보기·응답 대기 진입·답변의 gesture 판단은 같은 thinking 매핑을 참조한다.
 
-로컬 `ActingController`는 비주기 blink/시선과 눈→고개→몸 지연, thinking/working 및 짧은 감정·태도 반응을 생성한다. `Avatar`는 runtime 범위/중립값과 physics 출력 목록을 검사해 `Angle*`, `Position*`, `LeanInput` 같은 upstream을 구동한다. physics 출력에 해당하는 표준 채널밖에 없으면 그 채널을 생략한다. 표정은 기존/새 레이어를 240ms로 crossfade하고 만료/초기화 시 정리한다. DeepSeek의 알려진 손동작 쌍은 진입→1.5초 유지→복귀이며 유지 시 selector만이 아니라 자산의 모든 손/손목 endpoint를 보존한다. SDK clip은 실제 pose phase 경과 시간으로 진행하고 physics step 제한과 분리한다. 자산 쌍이 없는 사용자 매핑은 기존 단발 motion으로 fallback한다.
+로컬 `ActingController`는 비주기 blink/시선과 눈→고개→몸 지연, thinking/working 및 짧은 감정·태도 반응을 생성한다. `Avatar`는 runtime 범위/중립값과 physics 출력 목록을 검사해 `Angle*`, `Position*`, `LeanInput` 같은 upstream을 구동한다. physics 출력에 해당하는 표준 채널밖에 없으면 그 채널을 생략한다. 표정은 기존/새 레이어를 240ms로 crossfade하고 만료/초기화 시 정리한다. DeepSeek의 알려진 손동작 쌍은 의미 반응에서 진입→여운 동안 유지→복귀이며 (로컬 미리보기의 유지는 기존 1.5초), 유지 시 selector만이 아니라 자산의 모든 손/손목 endpoint를 보존한다. SDK clip은 실제 pose phase 경과 시간으로 진행하고 physics step 제한과 분리한다. 자산 쌍이 없는 사용자 매핑은 기존 단발 motion으로 fallback한다.
 
 추가 버튜버 연기는 기존 Choice를 재사용한다. 감정/태도 얼굴과 thinking/explain 시선·고개를 분리 합성하고, 반응별 준비·강조·여운·복귀 시간을 둔다. 윙크/반눈/눈웃음/눈썹/삐죽/볼은 좌우 눈과 실제 upstream 얼굴 범위로 제어한다. pipeline은 baseline→idle/one-shot→로컬 연기/얼굴→expression→physics→draw이며 자산이 구동하는 얼굴 채널과 physics 출력은 procedural 입력에서 제외한다. 놀람 눈은 Overwrite 대신 Multiply로 자동 blink를 보존하고 표정 hold도 actor의 2.2초와 맞춘다. 특수 눈 artwork가 켜지면 procedural wink/eyeSmile을 중첩하지 않는다. 기본 상하 offset은 유지한다.
 
@@ -44,26 +44,36 @@ DeepSeek-chan의 49개 clipping mask 그룹은 기본 버퍼 1개의 36그룹 �
 
 **애니메이션 우선순위:** security/approval UX > explicit user interaction > speaking > task state > idle. 전환 시 crossfade, 전환 가능 여부는 모델/SDK 지원 확인.
 
+## 감정 여운과 독립 표정 층 (2026-11-02)
+
+`ActingController.reactionDuration`은 기존 강조 길이이고 `reactionLifetime`은 의미 반응에만 최대 12초를 더한 전체 기한이다. 미소·눈웃음·눈썹은 강조의 복귀 구간에서 낮은 여운으로 이어지고 작은 `ParamMouthOpenY`(.12 × 강도)를 사용한다. 모음·턱은 구동하지 않는다. 마지막 1초 fade 뒤 정확한 기한에 얼굴을 정리한다. 대기 호흡·시선·blink와 기존 상하 offset은 유지하며 몸의 강조를 반복 재생하지 않는다. preview/delivery는 기존 짧은 길이를 유지하고 중립 semantic 승격은 끄덕임을 다시 시작하지 않는다.
+
+`ExpressionMixer.transitionMany`에 특수 눈(`key3~6`)과 표시(`key2/7/13`)를 분리해 전달한다. 눈 아트는 강조 동안 한 종류만 소유하고 홍조·땀·눈물은 독립적으로 여운을 유지한다. 감정 자산을 주표정으로 보존한 채 shy의 홍조나 tease의 눈을 보조로 올리므로 부끄러움+웃음, 걱정+장난이 함께 보인다. 보조 자산에서 옷·소품·미확인 키는 제외하고 직접 매핑한 사용자 자산은 전체를 보존한다. 각 층은 240ms crossfade하며 구성 파라미터가 바뀌는 같은 이름의 표정도 연속으로 전환한다. 강도/움직임 줄이기 변경은 현재 여운에도 적용한다.
+
+paired 손은 진입/복귀 클립 시간을 전체 의미 반응 기한에서 빼 유지 시간을 정한다. 수명 안에 복귀를 마치며 다음 메시지 첫 글자의 scoped `cue.clear`, 정정·승인·취소·오류·새 요청에서 이전 표정/여운/손을 정리한다. 같은 손의 반복 억제는 유지한다. `LeanInput` 계수는 .35에서 .7로 바꾸되 호흡·고개 추적 속도·상하 offset은 바꾸지 않는다. 실제 비교 근거와 적용·복원은 [구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다.
+
 ## 전체 표현 점검 (2026-11-01)
 
-현재 자동 판단의 전체 집합은 감정 6종·말투 6종·제스처 4종이다. 한 메시지에서 세 채널을 조합하며, 말투가 로컬 연기 프리셋을 우선 선택해도 감정 자산과 명시적인 제스처는 별도로 적용한다. `laugh`는 기존 눈웃음 프리셋에 연결했고 추가 질문/호출은 만들지 않았다. `ㅋㅋ` 문자열만으로 로컬에서 웃음을 강제하지 않는다.
+2026-11-02 현재 자동 판단의 전체 집합은 감정 8종·말투 6종·제스처 4종이다. 한 메시지에서 세 채널을 조합하며, 말투가 로컬 연기 프리셋을 우선 선택해도 감정 자산과 명시적인 제스처는 별도로 적용한다. `laugh`는 기존 눈웃음 프리셋에 연결했고 추가 질문/호출은 만들지 않았다. `ㅋㅋ` 문자열만으로 로컬에서 웃음을 강제하지 않는다.
 
 | 채널·값 | 자동 연기·기본 모델 연결 | 미리보기·제약 |
 |---|---|---|
 | emotion neutral | 작은 중립 전달 반응 | 초기화는 중립 상태로 복귀하며 전달 반응은 재생하지 않음 |
-| emotion happy | 기쁨 + `＞＜` 눈 | 기쁨 |
-| emotion sad | 슬픈 시선/고개 + `流泪` | 전용 버튼 없음, 자동 연결 있음 |
+| emotion happy | 기쁨의 절차 미소·눈웃음, 기본 표정 파일 없음 | 기쁨. 사용자가 저장한 특수 눈 매핑은 보존 |
+| emotion sad | 슬픈 시선/고개 + `流泪` | 슬픔 |
 | emotion surprised | 짧은 놀람 + 로컬 눈/눈썹/입 합성 | 놀람 |
 | emotion embarrassed | 수줍음 + `脸红` | 수줍음 |
-| emotion concerned | 걱정 + `流冷汗` | 전용 버튼 없음, 자동 연결 있음 |
+| emotion concerned | 걱정 + `流冷汗` | 걱정 |
+| emotion angry | 화난 눈썹·삐죽·볼 + 지원 채널의 로컬 합성 | 화남 |
+| emotion confused | 혼란 시선·고개 + 대응 `圈圈眼` | 당황·혼란 |
 | attitude neutral | 감정·제스처에 따라 기본 연기 선택 | 별도 연기를 강제하지 않음 |
 | attitude explain | 설명 고개·시선 | 설명 미리보기는 손 포즈도 요청하지만 말투 단독은 손 없음 |
 | attitude tease | 장난, 첫 변주는 `屑屑眼`, 다음은 윙크 시도 | 장난 미리보기는 첫 변주 |
 | attitude laugh | 함께 웃는 농담·재미있는 관찰 → 눈웃음 연기 | 눈웃음 |
 | attitude shy | 수줍음, embarrassed 자산 우선 | 수줍음 |
-| attitude reassure | 안심시키는 미소·작은 끄덕임 | 전용 버튼 없음, 자동 연결 있음 |
+| attitude reassure | 안심시키는 미소·작은 끄덕임 | 안심 |
 | gesture none | 새 손 포즈 없음, 이전 메시지의 다른 손 포즈 정리 | 말투가 손 포즈를 추가하지 않음 |
-| gesture wave | 손 들기 → 유지 → 복귀 | 전용 버튼 없음, 자동 연결 있음 |
+| gesture wave | 손 들기 → 유지 → 복귀 | 인사 |
 | gesture explain | 검지 포즈 → 유지 → 복귀 | 설명 |
 | gesture thinking | 생각 시선·고개 또는 사용자 생각 자산 | 생각, 응답 대기 상태에서도 사용 |
 | 독립 wink / nod | 전용 자동 Choice 없음. 장난 변주에는 윙크, 중립 전달/안심에는 다른 끄덕임이 있음 | 윙크 / 끄덕끄덕 |
@@ -73,7 +83,7 @@ DeepSeek-chan의 49개 clipping mask 그룹은 기본 버퍼 1개의 36그룹 �
 
 표정 파일 23개는 감정용 눈·눈물·홍조뿐 아니라 의상·체형·안경·소품·손 selector도 포함한다. 인벤토리 개수를 감정의 개수로 표시하지 않는다. 모든 파일을 실제 SDK에서 개별 로드·렌더·범위·만료 검사했으며, 로컬 놀람 합성은 파일과 별개로 메모리에 한 종류 추가된다. 모션 8개도 로드·렌더를 확인했지만 단독 복귀 clip/의미 미확인 특수 동작을 자동 감정으로 연결하지 않는다. 원본 이름과 한글 별칭은 `src/renderer/model-labels.ts`를 따른다.
 
-**눈 자산 우선순위:** 사용자가 선택한 `＞＜`/하트 눈/장난 눈 등 특수 눈 artwork는 procedural 눈웃음·윙크보다 우선한다. 현재 기본 happy 매핑도 `＞＜`이므로 `happy + laugh`는 눈웃음 미리보기의 일반 감은 눈 대신 `＞＜` 눈으로 웃는다. `happy + tease`의 윙크 변주도 같은 매핑에 가릴 수 있다. 이를 판단 미전달로 보거나 사용자 매핑을 조용히 무시하지 않는다. 일반 눈 연기를 원하면 설정에서 기쁨을 ‘기본 연기만’ 또는 특수 눈이 없는 자산으로 선택한다. 기존 선택으로 되돌리면 원래 표현으로 복원된다.
+**눈 자산 우선순위:** 사용자가 선택한 `＞＜`/하트 눈/장난 눈 등 특수 눈 artwork는 procedural 눈웃음·윙크보다 우선한다. 새 인벤토리의 happy 기본은 파일 없는 절차 미소·눈웃음이다. 이전에 저장된 happy 매핑이 `＞＜`이면 그 선택을 보존하므로 `happy + laugh`의 강조 중에는 일반 감은 눈 대신 `＞＜`가 우선하고 `happy + tease`의 윙크도 가릴 수 있다. 특수 눈 아트는 강조 뒤 정리하고 낮은 절차 얼굴 여운을 남긴다. 이를 판단 미전달로 보거나 사용자 매핑을 조용히 무시하지 않는다. 일반 눈 연기를 원하면 설정에서 기쁨을 ‘기본 연기만’ 또는 특수 눈이 없는 자산으로 선택한다. 기존 선택으로 되돌리면 원래 표현으로 복원된다.
 
 **전환과 fallback:** 새 메시지가 다른 손동작/none을 요청하면 이전 손 포즈를 즉시 중단하고 다음 draw의 중립 기준에서 새 동작을 시작한다. 진입 도중 완성된 endpoint/복귀 clip으로 점프하지 않는다. 같은 손동작의 반복은 기존 cooldown을 유지하고 자연 종료는 기존 paired 복귀를 완주한다. Jev가 없거나 8회 판단 예산을 다 써도 외부 호출 없이 중립 전달 반응을 유지하며, 중복/취소/복구/승인 경계는 과거 반응을 재생하지 않는다.
 
@@ -127,3 +137,9 @@ interface SpeechSynthesizer {
 - https://docs.live2d.com/en/cubism-sdk-manual/cubism-sdk-for-web/
 - https://docs.live2d.com/en/cubism-sdk-manual/lipsync/
 - https://docs.live2d.com/en/cubism-sdk-manual/cubism-sdk-motionsync-plugin-for-web/
+
+## 후속 감정·직접 쓰다듬기 (2026-11-02)
+
+사용자 요청으로 기존 Jev emotion Choice에 `angry`/`confused`를 추가했다. 화자 자신의 감정과 사용자/주제의 감정을 구분하는 기준을 사용하며 호출·임계값·시간/문자 예산은 유지한다. 감정 8×말투 6×제스처 4의 192조합을 검사하고, 슬픔·걱정·안심·인사·화남·혼란 6개를 더한 미리보기는 20종이다. 화남은 미확인 화남 토글 대신 실제 지원 upstream 눈썹·입·볼로 합성하며 혼란은 존재하는 빙글빙글 눈을 쓴다. `Emotion`/`Emotion2`·미확인 특수 모션은 연결하지 않는다.
+
+쓰다듬기는 `presentation.pettingEnabled`(기본 꺼짐)를 저장하고 Overlay 안의 Shift+왼쪽 stroke만 처리한다. 자기 canvas 알파 실루엣의 상단 40%를 대상으로 하며 해부학적 머리 인식/전역 커서 추적은 아니다. 클릭·일반 드래그·휠 배율과 별도이며 누적 8 CSS px 이상 문지르면 눈웃음·미소·작은 고개 반응을 합성한다. 크게 튀는 입력은 버리고 정지 시 약 .9초 안에, 손을 놓으면 최대 .45초에 복귀한다. 지속 입력도 12초로 제한하며 외부 판단/메시지를 만들지 않는다. 요청·승인 중에는 시작하지 않고 설정 해제·새 요청·승인·오류·reset에서 즉시 정리한다. 특수 눈·자산·physics 채널과 강도/움직임 줄이기를 존중한다.
