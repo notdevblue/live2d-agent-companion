@@ -1,8 +1,13 @@
-import { SURPRISED_EXPRESSION, THINKING_MOTION } from '../shared/model-mappings.js';
+import {
+  ANGRY_EXPRESSION,
+  SURPRISED_EXPRESSION,
+  THINKING_MOTION,
+} from '../shared/model-mappings.js';
 
 // Display aliases only. Original manifest IDs/file names remain the saved mapping values.
 const expressions: Record<string, string> = {
   [SURPRISED_EXPRESSION]: '놀람 (기본 표정)',
+  [ANGRY_EXPRESSION]: '화남 (기본 표정)',
   体型1: '체형 1',
   体型2: '체형 2',
   兔牙: '토끼 앞니',

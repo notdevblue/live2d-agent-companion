@@ -65,6 +65,7 @@ describe('character presentation settings (FR-SET-001)', () => {
       framing: 'full',
       positionLocked: false,
       reducedMotion: false,
+      pettingEnabled: false,
     });
     migrated.presentation!.positionLocked = true;
     expect(parseSettings(legacySettings).presentation?.positionLocked).toBe(false);
@@ -84,6 +85,7 @@ describe('character presentation settings (FR-SET-001)', () => {
       { ...presentation, framing: 'camera' },
       { ...presentation, positionLocked: 'true' },
       { ...presentation, reducedMotion: 1 },
+      { ...presentation, pettingEnabled: 'true' },
       { ...presentation, network: true },
       {},
       null,
@@ -92,6 +94,33 @@ describe('character presentation settings (FR-SET-001)', () => {
     expect(parseSettings({ ...legacySettings, scale: 4 }).scale).toBe(4);
     for (const scale of [0, 0.39, 4.01, Infinity, NaN])
       expect(() => parseSettings({ ...legacySettings, scale })).toThrow();
+  });
+  it('persists explicit petting opt-in while old settings stay disabled', () => {
+    const old = {
+      intensity: 'normal',
+      framing: 'full',
+      positionLocked: false,
+      reducedMotion: false,
+    };
+    expect(
+      parseSettings({ ...legacySettings, presentation: old }).presentation?.pettingEnabled,
+    ).toBeFalsy();
+    const enabled = parseSettings({
+      ...legacySettings,
+      presentation: { ...old, pettingEnabled: true },
+    });
+    expect(parseSettings(JSON.parse(JSON.stringify(enabled))).presentation?.pettingEnabled).toBe(
+      true,
+    );
+  });
+  it('saves all newly offered emotion mapping rows with the existing strict schema', () => {
+    const saved = parseSettings({
+      ...legacySettings,
+      expressionMap: { angry: '@companion/angry', confused: '圈圈眼' },
+    });
+    expect(parseSettings(JSON.parse(JSON.stringify(saved))).expressionMap).toEqual(
+      saved.expressionMap,
+    );
   });
   it('accepts only local preview preset enum values', () => {
     for (const preset of ['thinking', 'explain', 'shy', 'tease', 'happy', 'reset'])

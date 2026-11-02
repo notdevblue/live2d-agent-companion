@@ -114,6 +114,8 @@ export const EMOTIONS = [
   'surprised',
   'embarrassed',
   'concerned',
+  'angry',
+  'confused',
 ] as const;
 export const GESTURES = ['none', 'wave', 'explain', 'thinking'] as const;
 export const ATTITUDES = ['neutral', 'explain', 'tease', 'laugh', 'shy', 'reassure'] as const;
@@ -163,12 +165,14 @@ export interface PresentationSettings {
   framing: 'full' | 'bust' | 'close';
   positionLocked: boolean;
   reducedMotion: boolean;
+  pettingEnabled?: boolean;
 }
 export const DEFAULT_PRESENTATION: Readonly<PresentationSettings> = {
   intensity: 'normal',
   framing: 'full',
   positionLocked: false,
   reducedMotion: false,
+  pettingEnabled: false,
 };
 export const CHARACTER_PREVIEWS = [
   'thinking',
@@ -184,6 +188,12 @@ export const CHARACTER_PREVIEWS = [
   'laugh',
   'heart',
   'grass',
+  'sad',
+  'concerned',
+  'reassure',
+  'wave',
+  'angry',
+  'confused',
   'reset',
 ] as const;
 export type CharacterPreview = (typeof CHARACTER_PREVIEWS)[number];

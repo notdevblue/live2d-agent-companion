@@ -5,6 +5,7 @@ import {
   type ExpressionDecision,
   type ExpressionJudge,
   type ExpressionContext,
+  type Emotion,
   EXPRESSION_PACING,
 } from '../shared/contracts.js';
 import {
@@ -26,13 +27,18 @@ const emotionCriteria = {
   surprised: 'Surprise or astonishment',
   embarrassed: 'Embarrassment or shy discomfort',
   concerned: 'Concern, caution or empathy',
-};
+  angry:
+    'The assistant speaker itself expresses real anger, irritation or indignation. Reporting an angry person, discussing injustice or conflict, quoting angry language, user anger, playful teasing and a requested angry label are not enough. Prefer neutral when actual speaker anger is unclear.',
+  confused:
+    'The assistant speaker itself is visibly puzzled, bewildered or unable to make sense of something. Merely considering a question, carefully weighing alternatives, explaining uncertainty factually, describing a confused person or responding to a confused user is not enough. Focused deliberation belongs to the thinking gesture, not confused emotion. Prefer neutral when unclear.',
+} satisfies Record<Emotion, string>;
 const gestureCriteria = {
   none: 'Default for ordinary conversation, acknowledgements, progress updates, factual answers and most explanations. No deliberate hand gesture is needed.',
   wave: 'Greeting or farewell',
   explain:
     'A rare demonstrative teaching moment: the speaker explicitly draws attention to an example, contrast or step while guiding the listener through it. A pointing/presenting hand gesture clearly adds emphasis. Merely providing information, reporting findings, listing results or using technical words is not enough.',
-  thinking: 'Considering a question or uncertainty',
+  thinking:
+    'Focused, deliberate consideration of a question or weighing alternatives. Visible bewilderment alone is not a thinking gesture; ordinary factual uncertainty needs no gesture.',
 };
 const attitudeCriteria = {
   neutral:

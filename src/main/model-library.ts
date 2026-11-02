@@ -2,7 +2,11 @@ import { randomBytes } from 'node:crypto';
 import { readFile, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { Emotion, Gesture, ModelInventory } from '../shared/contracts.js';
-import { SURPRISED_EXPRESSION, THINKING_MOTION } from '../shared/model-mappings.js';
+import {
+  ANGRY_EXPRESSION,
+  SURPRISED_EXPRESSION,
+  THINKING_MOTION,
+} from '../shared/model-mappings.js';
 
 type JsonObject = Record<string, unknown>;
 interface LibraryModel {
@@ -166,12 +170,13 @@ export class ModelLibrary {
     }
     const expressionMap: Partial<Record<Emotion, string>> = {
       surprised: SURPRISED_EXPRESSION,
+      angry: ANGRY_EXPRESSION,
     };
     for (const [emotion, name] of Object.entries({
-      happy: '＞＜',
       sad: '流泪',
       embarrassed: '脸红',
       concerned: '流冷汗',
+      confused: '圈圈眼',
     })) {
       if (expressions.includes(name)) expressionMap[emotion as Emotion] = name;
     }

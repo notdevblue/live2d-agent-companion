@@ -34,6 +34,7 @@ let ready = false;
 let currentRevision = 0;
 const buffered: CompanionEvent[] = [];
 let cancelOverlayGesture: (() => void) | undefined;
+let cancelPettingInteraction: (() => void) | undefined;
 let presentationSaves: Promise<void> = Promise.resolve();
 let slashMenu: SlashCommandMenu | undefined;
 let commandPending = false;
@@ -72,6 +73,8 @@ const emotionLabels: Record<string, string> = {
   surprised: '놀람',
   embarrassed: '부끄러움',
   concerned: '걱정',
+  angry: '화남',
+  confused: '당황·혼란',
 };
 const gestureLabels: Record<string, string> = {
   none: '없음',
@@ -182,6 +185,8 @@ function applyPresentation(settings: PresentationSettings): void {
   element<HTMLSelectElement>('framing').value = settings.framing;
   input('position-locked').checked = settings.positionLocked;
   input('reduced-motion').checked = settings.reducedMotion;
+  input('petting-enabled').checked = settings.pettingEnabled ?? false;
+  if (!settings.pettingEnabled) cancelPettingInteraction?.();
 }
 function collectPresentation(): PresentationSettings {
   return {
@@ -189,6 +194,7 @@ function collectPresentation(): PresentationSettings {
     framing: element<HTMLSelectElement>('framing').value as PresentationSettings['framing'],
     positionLocked: input('position-locked').checked,
     reducedMotion: input('reduced-motion').checked,
+    pettingEnabled: input('petting-enabled').checked,
   };
 }
 function updatePreviewAvailability(): void {
@@ -202,6 +208,7 @@ function updatePreviewAvailability(): void {
     : '로컬 캐릭터만 움직입니다. 메시지를 보내거나 Jev를 호출하지 않습니다.';
 }
 function applyCharacterState(): void {
+  if (requestActive() || view?.approval) cancelPettingInteraction?.();
   const blocked =
     view?.approval ||
     (view && ['cancel_requested', 'reconciling', 'cancelled', 'interrupted'].includes(view.state));
@@ -539,6 +546,9 @@ function collectSettings(): AppSettings {
 async function overlayMode(): Promise<void> {
   element('overlay').hidden = false;
   let pointerId: number | undefined;
+  let petting = false;
+  const canPet = (): boolean =>
+    !!boot.settings.presentation?.pettingEnabled && !requestActive() && !view?.approval;
   const hitAt = (x: number, y: number): boolean => {
     if (avatar) return avatar.hit(x, y);
     const fallback = element('model-error');
@@ -576,27 +586,44 @@ async function overlayMode(): Promise<void> {
   let startY = 0;
   let lastX = 0;
   let lastY = 0;
+  let petX = 0;
+  let petY = 0;
   let hitTime = 0;
   const canvas = element<HTMLCanvasElement>('avatar');
   const finishDrag = (clicked = false, x?: number, y?: number): void => {
     const captured = pointerId;
     if (captured === undefined) return;
     pointerId = undefined;
+    const wasPetting = petting;
+    petting = false;
+    if (wasPetting) avatar?.endPetting();
     bridge.setDragging(false);
     if (canvas.hasPointerCapture(captured)) canvas.releasePointerCapture(captured);
     bridge.hitTest(x !== undefined && y !== undefined && hitAt(x, y));
-    if (clicked && !moved) void bridge.openChat();
+    if (clicked && !moved && !wasPetting) void bridge.openChat();
   };
   cancelOverlayGesture = () => finishDrag();
+  cancelPettingInteraction = () => {
+    if (petting) finishDrag();
+    avatar?.endPetting(true);
+  };
   canvas.addEventListener('pointerdown', (event) => {
     if (pointerId !== undefined || event.button !== 0 || !hitAt(event.clientX, event.clientY))
       return;
+    if (event.shiftKey && boot.settings.presentation?.pettingEnabled) {
+      event.preventDefault();
+      if (!canPet() || !avatar?.pettingHit(event.clientX, event.clientY) || !avatar.beginPetting())
+        return;
+      petting = true;
+    }
     canvas.setPointerCapture(event.pointerId);
     pointerId = event.pointerId;
     moved = false;
     startX = lastX = event.screenX;
     startY = lastY = event.screenY;
-    if (!boot.settings.presentation?.positionLocked) bridge.setDragging(true);
+    petX = event.clientX;
+    petY = event.clientY;
+    if (!petting && !boot.settings.presentation?.positionLocked) bridge.setDragging(true);
     event.preventDefault();
   });
   window.addEventListener('pointermove', (event) => {
@@ -610,6 +637,15 @@ async function overlayMode(): Promise<void> {
       const dy = event.screenY - lastY;
       lastX = event.screenX;
       lastY = event.screenY;
+      if (petting) {
+        const distance = Math.hypot(event.clientX - petX, event.clientY - petY);
+        petX = event.clientX;
+        petY = event.clientY;
+        if (!event.shiftKey || !canPet() || !avatar?.pettingHit(event.clientX, event.clientY))
+          finishDrag();
+        else avatar.strokePetting(distance);
+        return;
+      }
       if (Math.abs(event.screenX - startX) + Math.abs(event.screenY - startY) > 3) moved = true;
       if (!boot.settings.presentation?.positionLocked && Math.abs(dx) <= 200 && Math.abs(dy) <= 200)
         void bridge.move(dx, dy).catch(() => {});
@@ -623,6 +659,7 @@ async function overlayMode(): Promise<void> {
     (event) => {
       if (pointerId === undefined || !(event.buttons & 1)) return;
       event.preventDefault();
+      if (petting) return;
       moved = true; // Resizing is a manipulation, so release must not open chat.
       if (boot.settings.presentation?.positionLocked) return;
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
@@ -643,6 +680,7 @@ async function overlayMode(): Promise<void> {
   window.addEventListener('unload', () => {
     finishDrag();
     cancelOverlayGesture = undefined;
+    cancelPettingInteraction = undefined;
     avatar?.dispose();
   });
 }
@@ -744,7 +782,7 @@ async function main(): Promise<void> {
         button.disabled = false;
       }
     });
-  for (const id of ['intensity', 'framing', 'position-locked', 'reduced-motion'])
+  for (const id of ['intensity', 'framing', 'position-locked', 'reduced-motion', 'petting-enabled'])
     element(id).addEventListener('change', () => {
       const presentation = collectPresentation();
       presentationSaves = presentationSaves

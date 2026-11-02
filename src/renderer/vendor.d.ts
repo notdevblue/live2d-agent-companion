@@ -20,6 +20,7 @@ interface Window {
     motionActive?: boolean;
     actingPreset?: string;
     posePhase?: string;
+    pettingWeight?: number;
     lastPreview?: import('../shared/contracts.js').CharacterPreview;
     reactionPhase?: import('./acting.js').ActingFrame['phase'];
     variant?: number;

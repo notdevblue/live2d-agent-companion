@@ -37,6 +37,8 @@ export interface ActingFrame extends FaceFrame {
   /** Vertical model translation in clip coordinates, not OS window coordinates. */
   offsetY: number;
   smile: number;
+  /** Small semantic mouth opening, never phoneme or speech animation. */
+  mouthOpen: number;
   preset: ActingPreset;
   active: boolean;
   expressionWeight: number;
@@ -44,7 +46,7 @@ export interface ActingFrame extends FaceFrame {
   gesture: Gesture;
   attitude?: Attitude;
   variant: number;
-  phase: 'idle' | 'anticipation' | 'accent' | 'settle' | 'release';
+  phase: 'idle' | 'anticipation' | 'accent' | 'settle' | 'release' | 'afterglow';
 }
 type Pose = Pick<
   ActingFrame,
@@ -58,6 +60,7 @@ type Pose = Pick<
   | 'gazeY'
   | 'blink'
   | 'smile'
+  | 'mouthOpen'
   | keyof FaceFrame
 >;
 interface Reaction {
@@ -67,6 +70,7 @@ interface Reaction {
   gesture: Gesture;
   started: number;
   variant: number;
+  afterglow: boolean;
 }
 const timing = (preset: ActingPreset): { duration: number; attack: number; release: number } => {
   if (preset === 'acknowledge') return { duration: 1800, attack: 180, release: 500 };
@@ -77,6 +81,12 @@ const timing = (preset: ActingPreset): { duration: number; attack: number; relea
   return { duration: 4200, attack: 450, release: 1100 };
 };
 export const reactionDuration = (preset: ActingPreset): number => timing(preset).duration;
+/** The semantic afterglow budget includes expression fade and authored hand return.
+ * Delivery cues and local previews retain the original accent duration. */
+export const reactionLifetime = (
+  preset: ActingPreset,
+  stage: 'delivery' | 'semantic' = 'semantic',
+): number => reactionDuration(preset) + (stage === 'semantic' ? 12000 : 0);
 const neutral = (): Pose => ({
   headX: 0,
   headY: 0,
@@ -88,6 +98,7 @@ const neutral = (): Pose => ({
   gazeY: 0,
   blink: 1,
   smile: 0,
+  mouthOpen: 0,
   eyeL: 1,
   eyeR: 1,
   eyeSmile: 0,
@@ -112,7 +123,7 @@ const random = (n: number): number => {
 const emotionFor = (preset: ActingPreset): Emotion =>
   preset === 'shy'
     ? 'embarrassed'
-    : ['happy', 'sad', 'concerned', 'surprised'].includes(preset)
+    : ['happy', 'sad', 'concerned', 'surprised', 'angry', 'confused'].includes(preset)
       ? (preset as Emotion)
       : 'neutral';
 
@@ -136,6 +147,28 @@ const PROFILES: Record<ActingPreset, Partial<Pose>> = {
   laugh: { smile: 0.85, eyeSmile: 0.9, lean: 0.14 },
   heart: { gazeY: 0.06, headZ: 0.18, smile: 0.65, eyeSmile: 0.35, lean: 0.18 },
   grass: { headZ: -0.12, smile: 0.3, eyeSmile: 0.3 },
+  wave: { headZ: -0.1, lean: 0.1, smile: 0.55, eyeSmile: 0.35 },
+  angry: {
+    headY: -0.1,
+    headZ: -0.08,
+    lean: 0.1,
+    gazeY: -0.04,
+    browY: -0.65,
+    pout: 0.4,
+    cheek: 0.18,
+    eyeL: 0.72,
+    eyeR: 0.72,
+  },
+  confused: {
+    headZ: 0.26,
+    headY: -0.08,
+    lean: -0.08,
+    gazeX: -0.12,
+    browInner: 0.42,
+    browY: 0.12,
+    eyeL: 0.82,
+    eyeR: 1,
+  },
 };
 
 /** Pure, deterministic local actor. Call sample with a monotonic clock and elapsed seconds.
@@ -180,14 +213,13 @@ export class ActingController {
 
   setState(state: ActingState, nowMs: number): void {
     this.initialize(nowMs);
-    // Task progress is a background state. A visible message owns its short
+    // Task progress is a background state. A visible message owns its bounded
     // reaction until it releases; a new request explicitly resets the actor.
-    if (state === 'error' || state === 'blocked') this.reaction = undefined;
-    this.state = state;
-    if (state === 'blocked') {
+    if (state === 'error' || state === 'blocked') {
       this.reaction = undefined;
       this.pose = neutral();
     }
+    this.state = state;
   }
 
   cue(
@@ -212,7 +244,18 @@ export class ActingController {
     )
       return false;
     if (promotion && cue.emotion === 'neutral' && cue.gesture === 'none' && !hasAttitude) {
-      // Resolving neutral does not restart the existing delivery beat or its variant.
+      // Resolving neutral adds only a bounded mouth afterglow. It never restarts
+      // the original delivery beat or spends a new variant, even after its accent.
+      if (this.reaction) this.reaction.afterglow = true;
+      else if (nowMs - this.lastCue < reactionLifetime('acknowledge'))
+        this.reaction = {
+          preset: 'acknowledge',
+          emotion: 'neutral',
+          gesture: 'none',
+          started: this.lastCue,
+          variant: 0,
+          afterglow: true,
+        };
       this.lastBeat = { ...this.lastBeat!, segmentId: cue.segmentId!, stage: 'semantic' };
       return false;
     }
@@ -237,7 +280,13 @@ export class ActingController {
                   : 'neutral';
     const variant = this.variants.get(preset) ?? 0;
     this.variants.set(preset, (variant + 1) % 2);
-    this.reaction = { preset, ...cue, started: nowMs, variant };
+    this.reaction = {
+      preset,
+      ...cue,
+      started: nowMs,
+      variant,
+      afterglow: cue.stage !== 'delivery',
+    };
     this.lastKey = key;
     this.lastCue = nowMs;
     if (scoped)
@@ -248,6 +297,33 @@ export class ActingController {
         stage: cue.stage ?? 'semantic',
       };
     return true;
+  }
+
+  /** Exact cue ownership and its original clock, including neutral promotion.
+   * Query before and after cue() to distinguish a promotion from a duplicate. */
+  reactionTiming(
+    cue: Pick<CharacterCue, 'requestId' | 'messageId' | 'segmentId'>,
+    nowMs: number,
+  ): { started: number; duration: number; lifetime: number } | undefined {
+    const reaction = this.reaction;
+    if (
+      !reaction ||
+      !Number.isFinite(nowMs) ||
+      !this.lastBeat ||
+      this.lastBeat.stage === 'cleared' ||
+      cue.requestId !== this.lastBeat.requestId ||
+      cue.messageId !== this.lastBeat.messageId ||
+      cue.segmentId !== this.lastBeat.segmentId
+    )
+      return undefined;
+    const duration = reactionDuration(reaction.preset);
+    const lifetime = reactionLifetime(
+      reaction.preset,
+      reaction.afterglow ? 'semantic' : 'delivery',
+    );
+    return nowMs - reaction.started < lifetime
+      ? { started: reaction.started, duration, lifetime }
+      : undefined;
   }
 
   clearCue(cue: Pick<CharacterCue, 'requestId' | 'messageId' | 'segmentId'>): boolean {
@@ -272,8 +348,21 @@ export class ActingController {
     this.initialize(nowMs);
     if (this.state === 'blocked') return;
     const gesture: Gesture =
-      preset === 'thinking' ? 'thinking' : preset === 'explain' ? 'explain' : 'none';
-    this.reaction = { preset, emotion: emotionFor(preset), gesture, started: nowMs, variant: 0 };
+      preset === 'thinking'
+        ? 'thinking'
+        : preset === 'explain'
+          ? 'explain'
+          : preset === 'wave'
+            ? 'wave'
+            : 'none';
+    this.reaction = {
+      preset,
+      emotion: emotionFor(preset),
+      gesture,
+      started: nowMs,
+      variant: 0,
+      afterglow: false,
+    };
   }
 
   reset(nowMs: number): void {
@@ -297,8 +386,17 @@ export class ActingController {
       for (let i = 1; i <= steps; i++)
         this.advance(now - dt * 1000 + (i * dt * 1000) / steps, dt / steps);
     }
-    if (this.reaction && now - this.reaction.started >= timing(this.reaction.preset).duration)
+    if (
+      this.reaction &&
+      now - this.reaction.started >=
+        reactionLifetime(this.reaction.preset, this.reaction.afterglow ? 'semantic' : 'delivery')
+    ) {
+      // A damped face must not trail beyond the semantic deadline.
+      if (this.reaction.afterglow)
+        for (const key of ['smile', 'mouthOpen', 'eyeSmile', 'browY', 'browInner'] as const)
+          this.pose[key] = 0;
       this.reaction = undefined;
+    }
     const reaction = this.reaction;
     const age = reaction ? now - reaction.started : 0;
     const weight = reaction ? this.envelope(age, reaction.preset) : 0;
@@ -316,20 +414,22 @@ export class ActingController {
       offsetY: this.state === 'blocked' ? 0 : this.breathWave(now) * 0.0045 * this.scale(),
       preset: reaction?.preset ?? this.base(),
       active: !!reaction,
-      expressionWeight: weight,
+      expressionWeight: weight + this.residueWeight(reaction, age) * this.scale(),
       emotion: reaction?.emotion ?? (this.state === 'error' ? 'concerned' : 'neutral'),
       gesture: reaction?.gesture ?? 'none',
       ...(reaction?.attitude !== undefined ? { attitude: reaction.attitude } : {}),
       variant: reaction?.variant ?? 0,
       phase: !reaction
         ? 'idle'
-        : age < timing(reaction.preset).attack
-          ? 'anticipation'
-          : age < 1200
-            ? 'accent'
-            : age > timing(reaction.preset).duration - timing(reaction.preset).release
-              ? 'release'
-              : 'settle',
+        : age >= reactionDuration(reaction.preset)
+          ? 'afterglow'
+          : age < timing(reaction.preset).attack
+            ? 'anticipation'
+            : age < 1200
+              ? 'accent'
+              : age > timing(reaction.preset).duration - timing(reaction.preset).release
+                ? 'release'
+                : 'settle',
     };
   }
 
@@ -357,6 +457,17 @@ export class ActingController {
   private envelope(age: number, preset: ActingPreset): number {
     const { duration, attack, release } = timing(preset);
     return smooth(age / attack) * smooth((duration - age) / release);
+  }
+  private afterglowFade(reaction: Reaction | undefined, age: number): number {
+    if (!reaction?.afterglow) return 0;
+    const end = reactionLifetime(reaction.preset);
+    return 1 - smooth((age - (end - 1000)) / 1000);
+  }
+  private residueWeight(reaction: Reaction | undefined, age: number): number {
+    if (!reaction?.afterglow) return 0;
+    const { duration, release } = timing(reaction.preset);
+    if (age < duration - release) return 0;
+    return 0.4 * (1 - this.envelope(age, reaction.preset)) * this.afterglowFade(reaction, age);
   }
   private breathWave(now: number): number {
     // A 4.8s relaxed cycle: shorter inhale, longer exhale, zero speed at either end.
@@ -414,15 +525,28 @@ export class ActingController {
     follow('bodyX', this.pose.headX * 0.3, 2.1);
     follow('bodyY', this.pose.headY * 0.2 + this.breathWave(now) * 0.13 * scale, 2.1);
     follow('lean', blend(base.lean, target.lean) * scale, 2.5);
-    follow('smile', blend(base.smile, target.smile), 6);
+    // Body accents retain their original duration. Only stable facial intent
+    // remains, so a laugh/nod cannot turn into an indefinitely repeated motion.
+    const residue = reaction ? this.target(reaction.preset, 1.1, reaction.variant) : neutral();
+    const residueWeight = this.residueWeight(reaction, age);
+    follow('smile', blend(base.smile, target.smile) + residue.smile * residueWeight * scale, 6);
+    const mouthWeight = reaction?.afterglow
+      ? smooth(
+          (age - (reactionDuration(reaction.preset) - timing(reaction.preset).release)) /
+            timing(reaction.preset).release,
+        ) * this.afterglowFade(reaction, age)
+      : 0;
+    follow('mouthOpen', 0.12 * mouthWeight * scale, 12);
     for (const key of ['eyeL', 'eyeR'] as const)
       follow(
         key,
         1 + (blend(base[key], target[key]) - 1) * (this.options.reducedMotion ? 0.18 : 1),
         28,
       );
-    for (const key of ['eyeSmile', 'browY', 'browInner', 'pout', 'cheek'] as const)
-      follow(key, blend(base[key], target[key]) * scale, 9);
+    for (const key of ['eyeSmile', 'browY', 'browInner', 'pout', 'cheek'] as const) {
+      const held = key === 'pout' || key === 'cheek' ? 0 : residue[key] * residueWeight;
+      follow(key, (blend(base[key], target[key]) + held) * scale, 9);
+    }
     const blinkAge = now - this.blinkAt;
     // Occasional double blinks, with a shorter closure than reopening.
     const closure = (age: number): number =>

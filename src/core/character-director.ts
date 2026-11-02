@@ -154,6 +154,14 @@ export class CharacterDirector {
     if (this.seen.has(id)) return undefined;
     // Cancel the old inference at the first new byte, not after its delivery timer.
     this.cancelPending();
+    const previous = this.message;
+    if (previous && !previous.closed && previous.lastSegmentId !== undefined)
+      this.options.onEvent({
+        type: 'cue.clear',
+        requestId: this.requestId,
+        messageId: previous.id,
+        segmentId: previous.lastSegmentId,
+      });
     this.seen.add(id);
     this.message = {
       id,

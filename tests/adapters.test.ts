@@ -278,6 +278,85 @@ function attitudeDistribution(weights: Partial<Record<Attitude, number>>) {
   };
 }
 describe('TypeSafe Jev expression choices', () => {
+  it.each(['angry', 'confused'] as const)(
+    'passes a confident %s decision from the same Jev call through Director to a finite actor',
+    async (emotion) => {
+      const fetcher = vi.fn<typeof fetch>(async (_input, init) => {
+        const body = JSON.parse(String(init?.body));
+        expect(Object.keys(body.questions.emotion.criteria)).toEqual([...EMOTIONS]);
+        expect(body.questions.emotion.criteria.angry).toContain('assistant speaker itself');
+        expect(body.questions.emotion.criteria.angry).toContain('user anger');
+        expect(body.questions.emotion.criteria.confused).toContain('Focused deliberation');
+        expect(body.questions.gesture.criteria.thinking).toContain('deliberate consideration');
+        return json({
+          answers: {
+            emotion: decision(EMOTIONS, emotion, 0.92),
+            attitude: decision(ATTITUDES, 'neutral', 0.98),
+            gesture: decision(GESTURES, 'none', 0.98),
+          },
+        });
+      });
+      const actor = new ActingController();
+      const onEvent = vi.fn();
+      const director = new CharacterDirector({
+        judge: new JevJudge({ token: async () => 'fixture', fetch: fetcher }),
+        onEvent: (event) => {
+          onEvent(event);
+          if (event.type === 'cue') actor.cue(event.cue, 0);
+        },
+      });
+      director.begin('new-emotion-request', 'A bounded current request.');
+      director.complete('A synthetic completed reply.', 'reply');
+      await vi.waitFor(() => expect(onEvent).toHaveBeenCalledOnce());
+      expect(onEvent.mock.calls[0]![0].cue).toMatchObject({
+        emotion,
+        gesture: 'none',
+        source: 'jev',
+        stage: 'semantic',
+        confidence: 0.92,
+      });
+      expect(actor.sample(1000, 1)).toMatchObject({ preset: emotion, emotion, active: true });
+      expect(actor.sample(7000, 1)).toMatchObject({ phase: 'afterglow', active: true });
+      expect(actor.sample(16200, 1)).toMatchObject({ active: false, mouthOpen: 0 });
+      expect(fetcher).toHaveBeenCalledOnce();
+      director.invalidate();
+    },
+  );
+
+  it('gates the new emotions independently and rejects an incomplete legacy probability shape', async () => {
+    for (const emotion of ['angry', 'confused'] as const) {
+      const fetcher = vi.fn<typeof fetch>(async () =>
+        json({
+          answers: {
+            emotion: decision(EMOTIONS, emotion, 0.64),
+            gesture: decision(GESTURES, 'wave', 0.93),
+          },
+        }),
+      );
+      const judge = new JevJudge({ token: async () => 'fixture', fetch: fetcher });
+      expect(await judge.judge('A synthetic reply.', new AbortController().signal)).toEqual({
+        emotion: 'neutral',
+        gesture: 'wave',
+        confidence: 0.93,
+      });
+      fetcher.mockImplementation(async () =>
+        json({
+          answers: {
+            emotion: decision(
+              EMOTIONS.filter((key) => key !== 'angry' && key !== 'confused'),
+              'neutral',
+              0.9,
+            ),
+            gesture: decision(GESTURES, 'none', 0.98),
+          },
+        }),
+      );
+      await expect(judge.judge('A synthetic reply.', new AbortController().signal)).rejects.toThrow(
+        '형식',
+      );
+    }
+  });
+
   it('delivers a confident playful family independently of weak sadness through Director to the actor', async () => {
     const fetcher = vi.fn<typeof fetch>(async () =>
       json({

@@ -11,19 +11,31 @@ import {
   type OverlayInputRegion,
   type PresentationSettings,
 } from '../shared/contracts.js';
-import { ActingController, reactionDuration, type ActingState } from './acting.js';
-import { SURPRISED_EXPRESSION, THINKING_MOTION } from '../shared/model-mappings.js';
+import {
+  ActingController,
+  reactionDuration,
+  reactionLifetime,
+  type ActingState,
+} from './acting.js';
+import {
+  ANGRY_EXPRESSION,
+  SURPRISED_EXPRESSION,
+  THINKING_MOTION,
+} from '../shared/model-mappings.js';
+import { PettingController, pettingBounds, type PettingBounds } from './petting.js';
 import {
   actingChannels,
   expressionValues,
   ExpressionMixer,
   parameterValue,
   surprisedExpression,
+  angryExpression,
   facialValues,
   motionEndpoints,
   PoseSequence,
   type ActingChannel,
   type ExpressionParameter,
+  type ExpressionTarget,
   type ParameterRange,
   type PoseDefinition,
 } from './performance.js';
@@ -99,6 +111,8 @@ export class Avatar {
   private idle?: Motion;
   private gestureManager = new CubismMotionManager();
   private actor = new ActingController();
+  private petting = new PettingController();
+  private pettingRegion?: PettingBounds;
   private mixer = new ExpressionMixer();
   private poses = new PoseSequence();
   private poseDefinitions = new Map<string, PoseDefinition>();
@@ -174,6 +188,7 @@ export class Avatar {
     }
     this.channels = actingChannels(this.ranges, physicsOutputs);
     this.expressions.set(SURPRISED_EXPRESSION, surprisedExpression(this.ranges, physicsOutputs));
+    this.expressions.set(ANGRY_EXPRESSION, angryExpression(this.ranges, physicsOutputs));
     this.blinkIds = manifest.Groups?.find((group) => group.Name === 'EyeBlink')?.Ids ?? [];
     this.resize();
     this.runtime.getModelMatrix().setHeight(1.82);
@@ -304,6 +319,7 @@ export class Avatar {
     this.presentation = { ...settings };
     this.actor.configure(settings);
     if (settings.reducedMotion) this.clearPose();
+    if (!settings.pettingEnabled) this.endPetting(true);
     if (!this.model || settings.reducedMotion) this.framing = { ...FRAMING[settings.framing] };
   }
   setState(state: string): void {
@@ -318,10 +334,11 @@ export class Avatar {
         (this.poses.sample(now).phase !== 'none' ||
           (!!this.activeGesture && !this.gestureManager.isFinished())));
     if (changed && (this.stateGesture || next === 'error' || next === 'blocked' || !reacting)) {
-      this.mixer.clear(now, next === 'blocked');
+      this.mixer.clear(now, next === 'blocked' || next === 'error');
       this.clearPose();
     }
     this.state = next;
+    if (next === 'blocked' || next === 'error') this.endPetting(true);
     this.errorUntil = next === 'error' ? now + 3000 : 0;
     this.actor.setState(next, now);
     if (changed && next === 'thinking' && !reacting) {
@@ -337,6 +354,7 @@ export class Avatar {
     this.state = 'idle';
     this.mixer.clear(now, true);
     this.clearPose();
+    this.endPetting(true);
   }
   preview(preset: CharacterPreview): void {
     if (this.state === 'blocked') return;
@@ -351,7 +369,9 @@ export class Avatar {
             ? 'happy'
             : preset === 'surprised'
               ? 'surprised'
-              : 'neutral';
+              : ['sad', 'concerned', 'angry', 'confused'].includes(preset)
+                ? (preset as 'sad' | 'concerned' | 'angry' | 'confused')
+                : 'neutral';
       const name =
         preset === 'heart' && this.expressions.has('爱心眼')
           ? '爱心眼'
@@ -366,35 +386,63 @@ export class Avatar {
             ? this.inventory.gestureMap.thinking
             : preset === 'explain'
               ? this.inventory.gestureMap.explain
-              : undefined;
+              : preset === 'wave'
+                ? this.inventory.gestureMap.wave
+                : undefined;
       this.startGesture(motion, now);
     }
     if (window.__avatarStatus) window.__avatarStatus.lastPreview = preset;
   }
   cue(cue: CharacterCue): void {
     const now = performance.now();
-    if (!this.actor.cue(cue, now)) return;
+    const previousTiming = this.actor.reactionTiming(cue, now);
+    if (!this.actor.cue(cue, now)) {
+      const promoted = !previousTiming && this.actor.reactionTiming(cue, now);
+      if (
+        promoted &&
+        cue.stage === 'semantic' &&
+        cue.emotion === 'neutral' &&
+        cue.gesture === 'none'
+      )
+        this.setExpression(
+          this.inventory.expressionMap.neutral,
+          promoted.started,
+          promoted.duration,
+          promoted.lifetime - promoted.duration,
+        );
+      return;
+    }
     const motionName = this.inventory.gestureMap[cue.gesture];
     const previousMotion = this.poses.sample(now).definition?.enter ?? this.activeGesture;
     // A configured waiting clip must not keep owning head/hand channels or
     // consume the cooldown of the actual message gesture. A new message also
     // replaces an incompatible hand pose, including an explicit gesture=none.
     // Interrupt rather than seeking into the authored exit from a partial entry.
-    if (this.stateGesture || (previousMotion && previousMotion !== motionName)) {
+    if (
+      this.stateGesture ||
+      (previousMotion && previousMotion !== motionName) ||
+      (this.lastGestureName && this.lastGestureName !== motionName)
+    ) {
       this.clearPose();
       this.lastGesture = -Infinity;
       this.lastGestureName = '';
     }
-    const emotion = cue.attitude === 'shy' ? 'embarrassed' : cue.emotion;
-    const name =
+    const name = this.inventory.expressionMap[cue.emotion];
+    const extras: string[] = [];
+    if (cue.attitude === 'shy' && this.inventory.expressionMap.embarrassed)
+      extras.push(this.inventory.expressionMap.embarrassed);
+    if (
       cue.attitude === 'tease' &&
       this.actor.sample(now, 0).variant === 0 &&
       this.expressions.has('屑屑眼')
-        ? '屑屑眼'
-        : this.inventory.expressionMap[emotion];
-    this.setExpression(name, now, reactionDuration(this.actor.sample(now, 0).preset));
+    )
+      extras.push('屑屑眼');
+    const preset = this.actor.sample(now, 0).preset;
+    const duration = reactionDuration(preset);
+    const lifetime = reactionLifetime(preset, cue.stage ?? 'semantic');
+    this.setExpression(name, now, duration, lifetime - duration, extras);
     // Delivery tone does not override an explicit "no physical gesture" decision.
-    this.startGesture(motionName, now);
+    this.startGesture(motionName, now, lifetime);
     if (window.__avatarStatus) {
       window.__avatarStatus.lastCue = `${cue.emotion}/${cue.gesture}`;
       window.__avatarStatus.lastSegmentId = cue.segmentId;
@@ -408,8 +456,6 @@ export class Avatar {
     const now = performance.now();
     this.mixer.clear(now, true);
     this.clearPose();
-    this.lastGesture = -Infinity;
-    this.lastGestureName = '';
     if (window.__avatarStatus) {
       window.__avatarStatus.lastCue = undefined;
       window.__avatarStatus.lastAttitude = 'neutral';
@@ -417,13 +463,41 @@ export class Avatar {
       window.__avatarStatus.lastMotion = 'none';
     }
   }
-  private setExpression(name: string | undefined, now: number, holdMs: number): void {
-    this.mixer.transition(
-      name ?? 'neutral',
-      name ? (this.expressions.get(name) ?? []) : [],
-      now,
-      holdMs,
-    );
+  private setExpression(
+    name: string | undefined,
+    now: number,
+    holdMs: number,
+    afterglowMs = 0,
+    extras: readonly string[] = [],
+  ): void {
+    const eyes = new Set(['key3', 'key4', 'key5', 'key6'].map((id) => this.indexes.get(id)));
+    const markings = new Set(['key2', 'key7', 'key13'].map((id) => this.indexes.get(id)));
+    const targets: ExpressionTarget[] = [];
+    const owned = new Set<number>();
+    let eyeOwner = false;
+    for (const [i, asset] of [name, ...extras].entries()) {
+      if (!asset) continue;
+      const source = this.expressions.get(asset) ?? [];
+      // A user mapping owns its complete asset. Automatic additions may only
+      // supply known eye/marking keys and cannot toggle clothes or props.
+      const parameters = source.filter(
+        (p) =>
+          i === 0 ||
+          (!owned.has(p.index) && (markings.has(p.index) || (!eyeOwner && eyes.has(p.index)))),
+      );
+      const eyeParameters = parameters.filter((p) => eyes.has(p.index));
+      const markingParameters = parameters.filter((p) => markings.has(p.index));
+      const rest = parameters.filter((p) => !eyes.has(p.index) && !markings.has(p.index));
+      if (eyeParameters.length) {
+        targets.push({ name: `${asset}:eyes`, parameters: eyeParameters, afterglowWeight: 0 });
+        eyeOwner ||= eyeParameters.some((p) => p.value > 0);
+      }
+      if (markingParameters.length)
+        targets.push({ name: `${asset}:markings`, parameters: markingParameters });
+      if (rest.length) targets.push({ name: asset, parameters: rest, afterglowWeight: 0 });
+      for (const p of parameters) owned.add(p.index);
+    }
+    this.mixer.transitionMany(targets, now, holdMs, { afterglowMs, afterglowWeight: 0.4 });
   }
   private clearPose(): void {
     this.stateGesture = false;
@@ -433,7 +507,7 @@ export class Avatar {
     this.posePhase = 'none';
     this.poseTime = 0;
   }
-  private startGesture(name: string | undefined, now: number): void {
+  private startGesture(name: string | undefined, now: number, lifetimeMs?: number): void {
     if (window.__avatarStatus) window.__avatarStatus.lastMotion = name ?? 'none';
     if (name === THINKING_MOTION) return; // Thinking gaze/head motion is driven by the local actor.
     if (!name || this.presentation.reducedMotion || now - this.lastGesture < 1600) return;
@@ -442,7 +516,11 @@ export class Avatar {
     if (!motion) return;
     const definition = this.poseDefinitions.get(name);
     if (definition) {
-      if (!this.poses.start(definition, now)) return;
+      const hold =
+        lifetimeMs === undefined
+          ? 1500
+          : Math.max(0, lifetimeMs - definition.enterMs - definition.exitMs);
+      if (!this.poses.start(definition, now, hold)) return;
       this.posePhase = 'none';
     } else {
       this.poses.clear();
@@ -470,7 +548,33 @@ export class Avatar {
     this.gl.readPixels(px, py, 1, 1, this.gl.RGBA, this.gl.UNSIGNED_BYTE, pixel);
     return (pixel[3] ?? 0) > 16;
   }
+  pettingHit(x: number, y: number): boolean {
+    const r = this.pettingRegion;
+    return (
+      !!this.presentation.pettingEnabled &&
+      !!r &&
+      x >= r.x &&
+      y >= r.y &&
+      x < r.x + r.width &&
+      y < r.y + r.height &&
+      this.hit(x, y)
+    );
+  }
+  beginPetting(): boolean {
+    if (!this.presentation.pettingEnabled || this.state === 'blocked' || this.state === 'error')
+      return false;
+    this.petting.begin(performance.now());
+    return true;
+  }
+  strokePetting(distance: number): void {
+    this.petting.stroke(distance, performance.now());
+  }
+  endPetting(immediate = false): void {
+    if (immediate) this.petting.clear();
+    else this.petting.end(performance.now());
+  }
   dispose(): void {
+    this.endPetting(true);
     this.disposed = true;
     cancelAnimationFrame(this.frame);
     window.removeEventListener('resize', this.resize);
@@ -540,6 +644,17 @@ export class Avatar {
         this.lastGestureName = '';
       }
       const acting = this.actor.sample(now, dt);
+      const petWeight =
+        this.petting.sample(now) *
+        { quiet: 0.35, normal: 0.65, expressive: 1 }[this.presentation.intensity] *
+        (this.presentation.reducedMotion ? 0.18 : 1);
+      if (petWeight > 0) {
+        acting.smile = Math.max(acting.smile, 0.85 * petWeight);
+        acting.eyeSmile = Math.max(acting.eyeSmile, 0.9 * petWeight);
+        acting.eyeL *= 1 - petWeight * 0.35;
+        acting.eyeR *= 1 - petWeight * 0.35;
+        acting.headZ += 0.08 * petWeight;
+      }
       const animated = this.motionInfo.get(this.activeGesture)?.parameters;
       for (const [channel, range] of Object.entries(this.channels) as [
         ActingChannel,
@@ -548,7 +663,7 @@ export class Avatar {
         const id = this.model.getParameterId(range.index) as { getString(): string };
         if (animated?.has(id.getString())) continue;
         // DeepSeek forward lean is the negative half of LeanInput's authored range.
-        const amount = channel === 'lean' ? -acting.lean * 0.35 : acting[channel];
+        const amount = channel === 'lean' ? -acting.lean * 0.7 : acting[channel];
         const target = parameterValue(range, amount);
         if (channel === 'smile') {
           const base = this.model.getParameterValueByIndex(range.index);
@@ -560,7 +675,11 @@ export class Avatar {
         if (index !== undefined && !animated?.has(id) && !this.physicsOutputs.has(id))
           this.write(index, (this.ranges.get(id)?.neutral ?? 1) * acting.blink);
       }
-      const layers = this.mixer.sample(now);
+      const layers = this.mixer.sample(
+        now,
+        { quiet: 0.35, normal: 0.65, expressive: 1 }[this.presentation.intensity] *
+          (this.presentation.reducedMotion ? 0.18 : 1),
+      );
       // Special eye artwork owns its shape. Do not add a competing procedural wink.
       const specialEyes = layers.some(
         (layer) =>
@@ -579,7 +698,20 @@ export class Avatar {
       const breath = this.ranges.get('ParamBreath');
       if (breath && this.state !== 'blocked' && !animated?.has('ParamBreath'))
         this.write(breath.index, breath.min + (breath.max - breath.min) * acting.breath);
-      const values = expressionValues(layers, (index) =>
+      // Synthesized local faces are procedural inputs too; an authored clip
+      // keeps ownership of any facial channels it animates this frame.
+      const expressionLayers = layers.map((layer) =>
+        layer.name === ANGRY_EXPRESSION || layer.name === SURPRISED_EXPRESSION
+          ? {
+              ...layer,
+              parameters: layer.parameters.filter((parameter) => {
+                const id = this.model.getParameterId(parameter.index) as { getString(): string };
+                return !animated?.has(id.getString()) && !this.physicsOutputs.has(id.getString());
+              }),
+            }
+          : layer,
+      );
+      const values = expressionValues(expressionLayers, (index) =>
         this.model.getParameterValueByIndex(index),
       );
       for (const [index, value] of values) this.write(index, value);
@@ -598,6 +730,7 @@ export class Avatar {
         window.__avatarStatus.reactionPhase = acting.phase;
         window.__avatarStatus.variant = acting.variant;
         window.__avatarStatus.posePhase = pose.phase;
+        window.__avatarStatus.pettingWeight = petWeight;
         window.__avatarStatus.motionActive =
           pose.phase !== 'none' ||
           !!this.activeGesture ||
@@ -621,7 +754,7 @@ export class Avatar {
       renderer.setMvpMatrix(matrix);
       renderer.setRenderState(null, [0, 0, this.canvas.width, this.canvas.height]);
       renderer.drawModel();
-      if (this.onInputRegion && now - this.regionAt >= 100) {
+      if ((this.onInputRegion || this.presentation.pettingEnabled) && now - this.regionAt >= 100) {
         this.regionAt = now;
         const width = this.canvas.width,
           height = this.canvas.height;
@@ -634,7 +767,8 @@ export class Avatar {
           innerWidth > 8192 ||
           innerHeight > 8192
         ) {
-          this.onInputRegion(null);
+          this.onInputRegion?.(null);
+          this.pettingRegion = undefined;
         } else {
           if (this.regionPixels.length !== width * height * 4)
             this.regionPixels = new Uint8Array(width * height * 4);
@@ -646,9 +780,10 @@ export class Avatar {
             innerWidth,
             innerHeight,
           );
+          this.pettingRegion = pettingBounds(region);
           if (region.rects.length || this.regionReady) {
             this.regionReady = true;
-            this.onInputRegion(region);
+            this.onInputRegion?.(region);
           }
         }
       }

@@ -9,6 +9,16 @@ export interface ExpressionLayer {
   parameters: readonly ExpressionParameter[];
   weight: number;
 }
+export interface ExpressionTarget {
+  name: string;
+  parameters: readonly ExpressionParameter[];
+  weight?: number;
+  afterglowWeight?: number;
+}
+export interface ExpressionTransition {
+  afterglowMs?: number;
+  afterglowWeight?: number;
+}
 const clamp = (value: number, min = 0, max = 1): number => Math.max(min, Math.min(max, value));
 const smooth = (value: number): number => {
   const t = clamp(value);
@@ -17,10 +27,13 @@ const smooth = (value: number): number => {
 
 export class ExpressionMixer {
   private from: ExpressionLayer[] = [];
-  private target?: Omit<ExpressionLayer, 'weight'>;
+  private targets: ExpressionTarget[] = [];
   private started = 0;
   private until = 0;
-  private fade = 240;
+  private afterglowUntil = 0;
+  private afterglowWeight = 0;
+  private afterglowScale = 1;
+  private readonly fade = 240;
 
   transition(
     name: string,
@@ -28,30 +41,66 @@ export class ExpressionMixer {
     now: number,
     holdMs = 4200,
   ): void {
+    this.transitionMany([{ name, parameters }], now, holdMs);
+  }
+  /** The caller selects exclusive eye art and supplies independent marking layers. */
+  transitionMany(
+    targets: readonly ExpressionTarget[],
+    now: number,
+    holdMs = 4200,
+    options: ExpressionTransition = {},
+  ): void {
     this.from = this.sample(now);
-    this.target = parameters.length ? { name, parameters } : undefined;
+    this.targets = [
+      ...new Map(
+        targets.filter((target) => target.parameters.length).map((target) => [target.name, target]),
+      ).values(),
+    ];
     this.started = now;
-    this.until = now + Math.max(0, holdMs);
-    this.fade = 240;
+    this.until = now + (Number.isFinite(holdMs) ? clamp(holdMs, 0, 12000) : 4200);
+    const afterglowMs = Number.isFinite(options.afterglowMs)
+      ? clamp(options.afterglowMs!, 0, 12000)
+      : 0;
+    this.afterglowUntil = this.until + afterglowMs;
+    this.afterglowWeight = Number.isFinite(options.afterglowWeight)
+      ? clamp(options.afterglowWeight!)
+      : 0.4;
   }
   clear(now: number, immediate = false): void {
     this.from = immediate ? [] : this.sample(now);
-    this.target = undefined;
+    this.targets = [];
     this.started = now;
     this.until = 0;
+    this.afterglowUntil = 0;
   }
-  sample(now: number): ExpressionLayer[] {
+  sample(now: number, afterglowScale = this.afterglowScale): ExpressionLayer[] {
+    this.afterglowScale = Number.isFinite(afterglowScale) ? clamp(afterglowScale) : 0;
     const blend = smooth((now - this.started) / this.fade);
-    const remaining = this.target ? smooth((this.until - now) / 450) : 1;
     const layers = new Map<string, ExpressionLayer>();
+    // The same asset may have a different filtered parameter subset in a new cue.
+    // Preserve both snapshots during the fade instead of replacing its old values.
+    const key = (layer: Pick<ExpressionLayer, 'name' | 'parameters'>): string =>
+      JSON.stringify([layer.name, layer.parameters]);
     for (const layer of this.from) {
-      const weight = layer.weight * (1 - blend) * remaining;
-      if (weight > 0.0001) layers.set(layer.name, { ...layer, weight });
+      const weight = layer.weight * (1 - blend);
+      if (weight > 0.0001) layers.set(key(layer), { ...layer, weight });
     }
-    if (this.target) {
-      const previous = layers.get(this.target.name)?.weight ?? 0;
-      const weight = previous + blend * remaining;
-      if (weight > 0.0001) layers.set(this.target.name, { ...this.target, weight });
+    for (const target of this.targets) {
+      const glow = this.afterglowUntil > this.until;
+      const sustained = Number.isFinite(target.afterglowWeight)
+        ? clamp(target.afterglowWeight!)
+        : this.afterglowWeight;
+      const accent = smooth((this.until - now) / 450);
+      const remaining = glow
+        ? (accent + sustained * (1 - accent) * this.afterglowScale) *
+          smooth((this.afterglowUntil - now) / 1000)
+        : smooth((this.until - now) / 450);
+      const targetWeight = Number.isFinite(target.weight) ? clamp(target.weight!) : 1;
+      const identity = key(target);
+      const previous = layers.get(identity)?.weight ?? 0;
+      const weight = previous + blend * remaining * targetWeight;
+      if (weight > 0.0001)
+        layers.set(identity, { name: target.name, parameters: target.parameters, weight });
     }
     return [...layers.values()];
   }
@@ -96,6 +145,7 @@ export interface FaceFrame {
   browInner: number;
   pout: number;
   cheek: number;
+  mouthOpen?: number;
 }
 export type ActingChannel =
   'headX' | 'headY' | 'headZ' | 'bodyX' | 'bodyY' | 'lean' | 'gazeX' | 'gazeY' | 'smile';
@@ -163,6 +213,7 @@ export function facialValues(
   write('BrowInnerUp', positive(frame.browInner));
   write('Mouthpucker', positive(frame.pout));
   write('CheeckPuff', positive(frame.cheek));
+  write('ParamMouthOpenY', positive(frame.mouthOpen ?? 0));
   return values;
 }
 
@@ -190,6 +241,26 @@ export function surprisedExpression(
         : [];
     }
     return [{ index: range.index, value: target, blend: 'Overwrite' as const }];
+  });
+}
+
+/** Anger uses verified upstream brows/cheek/pout controls, never angle outputs or unknown toggles. */
+export function angryExpression(
+  parameters: ReadonlyMap<string, ParameterRange>,
+  physicsOutputs: ReadonlySet<string>,
+  authored: ReadonlySet<string> = new Set(),
+): ExpressionParameter[] {
+  return (
+    [
+      ['ParamBrowLY', -0.55],
+      ['ParamBrowRY', -0.55],
+      ['Mouthpucker', 0.35],
+      ['CheeckPuff', 0.2],
+    ] as const
+  ).flatMap<ExpressionParameter>(([id, amount]) => {
+    const range = parameters.get(id);
+    if (!range || physicsOutputs.has(id) || authored.has(id)) return [];
+    return [{ index: range.index, value: parameterValue(range, amount), blend: 'Overwrite' }];
   });
 }
 
@@ -231,7 +302,7 @@ export class PoseSequence {
     if (active.definition?.enter === definition.enter && active.phase !== 'exit') return false;
     this.definition = definition;
     this.started = now;
-    this.holdMs = clamp(holdMs, 400, 2400);
+    this.holdMs = Number.isFinite(holdMs) ? clamp(holdMs, 400, 16000) : 1500;
     return true;
   }
   clear(): void {

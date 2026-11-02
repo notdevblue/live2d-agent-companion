@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ModelLibrary } from '../src/main/model-library.js';
 import {
   applyModelMappings,
+  ANGRY_EXPRESSION,
   SURPRISED_EXPRESSION,
   THINKING_MOTION,
 } from '../src/shared/model-mappings.js';
@@ -39,7 +40,7 @@ describe('ModelLibrary selected directory capability (FR-L2D-001/002)', () => {
     const { root, manifest } = await fixture({ DisplayInfo: 'fixture.cdi3.json' });
     await mkdir(path.join(root, 'Exp3'));
     await mkdir(path.join(root, 'Animation'));
-    for (const name of ['＞＜', '流泪', '脸红', '流冷汗', '胸口衣服'])
+    for (const name of ['＞＜', '流泪', '脸红', '流冷汗', '胸口衣服', '圈圈眼'])
       await json(path.join(root, 'Exp3', `${name}.exp3.json`), { Parameters: [] });
     for (const name of ['IDLE', '默认手切举手', '竖手指切出来动画', '脱捕'])
       await json(path.join(root, 'Animation', `${name}.motion3.json`), { Curves: [] });
@@ -50,10 +51,11 @@ describe('ModelLibrary selected directory capability (FR-L2D-001/002)', () => {
     const inventory = await library.load(manifest);
     expect(inventory.expressionMap).toEqual({
       surprised: SURPRISED_EXPRESSION,
-      happy: '＞＜',
+      angry: ANGRY_EXPRESSION,
       sad: '流泪',
       embarrassed: '脸红',
       concerned: '流冷汗',
+      confused: '圈圈眼',
     });
     expect(inventory.gestureMap).toEqual({
       wave: '默认手切举手',
@@ -62,6 +64,10 @@ describe('ModelLibrary selected directory capability (FR-L2D-001/002)', () => {
     });
     expect(inventory.parameters).toEqual([{ id: 'ParamFace', name: 'Face' }]);
     expect(inventory.expressions).toContain('胸口衣服');
+    expect(inventory.expressions).toContain('＞＜');
+    expect(inventory.expressionMap.happy).toBeUndefined();
+    applyModelMappings(inventory, { expressionMap: { happy: '＞＜' }, gestureMap: {} });
+    expect(inventory.expressionMap.happy).toBe('＞＜');
     expect(Object.values(inventory.expressionMap)).not.toContain('胸口衣服');
     const response = await library.handle(new URL(inventory.url));
     expect(response.status).toBe(200);
@@ -86,7 +92,10 @@ describe('ModelLibrary selected directory capability (FR-L2D-001/002)', () => {
     const first = await library.load(manifest);
     expect(first.expressions).toEqual([]);
     expect(first.motions).toEqual([]);
-    expect(first.expressionMap).toEqual({ surprised: SURPRISED_EXPRESSION });
+    expect(first.expressionMap).toEqual({
+      surprised: SURPRISED_EXPRESSION,
+      angry: ANGRY_EXPRESSION,
+    });
     expect(first.gestureMap).toEqual({ thinking: THINKING_MOTION });
     const second = await library.load(manifest);
     expect(first.url).not.toEqual(second.url);

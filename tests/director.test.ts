@@ -34,7 +34,8 @@ describe('one decision per actual assistant message (FR-DIR-005)', () => {
     d.append('재생하지 않을 메시지.', true, 'cancelled');
     d.invalidate();
     await flush();
-    expect(events).toHaveLength(1);
+    expect(events).toHaveLength(2);
+    expect(events[1]).toMatchObject({ type: 'cue.clear', messageId: 'latest', segmentId: 1 });
   });
   it('keeps bounded current request context across progress messages and clears it at request boundaries', async () => {
     const judge = {
@@ -162,8 +163,10 @@ describe('one decision per actual assistant message (FR-DIR-005)', () => {
       await flush();
     }
     expect(judge.judge).toHaveBeenCalledTimes(EXPRESSION_PACING.maxJudgements);
-    expect(budgetEvents).toHaveLength(20);
-    expect(budgetEvents.slice(EXPRESSION_PACING.maxJudgements)).toEqual(
+    const cues = budgetEvents.filter((event) => event.type === 'cue');
+    expect(cues).toHaveLength(20);
+    expect(budgetEvents.filter((event) => event.type === 'cue.clear')).toHaveLength(19);
+    expect(cues.slice(EXPRESSION_PACING.maxJudgements)).toEqual(
       Array.from({ length: 20 - EXPRESSION_PACING.maxJudgements }, (_, i) => ({
         type: 'cue',
         cue: {
@@ -198,6 +201,30 @@ describe('one decision per actual assistant message (FR-DIR-005)', () => {
     await flush();
     expect(events).toHaveLength(0);
     sleeping.invalidate();
+  });
+  it('withdraws an applied residue at the first byte of a newer message before delivery or inference', async () => {
+    const events: CompanionEvent[] = [];
+    const judge = { judge: vi.fn(async () => happy) };
+    const director = new CharacterDirector({ judge, onEvent: (event) => events.push(event) });
+    director.begin('r');
+    director.complete('기쁜 답변.', 'first');
+    await flush();
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(events).toHaveLength(1);
+    director.append('다', false, 'next');
+    expect(events[1]).toEqual({
+      type: 'cue.clear',
+      requestId: 'r',
+      messageId: 'first',
+      segmentId: 1,
+    });
+    expect(judge.judge).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(EXPRESSION_PACING.collectMs);
+    expect(events[2]).toMatchObject({ type: 'cue', cue: { messageId: 'next', stage: 'delivery' } });
+    director.complete('다음 답변.', 'next');
+    await flush();
+    expect(judge.judge).toHaveBeenCalledTimes(2);
+    director.invalidate();
   });
   it('shows delivery if completed-message inference is slow, but cancels it after a fast result', async () => {
     let resolve!: (v: ExpressionDecision) => void;

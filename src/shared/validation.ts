@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { CHARACTER_PREVIEWS, DEFAULT_PRESENTATION, OVERLAY_SCALE_LIMITS } from './contracts.js';
+import {
+  CHARACTER_PREVIEWS,
+  DEFAULT_PRESENTATION,
+  EMOTIONS,
+  OVERLAY_SCALE_LIMITS,
+} from './contracts.js';
 import type { AgentEvent, AppSettings } from './contracts.js';
 
 const id = z.string().min(1).max(512);
@@ -119,6 +124,7 @@ export const presentationSchema = z
     framing: z.enum(['full', 'bust', 'close']),
     positionLocked: z.boolean(),
     reducedMotion: z.boolean(),
+    pettingEnabled: z.boolean().optional(),
   })
   .strict();
 export const settingsSchema = z
@@ -141,12 +147,7 @@ export const settingsSchema = z
     alwaysOnTop: z.boolean(),
     clickThrough: z.boolean(),
     presentation: presentationSchema.optional(),
-    expressionMap: z
-      .partialRecord(
-        z.enum(['neutral', 'happy', 'sad', 'surprised', 'embarrassed', 'concerned']),
-        z.string().max(200),
-      )
-      .optional(),
+    expressionMap: z.partialRecord(z.enum(EMOTIONS), z.string().max(200)).optional(),
     gestureMap: z
       .partialRecord(z.enum(['none', 'wave', 'explain', 'thinking']), z.string().max(200))
       .optional(),
