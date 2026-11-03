@@ -26,7 +26,7 @@
 
 ## 캐릭터 표현의 현재 동작
 
-기존5개 인계 항목·화남/당황·opt-in 쓰다듬기·감정별 몸의 흐름에, 사용자 요청으로 Grok이 작성한 세 항목의 구현을 통합했다. 메인은 실제 모델 조사·코드 검토·관절 순서 보정·검증을 담당했다. 그 바탕인 이전 영상의 오른쪽 버전을 유지하고, 인사만 메인이 추가 조정했다. Grok은 현재 자료 조사·근거 정리만 맡는다.
+기존5개 인계 항목·화남/당황·opt-in 쓰다듬기·감정별 몸의 흐름에, 사용자 요청으로 Grok이 작성한 세 항목의 구현을 통합했다. 메인은 실제 모델 조사·코드 검토·관절 순서 보정·검증을 담당했다. 그 바탕인 이전 영상의 오른쪽 버전과 인사 조정을 유지하되, 후속 실사용 피드백으로 긴 여운과 대기 밀도를 낮췄다. Grok은 현재 자료 조사·근거 정리만 맡는다.
 
 | 항목         | 기본 경로의 동작                                                                                                                       |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -35,19 +35,19 @@
 | 가슴 손 복귀 | 직접 접촉·local idle에서 마지막에 그린 손 입력을 출발점으로 삼아 어깨를 내리고, 팔꿈치를 먼저 복귀한 뒤 어깨를 원래 endpoint로 돌린다. |
 | 인사         | 몸 가까이 손을 올려 얼굴 옆에서 손목 중심으로 두 번 흔든다. 인사 전체를 한 경로가 소유하고 원본 exit endpoint로 복귀한다.              |
 
-인사 외 설명·custom/빈 매핑·reverse-entry·physics 출력/원본 IDLE 입력, 강도/움직임 줄이기·none/clear/승인·원래 기한을 보존한다. 실제 몸 숙임과 canvas 접근은 독립이며 창 구도/크기·호흡/rootY·대기 빈도는 바꾸지 않는다. TTS·립싱크·전역 커서 추적은 제외했다. 근본 원인·담당 코드는 [연기 설계](../ux/ACTING_DESIGN.md#grok-구현과-실제-모델-보정), 수락 조건은 [Grok 시각 연기](../specs/ACCEPTANCE_CRITERIA.md#grok-시각-연기-검토-fr-l2d-009)를 따른다.
+인사 외 설명·custom/빈 매핑·reverse-entry·physics 출력/원본 IDLE 입력, 강도/움직임 줄이기·none/clear/승인과 초기 강조 길이를 보존하며, 긴 의미 여운·손 유지 기한은 아래 실사용 조정으로 대체한다. 실제 몸 숙임과 canvas 접근은 독립이며 창 구도/크기·호흡/rootY는 유지한다. 후속 조정은 반응 시간과 대기 빈도·추가 연기만 낮춘다. TTS·립싱크·전역 커서 추적은 제외했다. 근본 원인·담당 코드는 [연기 설계](../ux/ACTING_DESIGN.md#grok-구현과-실제-모델-보정), 수락 조건은 [Grok 시각 연기](../specs/ACCEPTANCE_CRITERIA.md#grok-시각-연기-검토-fr-l2d-009)를 따른다.
 
 ## 현재 검증과 정리 범위
 
-현재 시작 경로는 `8e8febb`이며 연기 렌더러는 `e1687b4`와 같다.2026-11-03 검증: Vitest625개/26파일·strict unused typecheck·format·build·Mock desktop·실제 SDK89개 수락 검사/325캡처를 통과했다. 기준은 이전 영상의 오른쪽(`9ef4f66` 코드)이며23개 기준 소스 해시의 일치를 확인했다. 같은 저장 profile14·69초 입력·20fps의1380 paired frame에서 네 팔 입력 외 모든 파라미터·canvas 행렬 차이0, 인사 밖 손 변화0이다. 인사 구간의 선택된 가시 손 측면 경계 초과는12프레임에서0, 인사 밖의18프레임은 그대로이며 새 경계 초과0이다. 일반/custom pair의 legacy attention은12,000개 입력에서 출력이 일치했다.
+2026-11-03 실사용 조정(`FR-L2D-006/009/010`): 기본 의미 반응의 얼굴 기한을 13.8~16.2초에서 1.8~6.2초로 줄였다. 중립 전달은 1.8초, 감정 강조는 기존 2.2~4.2초에 끝나고 얼굴만 최대 2초 이어진다. paired 손은 강조 예산에서 원본 진입/복귀 시간을 확보하며 얼굴 여운 동안 들고 있지 않는다. 여운의 glance·sway·몸 유지와 idle의 별도 tilt/weight shift·neutral sway를 제거했다. 사용자 자산/빈 매핑·쓰다듬기·중단·승인·authored/physics 소유권은 보존한다. 짧은 인사 복귀의 손끝 잘림은 어깨 detour 정점만 앞당겨 해결하고, 팔꿈치·손목·원근은 원래 시계를 유지했다. 공유 chest/petting 기본 복귀는 이전 코드와 5000개 입력에서 정확히 일치했다.
 
-실제 Sway production renderer의 **14:34:45 KST** 검사에서 UI20종·8개 gesture-none 흐름·접촉/해제/승인/clear·대기 눈/손의 시작과 종료·renderer reload·설정/위치 보존을 통과했다. 설정 UI의 실제 인사 enter→hold→exit→none을 캡처 없이682프레임 관찰했고 최대 RAF 간격14ms·draw19.4ms였다. 별도 앱 재시작과 renderer reload에서도 각894프레임의 인사 전 단계를 확인했으며 최대 RAF 간격은14ms·20.9ms였다. 원래 수 초 정지의 원인은 GPU trace의 EGL swap 대기였고, 기본 Xwayland 시작에서 GPU VSync 대기만 해제했다. [근본 원인·단일 옵션 비교와 적용 범위](../integrations/LIVE2D_TTS.md#xwayland-프레임-정지의-원인과-적용)를 따른다. 앱 provider prompt/Jev 판단0이며 물리 마우스·OS 재부팅/재로그인은 수행하지 않았다. 검사 후 일반 기본 런처로 재실행해 원래 설정 digest·기본 진입점·생존과 실제 GPU 자식의 VSync 해제/기존 frame-rate limit 보존을 확인했다.
+시선은 첫 6초 뒤 expressive 7~11초·normal 10~15초·quiet 14~20초 간격이며 움직임 줄이기는 이후 간격을 1.5배로 늘린다. 3초의 작은 glance 뒤 정면 목표로 돌아와 쉬고, 자동 눈인사/손은 expressive의 8슬롯마다 번갈아 한 번이다. 결정적 180초 actor 시뮬레이션에서 expressive 시선 전환 19회·자동 눈/손 후보 각1회, normal 전환14회였다. 전환 횟수는 실제 대화·접촉으로 차단되는 production 동작 횟수가 아니며 blink·호흡을 정지 비율에 포함하지 않는다. 증거는 ignored `.tmp/pacing-review/policy.json`이다. 반응·작업·승인 대기에서 놓친 gaze edge는 이전 상태에서 소비해 idle 복귀 때 뒤늦게 재생하지 않는다.
 
-현재 전체 시연은 ignored `artifacts/grok-review/current-version-overview.mp4`(69초·약2.1MB·448×720·20fps)다. 인사→기쁨·걱정 섞인 장난·당황→웃음·수줍음→설명→장난·토라짐→직접 쓰다듬기/해제→마지막 인사·기본 대기를 자막과 함께 보여준다. 이전69초 비교의 현재 버전 쪽만 추출해 제목을 갱신했으며, 동결한23개 연기 소스가 현재 코드와 일치한다. 합성 cue·로컬 미리보기·자기 canvas 접촉의 무음 실제 모델 고정 시각 렌더다. 실제 provider/IPC 대화 영상이나 native FPS 측정을 대신하지 않는다. H.264 Main/yuv420p·fast-start와 전체 decode·주요12장면을 확인했다. 인사 비교9초/전체69초와 이전 파생본도 보존한다. 영상의 소스/원본 해시·범위는 `.tmp/current-version/overview-manifest.json`, 실앱/단위 검사·GPU trace는 `.tmp/current-version/`, 인사 관절 대조는 `.tmp/greeting-review/`에 있다.
+현재 Vitest620개/26파일·strict typecheck·format·build·Mock desktop 검사를 통과했다. 기본·과장 강도의 인사 복귀를 각각 22시점(3.183초 및 3.2~4.2초의 50ms 표본)에서 렌더해 좌우 가장자리 alpha≥8 픽셀0을 확인했다. 전체 실제 모델 SDK 수락93개·417캡처(after413/owned-lean4)를 통과했고 외부 요청은0이었다. `npm run test:expression -- --model <로컬 model3.json>`으로 재현하며 `artifacts/expression-afterglow/results.json`이 실제 결과 목록이다. 긴 대기를 포함한 50ms 고정 적분/SwiftShader 캡처이므로 실시간 FPS나 모든 중간 프레임의 기하 검증을 뜻하지 않는다. 30/60/120fps의 빈도·휴지·기한·clear/승격, 실제 SDK의 손 복귀·얼굴 종료·접촉/승인·자산 우선권을 구분해 검사한다.
 
-회차별 공유·점수 추이·PID·재시도 일지는 현재 문서에서 제거했고 별도 보관 문서를 만들지 않았다. 이전 내용은 Git 이력으로 확인한다. 검증 후 별도 작업 사본과 중복 영상·재생성 가능한 프레임/캐시는 제거하고 최종 영상·동결 소스·실제 모델 근거를 보존했다. 원본 모델·SDK·공식 참고자료·개인 설정도 보존한다. 중복 정리의 출력 보존 근거는 ignored `.tmp/cleanup-review/`에 있다. 기존 표현의 근거는 ignored `.tmp/grok-implementation/`, 인사의 근거는 `.tmp/greeting-review/`, 현재 실행 안정성과 영상 근거는 `.tmp/current-version/`에 모으며, 과거 공유 기록을 새 문서로 쌓지 않는다.
+실제 Sway/Xwayland production renderer를 기본 저장 프로필로 재시작해 손의 enter→hold→exit→none, 4.4~5초의 손 없는 얼굴 여운과 6.4초 이후 종료, stale/정확한 scoped clear, 실제 설정 UI 인사 미리보기, renderer 재로딩 뒤 설정·위치 보존과 초기의 조용한 대기를 확인했다. provider prompt/Jev 호출0이며 합성 cue와 실제 외부 응답을 구분한다. 검사 후 일반 기본 런처로 다시 실행해 동일한 production 진입점·프로세스 생존·원래 설정 digest 일치를 확인했다. 근거는 `.tmp/pacing-review/native-proof.json`, `default-launch.json`, `chest-parity.json`과 `artifacts/expression-pacing-probe-{normal,expressive}/results.json`이다. OS 재부팅·재로그인과 물리 마우스·TTS는 이번 검증에 포함하지 않는다.
 
-새 구현의 주관적 종합 점수는 미평가다. [Grok 검토](../ux/GROK_VTUBER_REVIEW.md)는 평가 방법과 한계만 기록한다.85점 반복 개선·재채점 목표는 일시정지 상태다.
+이전 `artifacts/grok-review/current-version-overview.mp4`는 조정 전 69초 시연으로 보존한다. 초기 인사·감정 자산/관절의 참고 근거이며 현재의 짧은 기한·낮은 idle 빈도를 보여주는 영상으로 제시하지 않는다. 이전 SDK/영상·Xwayland EGL 대기 원인 근거는 `.tmp/greeting-review/`, `.tmp/current-version/`에 보존한다. VSync 수정 자체와 근거는 [통합 문서](../integrations/LIVE2D_TTS.md#xwayland-프레임-정지의-원인과-적용)를 따른다. 새 시각 표현의 선호도 점수나 실시간 FPS 개선을 주장하지 않으며 85점 반복 개선 목표는 일시정지 상태다.
 
 ## 유지보수에 필요한 원인과 계약
 
@@ -64,7 +64,7 @@
 
 ## 적용·복원
 
-적용은 현재 checkout에서 `npm run build` 후 앱 종료·기본 `~/.local/bin/live2d-companion` 재실행이다. 별도 시험용 런처나 서비스는 없다. Xwayland 프레임 정지 수정만 되돌릴 때는 `8e8febb`를 revert하고 같은 절차로 실행한다. 이 복원은 해당 호스트의 EGL 대기 문제를 다시 드러낼 수 있다. 인사 조정만 되돌릴 때는 `e1687b4`를 revert해 이전 오른쪽 버전을 유지하고 같은 절차로 실행한다. 설정 schema를 바꾸지 않으므로 개인 연결/세션/매핑·위치/배율 이관은 필요 없다.
+적용은 현재 checkout에서 `npm run build` 후 앱 종료·기본 `~/.local/bin/live2d-companion` 재실행이다. 짧은 반응/낮은 대기 밀도는 기본 renderer 코드이므로 새 설정이나 별도 프로필을 선택하지 않는다. 이번 시간 정책만 되돌릴 때는 이 조정 커밋을 revert하고 build·같은 런처 재실행으로 복원한다. 별도 시험용 런처나 서비스는 없다. Xwayland 프레임 정지 수정만 되돌릴 때는 `8e8febb`를 revert하고 같은 절차로 실행한다. 이 복원은 해당 호스트의 EGL 대기 문제를 다시 드러낼 수 있다. 인사 조정만 되돌릴 때는 `e1687b4`를 revert해 이전 오른쪽 버전을 유지하고 같은 절차로 실행한다. 설정 schema를 바꾸지 않으므로 개인 연결/세션/매핑·위치/배율 이관은 필요 없다.
 
 더 이전 버전으로 복원할 때는 Git에서 해당 버전의 구현 상태·설정 schema를 함께 확인한다. 새 감정/쓰다듬기 필드를 모르는 구버전은 앱을 종료하고 사용자 설정 디렉터리에 권한600의 백업을 만든 뒤 호환되는 필드로 복원해야 한다. 개인 연결 값·키·대화·모델/SDK를 저장소에 넣지 않는다. 구버전 rollback은 이번 검증에서 실행하지 않았다.
 
@@ -72,7 +72,7 @@
 
 후속 캐릭터 연기 구현(`FR-L2D-005~006`, `FR-DIR-004`, `FR-SET-003`): `acting.ts`는 결정적인 시선/단일·이중 blink와 시간 기반 damping, 감정·생각/설명 제스처의 조합, 반응별 시간 구조·제한된 변주 및 반복 억제를 담당한다. 좌우 눈·눈웃음·눈썹·볼/삐죽은 지원되는 upstream 얼굴 파라미터로 합성하며 로컬 미리보기는 초기화 포함20종이다. `performance.ts`는 범위/중립값/physics-output 검사, 표정 crossfade, authored pose의 진입/유지/복귀를 분리한다. `Avatar`는 DeepSeek의 `Angle*`/`Position*`/`LeanInput`을 구동한다. 이전 `ParamAngleZ` 직접 쓰기는 physics에 의해 0으로 덮였지만 현재는 upstream과 최종 출력 모두 변한다. 모든 모델이 같은 리깅을 제공한다고 가정하지 않고 없는/physics 출력인 채널은 생략한다.
 
-표현 설정은 기존 설정 파일에 선택적 `presentation`으로 저장하고 이전 파일에는 기본값을 적용한다. 구도/강도/위치 잠금/움직임 줄이기만 바꾸면 adapter/session과 Overlay를 재생성하지 않는다. preview의 paired 손 pose는 기본1.5초 유지 후 대응 복귀 자산을 사용한다. semantic 손은 전체 의미 반응 기한에서 진입/복귀 시간을 뺀 동안 유지하며 두 경로 모두 손목/손가락 endpoint를 보존한다. pose와 clip은 같은 경과 시간을 쓰고 physics의 bounded step과 분리해 느린 프레임의 단계 불일치를 피한다. 일반 사용자 gesture 매핑은 기존 단발 재생으로 fallback한다.
+표현 설정은 기존 설정 파일에 선택적 `presentation`으로 저장하고 이전 파일에는 기본값을 적용한다. 구도/강도/위치 잠금/움직임 줄이기만 바꾸면 adapter/session과 Overlay를 재생성하지 않는다. preview의 paired 손 pose는 기본1.5초 유지 후 대응 복귀 자산을 사용한다. semantic 손은 얼굴 여운을 제외한 강조 예산에서 진입/복귀 시간을 뺀 동안만 유지하며 두 경로 모두 손목/손가락 endpoint를 보존한다. pose와 clip은 같은 경과 시간을 쓰고 physics의 bounded step과 분리해 느린 프레임의 단계 불일치를 피한다. 일반 사용자 gesture 매핑은 기존 단발 재생으로 fallback한다.
 
 미리보기 IPC는 enum/sender/현재 요청·승인/switching 검사를 거친다. 늦은 character 이벤트가 승인 차단을 풀지 못하도록 renderer는 현재 turn에서 blocked 여부를 파생하고, 승인 종료 뒤 마지막 Director 상태를 복원한다. 이전 대상의 느린 connect는 selection별 pending token으로 격리한다. 자세한 조작은 README와 [상호작용 설계](../ux/INTERACTION_DESIGN.md#구현된-캐릭터-연기와-표현-설정)를 따른다.
 

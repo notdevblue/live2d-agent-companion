@@ -101,6 +101,15 @@ const read = (): any => {
       )?.parameters ?? []),
     ],
     layers: avatar.mixer.sample(clock).map(({ name, weight }: any) => ({ name, weight })),
+    // Existing pixels also prove the shortened greeting return never touches a canvas side.
+    sideBoundaryPixels: Array.from(
+      { length: avatar.canvas.height },
+      (_, y) =>
+        [
+          pixels[y * avatar.canvas.width * 4 + 3],
+          pixels[(y * avatar.canvas.width + avatar.canvas.width - 1) * 4 + 3],
+        ].filter((alpha) => alpha >= 8).length,
+    ).reduce((sum, count) => sum + count, 0),
     rangeErrors: errors,
     opaquePixels,
     handEndpoints: Object.fromEntries(
@@ -124,6 +133,20 @@ const read = (): any => {
         .map((id: any) => [id, avatar.model.getParameterValueByIndex(avatar.indexes.get(id))]),
     ),
   };
+};
+const idleSchedule = (): { face: number; hand: number; edges: number[] } => {
+  const actor = new ActingController();
+  actor.configure({ intensity: 'expressive', reducedMotion: false });
+  actor.sample(0, 0);
+  let face = 0;
+  const edges: number[] = [];
+  for (let now = 50; now < 300000; now += 50) {
+    actor.sample(now, 0.05);
+    if (actor.gazeSlotId > edges.length) edges.push(now);
+    if (!face && actor.gazeSlotId === 8) face = now;
+    if (actor.gazeSlotId === 16) return { face, hand: now, edges };
+  }
+  throw Error('Deterministic idle clock did not reach its rare attention slots');
 };
 const api = {
   async setup(input: any, ownedLean = false) {
@@ -164,6 +187,7 @@ const api = {
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
     return {
+      idleSchedule: idleSchedule(),
       expressions: inventory.expressionMap,
       gestures: inventory.gestureMap,
       injectedLeanCurves,
@@ -210,6 +234,7 @@ const api = {
       source: 'fallback',
     };
     const start = clock;
+    avatar.actor.sample(start, 0);
     if (scene.state) avatar.setState(scene.state);
     if (scene.petting) {
       if (scene.gesture) avatar.cue(cue);

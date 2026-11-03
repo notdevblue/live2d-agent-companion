@@ -19,7 +19,6 @@ import {
   reactionDuration,
   reactionLifetime,
   sampleHeldFace,
-  sampleMaintenancePose,
   amplifyPoseIntent,
   sampleReactionPose,
   samplePresetPose,
@@ -90,6 +89,7 @@ export class ActingController {
   private gazeSince = 0;
   private gazeIndex = 0;
   private gaze = { x: 0, y: 0 };
+  private gazeIdle = false;
   private blinkAt = 0;
   private blinkIndex = 0;
   private variants = new Map<ActingPreset, number>();
@@ -133,7 +133,11 @@ export class ActingController {
       this.reaction = undefined;
       this.pose = neutral();
     }
+    // Consume missed edges under the previous state, before a blocked/work
+    // interval can become an eligible idle glance on release.
+    this.advanceSchedules(nowMs);
     this.state = state;
+    if (state !== 'idle') this.gazeIdle = false;
   }
 
   cue(
@@ -158,18 +162,8 @@ export class ActingController {
     )
       return false;
     if (promotion && cue.emotion === 'neutral' && cue.gesture === 'none' && !hasAttitude) {
-      // Resolving neutral adds only a bounded mouth afterglow. It never restarts
-      // the original delivery beat or spends a new variant, even after its accent.
-      if (this.reaction) this.reaction.afterglow = true;
-      else if (nowMs - this.lastCue < reactionLifetime('acknowledge'))
-        this.reaction = {
-          preset: 'acknowledge',
-          emotion: 'neutral',
-          gesture: 'none',
-          started: this.lastCue,
-          variant: 0,
-          afterglow: true,
-        };
+      // A neutral result keeps the original brief delivery deadline. It never
+      // resurrects an expired beat or spends another variant.
       this.lastBeat = { ...this.lastBeat!, segmentId: cue.segmentId!, stage: 'semantic' };
       return false;
     }
@@ -194,6 +188,7 @@ export class ActingController {
                   : 'neutral';
     const variant = this.variants.get(preset) ?? 0;
     this.variants.set(preset, (variant + 1) % 2);
+    this.gazeIdle = false;
     this.reaction = {
       preset,
       ...cue,
@@ -270,6 +265,7 @@ export class ActingController {
           : preset === 'wave'
             ? 'wave'
             : 'none';
+    this.gazeIdle = false;
     this.reaction = {
       preset,
       emotion: emotionFor(preset),
@@ -363,7 +359,8 @@ export class ActingController {
     this.epoch = now;
     this.gazeIndex = this.blinkIndex = 0;
     this.gaze = { x: 0, y: 0 };
-    this.gazeAt = now + 700;
+    this.gazeIdle = false;
+    this.gazeAt = now + 6000;
     this.gazeSince = now;
     this.blinkAt = now + 2300 + random(40) * 1800;
   }
@@ -388,20 +385,31 @@ export class ActingController {
       ? -Math.cos((Math.PI * phase) / 0.42)
       : Math.cos((Math.PI * (phase - 0.42)) / 0.58);
   }
-  private advance(now: number, dt: number): void {
+  private advanceSchedules(now: number): void {
     while (now >= this.gazeAt) {
       this.gazeIndex++;
       this.gazeSince = this.gazeAt;
+      this.gazeIdle = !this.reaction && this.state === 'idle';
       this.gaze = {
         x: (random(this.gazeIndex * 3) - 0.5) * 0.32,
         y: (random(this.gazeIndex * 3 + 1) - 0.5) * 0.2,
       };
-      this.gazeAt += 1800 + random(this.gazeIndex * 3 + 2) * 3100;
+      const [rest, variation] = {
+        quiet: [14000, 6000],
+        normal: [10000, 5000],
+        expressive: [7000, 4000],
+      }[this.options.intensity] as [number, number];
+      this.gazeAt +=
+        (rest + random(this.gazeIndex * 3 + 2) * variation) *
+        (this.options.reducedMotion ? 1.5 : 1);
     }
     while (now >= this.blinkAt + (random(70 + this.blinkIndex) > 0.72 ? 445 : 190)) {
       this.blinkIndex++;
       this.blinkAt += 2600 + random(40 + this.blinkIndex) * 4000;
     }
+  }
+  private advance(now: number, dt: number): void {
+    this.advanceSchedules(now);
     const reaction = this.reaction;
     const clock = reactionClock(reaction, now);
     const age = clock?.age ?? 0;
@@ -419,52 +427,31 @@ export class ActingController {
       for (const key of ['headX', 'headY', 'headZ', 'gazeX', 'gazeY'] as const)
         target[key] += (gesture[key] - target[key]) * 0.7;
     }
-    // Authored explain hands enter around 1.25s. Synchronize finite local
-    // head/brow accents without shortening the hand hold. The second early beat
-    // remains inside a short preview; the later one also serves semantic holds.
+    // Keep the two short explain accents inside the original motion budget.
     const explainBeat =
       reaction?.gesture === 'explain'
-        ? beat(age / 1000, 1.05, 0.15, 0.1, 0.35) +
-          beat(age / 1000, 2.35, 0.18, 0.12, 0.45) +
-          beat(age / 1000, 7.25, 0.15, 0.1, 0.35)
+        ? beat(age / 1000, 1.05, 0.15, 0.1, 0.35) + beat(age / 1000, 2.35, 0.18, 0.12, 0.45)
         : 0;
-    const maintenance = sampleMaintenancePose(reaction, clock);
-    const idleGaze = !reaction && this.state === 'idle' && this.gazeIndex > 0;
+    const idleGaze = !reaction && this.state === 'idle' && this.gazeIdle;
     const idleAge = (now - this.gazeSince) / 1000;
-    const idleTilt = idleGaze ? 0.55 * beat(idleAge, 0, 0.35, 0.55, 0.8) : 0;
-    // Eyes lead the glance, then counter-look while the head and torso settle
-    // on that side. Shrinking a shared eye/head target only returned the whole
-    // figure together and never produced this independent listening posture.
-    const reconnect = idleGaze ? smooth((idleAge - 0.65) / 0.85) : 0;
-    // One additive posture shift per existing irregular gaze slot. Its beat
-    // returns while the side-facing head target lasts until the next slot.
-    const idleDirection = this.gaze.x < 0 ? -1 : 1;
-    const idleHeadShift = idleGaze ? idleDirection * 0.22 * beat(idleAge, 0, 0.6, 0.8, 1.6) : 0;
-    const idleWeightShift = idleGaze
-      ? idleDirection * 0.1 * beat(idleAge, 0.25, 0.75, 0.9, 1.5)
-      : 0;
+    // One small glance returns to center. Most of each slot is quiet rest;
+    // eyes lead the head naturally, without extra tilts or weight-shift phrases.
+    const ambientWeight = reaction
+      ? 0
+      : this.state === 'idle'
+        ? idleGaze
+          ? beat(idleAge, 0, 0.6, 0.8, 1.6)
+          : 0
+        : 1;
+    const faceWeight = clock?.faceWeight ?? 0;
     const blend = (a: number, b: number): number => a + (b - a) * weight;
     const follow = (key: keyof Pose, value: number, rate: number): void => {
       this.pose[key] = clamp(
         this.pose[key] + (value - this.pose[key]) * (1 - Math.exp(-rate * dt)),
       );
     };
-    follow(
-      'gazeX',
-      (this.gaze.x * (1 - 2.2 * reconnect) * (idleGaze ? 2.5 : 1) +
-        blend(base.gazeX, target.gazeX) +
-        maintenance.pose.gazeX * maintenance.weight) *
-        scale,
-      17,
-    );
-    follow(
-      'gazeY',
-      (this.gaze.y * (1 - 0.55 * reconnect) * (idleGaze ? 2.5 : 1) +
-        blend(base.gazeY, target.gazeY) +
-        maintenance.pose.gazeY * maintenance.weight) *
-        scale,
-      17,
-    );
+    follow('gazeX', (this.gaze.x * ambientWeight + blend(base.gazeX, target.gazeX)) * scale, 17);
+    follow('gazeY', (this.gaze.y * ambientWeight + blend(base.gazeY, target.gazeY)) * scale, 17);
     // Short directional beats need a firmer follow than the slow idle/gaze drift.
     const headFollow =
       reaction?.preset === 'nod' || reaction?.preset === 'shake' || explainBeat > 1e-8
@@ -478,11 +465,7 @@ export class ActingController {
       // Couple gaze to the head before the torso follows, bounding the complete
       // target so an authored emotional lean cannot add an excessive turn.
       clamp(
-        (idleGaze ? this.gaze.x * 2.5 * scale : this.pose.gazeX) * 1.6 +
-          (blend(base.headX, target.headX) +
-            maintenance.pose.headX * maintenance.weight +
-            idleHeadShift) *
-            scale,
+        this.pose.gazeX * 1.6 + blend(base.headX, target.headX) * scale,
         -0.7 * scale,
         0.7 * scale,
       ),
@@ -490,26 +473,15 @@ export class ActingController {
     );
     follow(
       'headY',
-      this.pose.gazeY * 0.45 +
-        (blend(base.headY, target.headY) -
-          0.58 * explainBeat +
-          maintenance.pose.headY * maintenance.weight) *
-          scale,
+      this.pose.gazeY * 0.45 + (blend(base.headY, target.headY) - 0.58 * explainBeat) * scale,
       headFollow,
     );
-    follow(
-      'headZ',
-      (blend(base.headZ, target.headZ) +
-        maintenance.pose.headZ * maintenance.weight +
-        (this.gaze.x < 0 ? -1 : 1) * idleTilt) *
-        scale,
-      4,
-    );
+    follow('headZ', blend(base.headZ, target.headZ) * scale, 4);
     // Emotion can hold a distinct shoulder/waist attitude on the existing cue
     // envelope, while idle and explicit gestures retain delayed head following.
     const torso = sampleTorsoIntent(reaction, clock);
-    const torsoWeight = torso ? Math.min(1, weight + maintenance.weight) : 0;
-    const bodyX = this.pose.headX * 0.65 + idleWeightShift * scale;
+    const torsoWeight = torso ? weight : 0;
+    const bodyX = this.pose.headX * 0.65;
     const bodyZ = this.pose.headZ * 0.7;
     follow(
       'bodyX',
@@ -522,8 +494,7 @@ export class ActingController {
       clamp(bodyZ + ((torso?.z ?? 0) * scale - bodyZ) * torsoWeight, -0.3 * scale, 0.3 * scale),
       2.1,
     );
-    const legacyLean =
-      (blend(base.lean, target.lean) + maintenance.pose.lean * maintenance.weight) * scale;
+    const legacyLean = blend(base.lean, target.lean) * scale;
     follow(
       'lean',
       torso?.lean === undefined
@@ -531,20 +502,11 @@ export class ActingController {
         : legacyLean + (torso.lean * scale - legacyLean) * torsoWeight,
       2.5,
     );
-    follow(
-      'approach',
-      (blend(base.approach, target.approach) + maintenance.pose.approach * maintenance.weight) *
-        scale,
-      2.5,
-    );
+    follow('approach', blend(base.approach, target.approach) * scale, 2.5);
     // Accent and held emotion are separate targets. The existing release clock
     // crossfades them; a low generic smile cannot erase the selected emotion.
-    const heldFace = sampleHeldFace(reaction, age / 1000);
-    follow(
-      'smile',
-      blend(base.smile, target.smile) + heldFace.smile * maintenance.weight * scale,
-      6,
-    );
+    const heldFace = sampleHeldFace(reaction);
+    follow('smile', blend(base.smile, target.smile) + heldFace.smile * faceWeight * scale, 6);
     const mouthWeight = clock?.mouthWeight ?? 0;
     const closedMouth =
       reaction?.emotion === 'angry' ||
@@ -561,16 +523,16 @@ export class ActingController {
       const eye =
         accentEye +
         (heldFace[key] - accentEye) *
-          maintenance.weight *
+          faceWeight *
           { quiet: 0.35, normal: 0.65, expressive: 1 }[this.options.intensity];
-      const eyeWeight = reaction?.preset === 'angry' ? Math.min(1, weight + maintenance.weight) : 1;
+      const eyeWeight = reaction?.preset === 'angry' ? Math.min(1, weight + faceWeight) : 1;
       follow(key, 1 + (eye - 1) * eyeWeight * (this.options.reducedMotion ? 0.18 : 1), 28);
     }
     for (const key of ['eyeSmile', 'browY', 'browInner', 'pout', 'cheek'] as const) {
       const explainBrow = key === 'browY' ? 0.2 * explainBeat : 0;
       follow(
         key,
-        (blend(base[key], target[key]) + heldFace[key] * maintenance.weight + explainBrow) * scale,
+        (blend(base[key], target[key]) + heldFace[key] * faceWeight + explainBrow) * scale,
         9,
       );
     }

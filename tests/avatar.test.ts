@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ModelInventory } from '../src/shared/contracts.js';
-import type { ActingController, ActingFrame } from '../src/renderer/acting.js';
+import { ActingController, type ActingFrame } from '../src/renderer/acting.js';
 import { applyPetting, type PettingController } from '../src/renderer/petting.js';
 import {
   PoseSequence,
@@ -206,10 +206,10 @@ describe('Avatar message and background priority — FR-L2D-004/006', () => {
       expect(runtime.poses.sample(now).phase).not.toBe('none');
     }
     expect(runtime.actor.sample(2400, 0)).toMatchObject({ active: true, phase: 'afterglow' });
-    expect(runtime.poses.sample(3000).phase).toBe('hold');
+    expect(runtime.poses.sample(3000).phase).toBe('none');
     vi.setSystemTime(3000);
     avatar.setState('thinking');
-    expect(runtime.poses.sample(3000).phase).toBe('hold');
+    expect(runtime.poses.sample(3000).phase).toBe('none');
     avatar.setState('blocked');
     expect(runtime.poses.sample(3000).phase).toBe('none');
     expect(runtime.mixer.sample(3000)).toEqual([]);
@@ -291,7 +291,7 @@ describe('semantic expression afterglow — FR-L2D-004/006/007', () => {
         .sort(),
     ).toEqual(['sweat:markings']);
     expect(runtime.mixer.sample(2200).map((l) => l.name)).toEqual(['sweat:markings']);
-    const residue = runtime.mixer.sample(9000, 0.65);
+    const residue = runtime.mixer.sample(6000, 0.65);
     expect(residue.map((l) => l.name)).toEqual(['sweat:markings']);
     expect(residue[0]!.weight).toBeCloseTo(0.6175);
   });
@@ -328,8 +328,8 @@ describe('semantic expression afterglow — FR-L2D-004/006/007', () => {
     avatar.cue({ ...cue, emotion: 'angry', gesture: 'none', stage: 'semantic' });
     expect(runtime.mixer.sample(1000, 0.65)[0]?.weight).toBeCloseTo(1);
     expect(runtime.mixer.sample(2200, 0.65)[0]?.weight).toBeCloseTo(0.65);
-    expect(runtime.mixer.sample(8000, 0.65)[0]?.weight).toBeCloseTo(0.65);
-    expect(runtime.mixer.sample(16200, 0.65)).toEqual([]);
+    expect(runtime.mixer.sample(5000, 0.65)[0]?.weight).toBeCloseTo(0.65);
+    expect(runtime.mixer.sample(6200, 0.65)).toEqual([]);
   });
   it('keeps saved laugh eye art as a short accent without overwriting its configured mapping', () => {
     const { avatar, runtime } = avatarWithMaps({ happy: '＞＜', embarrassed: 'blush' });
@@ -390,29 +390,30 @@ describe('semantic expression afterglow — FR-L2D-004/006/007', () => {
     avatar.setState('blocked');
     expect(runtime.pettingMarks(0.65)).toEqual([]);
   });
-  it('holds the authored hand through the residue and completes its return inside the finite lifetime', () => {
+  it('returns the authored hand by the accent deadline while keeping only the brief face', () => {
     const { avatar, runtime } = faceSetup();
     avatar.cue({ ...cue, stage: 'semantic' });
-    expect(runtime.poses.sample(8000).phase).toBe('hold');
-    expect(runtime.poses.sample(14950).phase).toBe('exit');
-    expect(runtime.poses.sample(16200).phase).toBe('none');
-    expect(runtime.actor.sample(16200, 0).active).toBe(false);
+    expect(runtime.poses.sample(2000).phase).toBe('hold');
+    expect(runtime.poses.sample(2950).phase).toBe('exit');
+    expect(runtime.poses.sample(4200).phase).toBe('none');
+    expect(runtime.actor.sample(4200, 0).active).toBe(true);
+    expect(runtime.actor.sample(6200, 0).active).toBe(false);
   });
-  it('clears an applied long residue, expression and hand by matching IDs; stale clears have no effect', () => {
+  it('clears the brief residue and expression after the hand has returned by matching IDs; stale clears have no effect', () => {
     const { avatar, runtime } = avatarWithMaps({ embarrassed: 'blush' });
     const semantic = { ...cue, emotion: 'embarrassed', stage: 'semantic' } as const;
     avatar.cue(semantic);
-    vi.setSystemTime(8000);
-    expect(runtime.actor.sample(8000, 0).phase).toBe('afterglow');
-    expect(runtime.mixer.sample(8000)).toHaveLength(1);
+    vi.setSystemTime(5000);
+    expect(runtime.actor.sample(5000, 0).phase).toBe('afterglow');
+    expect(runtime.mixer.sample(5000)).toHaveLength(1);
     avatar.clearCue({ ...semantic, segmentId: 2 });
-    expect(runtime.poses.sample(8000).phase).toBe('hold');
+    expect(runtime.poses.sample(5000).phase).toBe('none');
     avatar.clearCue(semantic);
-    expect(runtime.mixer.sample(8000)).toEqual([]);
-    expect(runtime.poses.sample(8000).phase).toBe('none');
-    expect(runtime.actor.sample(8000, 0)).toMatchObject({ active: false, mouthOpen: 0, smile: 0 });
+    expect(runtime.mixer.sample(5000)).toEqual([]);
+    expect(runtime.poses.sample(5000).phase).toBe('none');
+    expect(runtime.actor.sample(5000, 0)).toMatchObject({ active: false, mouthOpen: 0, smile: 0 });
   });
-  it('extends a saved neutral marking on promotion using the original delivery clock without restarting it', () => {
+  it('keeps a saved neutral marking on promotion only through the original accent using the original delivery clock without restarting it', () => {
     const { avatar, runtime } = avatarWithMaps({ neutral: 'blush' });
     avatar.cue({ ...cue, emotion: 'neutral', gesture: 'none', stage: 'delivery' });
     vi.setSystemTime(1000);
@@ -424,27 +425,27 @@ describe('semantic expression afterglow — FR-L2D-004/006/007', () => {
       segmentId: 2,
     } as const;
     avatar.cue(semantic);
-    expect(runtime.mixer.sample(8000, 0.65)).toMatchObject([{ name: 'blush:markings' }]);
-    expect(runtime.mixer.sample(8000, 0.65)[0]!.weight).toBeCloseTo(0.6175);
-    vi.setSystemTime(8000);
+    expect(runtime.mixer.sample(1400, 0.65)).toMatchObject([{ name: 'blush:markings' }]);
+    expect(runtime.mixer.sample(1400, 0.65)[0]!.weight).toBeGreaterThan(0);
+    vi.setSystemTime(1400);
     avatar.cue(semantic);
-    expect(runtime.mixer.sample(13800)).toEqual([]);
-    expect(runtime.actor.sample(13800, 0).active).toBe(false);
+    expect(runtime.mixer.sample(1800)).toEqual([]);
+    expect(runtime.actor.sample(1800, 0).active).toBe(false);
   });
   it('clears residue on errors, approval, reset and a newer message without a hand gesture', () => {
     for (const boundary of ['error', 'blocked', 'reset', 'message'] as const) {
       vi.setSystemTime(0);
       const { avatar, runtime } = avatarWithMaps({ embarrassed: 'blush' });
       avatar.cue({ ...cue, emotion: 'embarrassed' });
-      vi.setSystemTime(8000);
+      vi.setSystemTime(5000);
       if (boundary === 'reset') avatar.reset();
       else if (boundary === 'message')
         avatar.cue({ ...cue, segmentId: 2, messageId: 'new', emotion: 'neutral', gesture: 'none' });
       else avatar.setState(boundary);
-      expect(runtime.poses.sample(8000).phase).toBe('none');
+      expect(runtime.poses.sample(5000).phase).toBe('none');
       if (boundary !== 'message') {
-        expect(runtime.mixer.sample(8000)).toEqual([]);
-        expect(runtime.actor.sample(8000, 0).active).toBe(false);
+        expect(runtime.mixer.sample(5000)).toEqual([]);
+        expect(runtime.actor.sample(5000, 0).active).toBe(false);
       }
     }
   });
@@ -992,6 +993,16 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
   });
 
   describe('independent local idle chest gesture', () => {
+    function naturalSlotStart(target: number): number {
+      const actor = new ActingController();
+      actor.configure({ intensity: 'expressive', reducedMotion: false });
+      actor.sample(0, 0);
+      for (let now = 1000; now < 400000; now += 1000) {
+        actor.sample(now, 1);
+        if (actor.gazeSlotId === target) return actor.gazeSlotStartedAt;
+      }
+      throw new Error(`Missing natural gaze slot ${target}`);
+    }
     function idleSetup() {
       const base = touchSetup();
       const runtime = base.runtime as typeof base.runtime & {
@@ -1024,7 +1035,7 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
         let startedAt = 0;
         vi.spyOn(runtime.actor, 'gazeSlotId', 'get').mockImplementation(() => slot);
         vi.spyOn(runtime.actor, 'gazeSlotStartedAt', 'get').mockImplementation(() => startedAt);
-        return (next: number, now = next * 100) => {
+        return (next: number, now = next * 25) => {
           if (slot !== next) startedAt = now;
           slot = next;
           return tick(now);
@@ -1033,12 +1044,13 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
       return { ...base, runtime, tick, forceEdges };
     }
     describe('independent idle face attention', () => {
-      it('uses the real 2mod8 slot at 30/60/120Hz with no pose, cooldown or other frame changes', () => {
+      it('uses the real 8mod16 slot at 30/60/120Hz with no pose, cooldown or other frame changes', () => {
+        const slotStart = naturalSlotStart(8);
         const paths = [30, 60, 120].map((fps) => {
           vi.setSystemTime(0);
           const { runtime, tick } = idleSetup();
           const visible: number[] = [];
-          for (let i = 0; i <= fps * 10; i++) {
+          for (let i = 0; i <= Math.ceil((fps * (slotStart + 1600)) / 1000); i++) {
             const now = (i * 1000) / fps;
             tick(now);
             const base = runtime.actor.sample(now, 0);
@@ -1051,10 +1063,10 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
             if (face !== base) visible.push(now);
           }
           expect(runtime.idleFaceSlot).toBeUndefined();
-          expect(visible[0]).toBeGreaterThanOrEqual(5840);
-          expect(visible[0]).toBeLessThan(5880);
-          expect(visible.at(-1)).toBeGreaterThan(6890);
-          expect(visible.at(-1)).toBeLessThan(6940);
+          expect(visible[0]).toBeGreaterThanOrEqual(slotStart + 250);
+          expect(visible[0]).toBeLessThan(slotStart + 300);
+          expect(visible.at(-1)).toBeGreaterThan(slotStart + 1280);
+          expect(visible.at(-1)).toBeLessThan(slotStart + 1330);
           return visible;
         });
         for (const path of paths.slice(1))
@@ -1064,7 +1076,7 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
         const { runtime, forceEdges } = idleSetup();
         const edge = forceEdges();
         window.__avatarStatus = { loaded: true, frames: 0 };
-        edge(2, 0);
+        edge(8, 0);
         const base = { ...runtime.actor.sample(0, 0), eyeL: 1, eyeR: 1, blink: 1 };
         expect(runtime.idleAttentionFrame(base, 250)).toBe(base);
         expect(window.__avatarStatus.localIdleAttention).toBe(false);
@@ -1079,15 +1091,15 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
         expect(
           runtime.idleAttentionFrame({ ...base, blink: 0, eyeL: 0, eyeR: 0 }, 600),
         ).toMatchObject({ eyeL: 0, eyeR: 0 });
-        edge(2, 1330);
+        edge(8, 1330);
         expect(runtime.idleFaceSlot).toBeUndefined();
         expect(runtime.idleAttentionFrame(base, 1330)).toBe(base);
         expect(window.__avatarStatus.localIdleAttention).toBe(false);
-        edge(2, 1400);
+        edge(8, 1400);
         expect(runtime.idleFaceSlot).toBeUndefined();
-        edge(10, 2000);
+        edge(24, 2000);
         expect(runtime.idleAttentionFrame(base, 2600)).toMatchObject({ eyeL: 0.92, eyeR: 0 });
-        edge(11, 2650);
+        edge(25, 2650);
         expect(runtime.idleFaceSlot).toBeUndefined();
       });
       it('consumes ineligible edges for every existing idle gate without late attention', () => {
@@ -1131,28 +1143,29 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
             avatar.endPetting();
           }
           if (gate === 'pet-owner') stroke(20);
-          edge(2, 400);
+          edge(8, 400);
           expect(runtime.idleFaceSlot, gate).toBeUndefined();
-          expect(runtime.idleGazeSlot).toBe(2);
+          expect(runtime.idleGazeSlot).toBe(8);
           avatar.reset();
           vi.mocked(runtime.gestureManager.isFinished).mockReturnValue(true);
           avatar.configure({ ...settings, intensity: 'expressive' });
-          edge(2, 500);
+          edge(8, 500);
           expect(runtime.idleFaceSlot, gate).toBeUndefined();
-          edge(10, 600);
-          expect(runtime.idleFaceSlot, gate).toBe(10);
+          edge(24, 600);
+          expect(runtime.idleFaceSlot, gate).toBe(24);
         }
       });
       it('fully excludes contact residue and never wakes later in the same natural slot', () => {
         const { avatar, runtime, tick } = idleSetup();
-        for (let now = 0; now <= 5000; now += 50) tick(now);
+        const slotStart = naturalSlotStart(8);
+        for (let now = 0; now <= slotStart - 600; now += 50) tick(now);
         avatar.beginPetting();
-        vi.setSystemTime(5100);
+        vi.setSystemTime(slotStart - 500);
         avatar.strokePetting(10);
-        vi.setSystemTime(5500);
+        vi.setSystemTime(slotStart - 100);
         avatar.endPetting();
         let sawResidue = false;
-        for (let now = 5550; now <= 7300; now += 50) {
+        for (let now = slotStart - 50; now <= slotStart + 1700; now += 50) {
           tick(now);
           sawResidue ||= runtime.petting.sample(now) > 0;
           const base = runtime.actor.sample(now, 0);
@@ -1164,15 +1177,15 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
           );
         }
         expect(sawResidue).toBe(true);
-        expect(runtime.petting.sample(7300)).toBe(0);
+        expect(runtime.petting.sample(slotStart + 1700)).toBe(0);
       });
       it('clears an ongoing face on contact and per-frame ownership loss without restarting', () => {
         for (const gate of ['contact', 'residue', 'pose', 'motion', 'authored-face'] as const) {
           vi.setSystemTime(0);
           const { avatar, runtime, forceEdges, definition } = idleSetup();
           const edge = forceEdges();
-          edge(2, 0);
-          edge(2, 500);
+          edge(8, 0);
+          edge(8, 500);
           window.__avatarStatus = { loaded: true, frames: 0 };
           runtime.idleAttentionFrame(runtime.actor.sample(500, 0), 500);
           expect(window.__avatarStatus.localIdleAttention).toBe(true);
@@ -1190,12 +1203,12 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
           if (gate === 'pose') runtime.poses.start(definition, 500);
           if (gate === 'motion') runtime.activeGesture = 'other';
           if (gate === 'authored-face') runtime.idleParameters = new Set(['ParamMouthForm']);
-          edge(2, 600);
+          edge(8, 600);
           expect(runtime.idleFaceSlot, gate).toBeUndefined();
           runtime.clearPose();
           runtime.petting.clear();
           runtime.idleParameters = new Set();
-          edge(2, 700);
+          edge(8, 700);
           expect(runtime.idleFaceSlot, gate).toBeUndefined();
         }
       });
@@ -1218,10 +1231,10 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
           runtime.blinkIds = ['customBlink'];
           runtime.idleParameters = new Set([id]);
           const edge = forceEdges();
-          edge(2, 0);
+          edge(8, 0);
           expect(runtime.idleFaceSlot, id).toBeUndefined();
           runtime.idleParameters = new Set();
-          edge(2, 500);
+          edge(8, 500);
           expect(runtime.idleFaceSlot, id).toBeUndefined();
         }
         for (const mapping of ['custom', '', undefined]) {
@@ -1231,8 +1244,8 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
           runtime.motions.clear();
           runtime.poseDefinitions.clear();
           runtime.idleParameters = new Set(['Param56', 'Param57', 'SweatBurst1']);
-          forceEdges()(2, 0);
-          expect(runtime.idleFaceSlot).toBe(2);
+          forceEdges()(8, 0);
+          expect(runtime.idleFaceSlot).toBe(8);
           expect(runtime.poses.sample(0).phase).toBe('none');
         }
       });
@@ -1254,8 +1267,8 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
           vi.setSystemTime(0);
           const { avatar, runtime, forceEdges } = idleSetup();
           const edge = forceEdges();
-          edge(2, 0);
-          edge(2, 600);
+          edge(8, 0);
+          edge(8, 600);
           window.__avatarStatus = { loaded: true, frames: 0 };
           runtime.idleAttentionFrame(runtime.actor.sample(600, 0), 600);
           if (boundary === 'cue') avatar.cue({ ...cue, gesture: 'none' });
@@ -1284,12 +1297,12 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
         const { avatar, runtime, forceEdges } = idleSetup();
         const edge = forceEdges();
         avatar.cue({ ...cue, gesture: 'none' });
-        edge(2, 17000);
-        edge(2, 17500);
-        expect(runtime.idleFaceSlot).toBe(2);
+        edge(8, 17000);
+        edge(8, 17500);
+        expect(runtime.idleFaceSlot).toBe(8);
         avatar.cue({ ...cue, gesture: 'none' });
         avatar.clearCue(cue);
-        expect(runtime.idleFaceSlot).toBe(2);
+        expect(runtime.idleFaceSlot).toBe(8);
         avatar.reset();
         vi.setSystemTime(20000);
         const delivery = {
@@ -1300,41 +1313,43 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
           stage: 'delivery',
         } as const;
         avatar.cue(delivery);
-        edge(10, 22000);
-        edge(10, 22500);
-        expect(runtime.idleFaceSlot).toBe(10);
+        edge(24, 22000);
+        edge(24, 22500);
+        expect(runtime.idleFaceSlot).toBe(24);
         avatar.cue(delivery);
-        expect(runtime.idleFaceSlot).toBe(10);
-        avatar.cue({ ...delivery, segmentId: 2, stage: 'semantic' });
+        expect(runtime.idleFaceSlot).toBe(24);
+        avatar.cue({ ...delivery, segmentId: 2, stage: 'semantic', emotion: 'happy' });
         expect(runtime.idleFaceSlot).toBeUndefined();
       });
       it('does not manufacture a new pulse after a late frame in the current slot', () => {
         const { runtime, tick } = idleSetup();
-        tick(7200); // slot 2 began around 5.6s; its finite attention is already over
-        expect(runtime.actor.gazeSlotId).toBe(2);
+        const late = naturalSlotStart(8) + 1600;
+        tick(0);
+        tick(late); // observe the natural face slot only after its finite attention has expired
+        expect(runtime.actor.gazeSlotId).toBe(8);
         expect(runtime.idleFaceSlot).toBeUndefined();
-        const base = runtime.actor.sample(7200, 0);
-        expect(runtime.idleAttentionFrame(base, 7200)).toBe(base);
+        const base = runtime.actor.sample(late, 0);
+        expect(runtime.idleAttentionFrame(base, late)).toBe(base);
       });
     });
-    it('uses one existing gaze edge in four with the original 2750ms pair and no semantic cooldown', () => {
+    it('uses alternating eighth gaze edges with the original 2750ms pair and no semantic cooldown', () => {
       const { runtime, forceEdges, definition } = idleSetup();
       const edge = forceEdges();
       runtime.lastGesture = 123;
       runtime.lastGestureName = 'previous-semantic-hand';
-      for (const slot of [0, 1, 2, 3]) expect(edge(slot).phase).toBe('none');
-      expect(edge(4)).toMatchObject({ phase: 'enter', timeMs: 0, definition });
+      for (const slot of [0, 1, 7, 8, 9, 15]) expect(edge(slot).phase).toBe('none');
+      expect(edge(16)).toMatchObject({ phase: 'enter', timeMs: 0, definition });
       expect(runtime.localIdleGesture).toBe(true);
       expect(runtime.actor.sample(400, 0)).toMatchObject({ active: false, gesture: 'none' });
-      expect(edge(4, 1533).phase).toBe('hold');
-      expect(edge(4, 2133)).toMatchObject({ phase: 'exit', timeMs: 0, heldMs: 600 });
-      expect(edge(4, 3150).phase).toBe('none');
+      expect(edge(16, 1533).phase).toBe('hold');
+      expect(edge(16, 2133)).toMatchObject({ phase: 'exit', timeMs: 0, heldMs: 600 });
+      expect(edge(16, 3150).phase).toBe('none');
       expect(runtime.localIdleGesture).toBe(false);
-      expect(edge(4, 3300).phase).toBe('none');
+      expect(edge(16, 3300).phase).toBe('none');
       expect(runtime.lastGesture).toBe(123);
       expect(runtime.lastGestureName).toBe('previous-semantic-hand');
       expect(runtime.petPose).toBe(false);
-      expect(edge(8, 4000).phase).toBe('enter');
+      expect(edge(32, 4000).phase).toBe('enter');
     });
     it('consumes edges while ineligible and never borrows an active none cue or another owner', () => {
       for (const gate of [
@@ -1379,14 +1394,14 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
           avatar.beginPetting();
           stroke(20);
         }
-        edge(4, 400);
+        edge(16, 400);
         expect(runtime.localIdleGesture, gate).toBe(false);
-        expect(runtime.idleGazeSlot).toBe(4);
+        expect(runtime.idleGazeSlot).toBe(16);
         avatar.reset();
         vi.mocked(runtime.gestureManager.isFinished).mockReturnValue(true);
         avatar.configure({ ...settings, intensity: 'expressive' });
-        expect(edge(4, 500).phase, gate).toBe('none');
-        expect(edge(8, 1000).phase, gate).toBe('enter');
+        expect(edge(16, 500).phase, gate).toBe('none');
+        expect(edge(32, 1000).phase, gate).toBe('enter');
       }
     });
     it('respects canonical/blank/custom mappings and the shared seven-input validation', () => {
@@ -1409,7 +1424,7 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
         if (gate === 'range') runtime.ranges.get('Param62')!.neutral = 0.1;
         if (gate === 'endpoint') runtime.motionInfo.get(definition.enter)!.held.set('Param59', 0.8);
         if (gate === 'clip') runtime.motions.delete(definition.exit);
-        expect(edge(4).phase, gate).toBe('none');
+        expect(edge(16).phase, gate).toBe('none');
         expect(runtime.localIdleGesture).toBe(false);
         expect(runtime.lastGesture).toBe(-Infinity);
       }
@@ -1420,7 +1435,7 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
         const { avatar, runtime, forceEdges, stroke } = idleSetup();
         runtime.idleParameters = new Set(['Param56', 'Param57', id]);
         const edge = forceEdges();
-        expect(edge(4).phase).toBe('none');
+        expect(edge(16).phase).toBe('none');
         expect(runtime.localIdleGesture).toBe(false);
         avatar.beginPetting();
         stroke(410);
@@ -1432,15 +1447,15 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
       vi.setSystemTime(0);
       const { runtime, forceEdges } = idleSetup();
       runtime.idleParameters = new Set(['Param56', 'Param57']);
-      expect(forceEdges()(4).phase).toBe('enter');
+      expect(forceEdges()(16).phase).toBe('enter');
     });
     it('does not act when an observed cue-owned edge later becomes idle, and clears for promotion but not stale delivery', () => {
       const { avatar, runtime, forceEdges } = idleSetup();
       const edge = forceEdges();
       avatar.cue({ ...cue, gesture: 'none' });
-      expect(edge(4, 1000).phase).toBe('none');
-      expect(edge(4, 17000).phase).toBe('none');
-      expect(edge(8, 17500).phase).toBe('enter');
+      expect(edge(16, 1000).phase).toBe('none');
+      expect(edge(16, 17000).phase).toBe('none');
+      expect(edge(32, 17500).phase).toBe('enter');
       avatar.cue({ ...cue, gesture: 'none' }); // stale same scoped message
       expect(runtime.localIdleGesture).toBe(true);
       avatar.clearCue(cue); // the expired message does not own the idle hand
@@ -1456,10 +1471,10 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
         stage: 'delivery',
       } as const;
       avatar.cue(delivery);
-      expect(edge(12, 22000).phase).toBe('enter'); // delivery accent is over
+      expect(edge(48, 22000).phase).toBe('enter'); // delivery accent is over
       avatar.cue(delivery);
       expect(runtime.localIdleGesture).toBe(true);
-      avatar.cue({ ...delivery, segmentId: 2, stage: 'semantic' });
+      avatar.cue({ ...delivery, segmentId: 2, stage: 'semantic', emotion: 'happy' });
       expect(runtime.localIdleGesture).toBe(false);
       expect(runtime.poses.sample(22000).phase).toBe('none');
     });
@@ -1481,7 +1496,7 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
         vi.setSystemTime(0);
         const { avatar, runtime, forceEdges, definition } = idleSetup();
         const edge = forceEdges();
-        edge(4);
+        edge(16);
         expect(runtime.localIdleGesture).toBe(true);
         if (boundary === 'cue-none' || boundary === 'cue-wave')
           avatar.cue({ ...cue, gesture: boundary === 'cue-none' ? 'none' : 'wave' });
@@ -1514,8 +1529,8 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
     it('keeps an existing idle pair and its original deadline when contact begins, without transferring or repeating the hand', () => {
       const { avatar, runtime, forceEdges, stroke } = idleSetup();
       const edge = forceEdges();
-      edge(4, 400);
-      edge(4, 900);
+      edge(16, 400);
+      edge(16, 900);
       avatar.beginPetting();
       const original = runtime.poses.sample(900);
       expect(runtime.petPoseUsed).toBe(true);
@@ -1528,9 +1543,9 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
       vi.setSystemTime(1000);
       avatar.beginPetting();
       stroke(1010);
-      expect(edge(4, 2133)).toMatchObject({ phase: 'exit', timeMs: 0 });
+      expect(edge(16, 2133)).toMatchObject({ phase: 'exit', timeMs: 0 });
       stroke(3100);
-      expect(edge(4, 3150).phase).toBe('none');
+      expect(edge(16, 3150).phase).toBe('none');
       expect(runtime.localIdleGesture).toBe(false);
       stroke(3160);
       expect(runtime.petPose).toBe(false); // this touch already shared an idle hand
@@ -1543,7 +1558,7 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
     });
     it('also recognizes a naturally finished idle hand before a new touch arrives between frames', () => {
       const { avatar, runtime, forceEdges, stroke } = idleSetup();
-      forceEdges()(4, 400);
+      forceEdges()(16, 400);
       vi.setSystemTime(4000);
       avatar.beginPetting();
       expect(runtime.localIdleGesture).toBe(false);
@@ -1552,11 +1567,13 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
       expect(runtime.petPose).toBe(true);
     });
     it('uses the same real gaze cadence at30/60/120Hz and never replays skipped historical slots', () => {
+      const firstStart = naturalSlotStart(16),
+        secondStart = naturalSlotStart(32);
       const paths = [30, 60, 120].map((fps) => {
         vi.setSystemTime(0);
         const { runtime, tick } = idleSetup();
         const starts: Array<{ slot: number; at: number }> = [];
-        for (let i = 1; i <= fps * 36; i++) {
+        for (let i = 1; i <= Math.ceil((fps * (secondStart + 3000)) / 1000); i++) {
           const active = runtime.localIdleGesture;
           tick((i * 1000) / fps);
           if (!active && runtime.localIdleGesture)
@@ -1564,7 +1581,7 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
         }
         return starts;
       });
-      expect(paths[0]!.map((x) => x.slot)).toEqual([4, 8]);
+      expect(paths[0]!.map((x) => x.slot)).toEqual([16, 32]);
       for (const path of paths.slice(1)) {
         expect(path.map((x) => x.slot)).toEqual(paths[0]!.map((x) => x.slot));
         for (let i = 0; i < path.length; i++)
@@ -1572,17 +1589,18 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
       }
       vi.setSystemTime(0);
       const { runtime, tick } = idleSetup();
-      expect(tick(26000).phase).toBe('enter');
-      expect(runtime.actor.gazeSlotId).toBe(8);
-      expect(tick(26000)).toMatchObject({ phase: 'enter', timeMs: 0 });
-      expect(tick(30000).phase).toBe('none');
+      tick(0);
+      expect(tick(firstStart).phase).toBe('enter');
+      expect(runtime.actor.gazeSlotId).toBe(16);
+      expect(tick(firstStart)).toMatchObject({ phase: 'enter', timeMs: 0 });
+      expect(tick(firstStart + 4000).phase).toBe('none');
       expect(runtime.localIdleGesture).toBe(false);
     });
     it('keeps its finite chest glance separate from the face and gives direct petting final priority', () => {
       const { runtime, forceEdges } = idleSetup();
       const edge = forceEdges();
-      edge(4, 400);
-      edge(4, 1100);
+      edge(16, 400);
+      edge(16, 1100);
       const frame = runtime.actor.sample(1100, 0);
       const glanced = runtime.idleGestureFrame(frame, runtime.poses.sample(1100));
       expect(glanced.gazeY).toBe(-0.18);
@@ -1605,7 +1623,7 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
       const touched = applyPetting(glanced, 1, { x: 1, y: 1 });
       expect(touched.gazeY).toBeGreaterThan(glanced.gazeY);
       expect(touched.gazeX).toBeGreaterThan(glanced.gazeX);
-      const ended = edge(4, 3150);
+      const ended = edge(16, 3150);
       expect(runtime.idleGestureFrame(frame, ended)).toBe(frame);
     });
   });

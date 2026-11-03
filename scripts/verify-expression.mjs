@@ -62,8 +62,8 @@ const child = spawn(
     stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
   },
 );
-// Hundreds of software-rendered captures need a workload deadline, while a
-// stalled scene must fail independently of how many earlier scenes completed.
+// Rare idle edges require over two minutes of 50ms physics integration per long
+// scene. Keep a separate progress deadline so a stalled scene still fails promptly.
 const started = Date.now();
 let lastProgress = { stage: 'startup' };
 let timedOut = false;
@@ -95,7 +95,7 @@ const armStallTimer = () => {
   clearTimeout(stallTimer);
   stallTimer = setTimeout(() => void failTimeout('90 second progress timeout'), 90000);
 };
-const totalTimer = setTimeout(() => void failTimeout('300 second process timeout'), 300000);
+const totalTimer = setTimeout(() => void failTimeout('600 second process timeout'), 600000);
 armStallTimer();
 child.on('message', (message) => {
   if (timedOut || !message || typeof message !== 'object') return;

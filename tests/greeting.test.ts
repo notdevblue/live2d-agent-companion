@@ -82,7 +82,7 @@ describe('verified authored-input greeting', () => {
         );
       for (const [index, value] of sample(frame('hold', heldMs - 0.001)))
         expect(values(0).get(index)).toBeCloseTo(value, 5);
-      expect(values(500).get(1)!).toBeLessThan(-0.8);
+      expect(values(400).get(1)!).toBeLessThan(-0.8);
       for (const [index, value] of authored)
         expect(values(definition.exitMs).get(index)).toBeCloseTo(value, 8);
       for (const value of values(750).values()) expect(Number.isFinite(value)).toBe(true);
@@ -90,6 +90,18 @@ describe('verified authored-input greeting', () => {
     expect(sample(frame('none'))).toEqual(new Map());
     expect(sample({ ...frame('exit', 100), reverseEntry: true })).toEqual(new Map());
   });
+  it('lowers the shoulder early in a short return without delaying elbow recovery', () => {
+    for (const heldMs of [400, 1500, 2050]) {
+      const lowering = sample({ ...frame('exit', definition.exitMs * 0.4), heldMs });
+      expect(lowering.get(1)).toBeCloseTo(-0.9, 8);
+      const returned = sample({ ...frame('exit', definition.exitMs * 0.75), heldMs });
+      expect(returned.get(3)).toBeCloseTo(0, 8);
+      const early = sample({ ...frame('exit', 1), heldMs });
+      for (const [index, value] of sample(frame('hold', heldMs)))
+        expect(early.get(index)).toBeCloseTo(value, 4);
+    }
+  });
+
   it('unfolds to the verified exit endpoints instead of chasing a moving return clip', () => {
     const endpoints = new Map([
       ['Param62', -0.001],
@@ -106,7 +118,8 @@ describe('verified authored-input greeting', () => {
       endpoints,
     );
     expect(returned.get(3)).toBeCloseTo(0, 8);
-    expect(returned.get(1)!).toBeLessThan(-0.2);
+    expect(returned.get(1)!).toBeLessThan(0);
+    expect(returned.get(1)!).toBeGreaterThan(-0.2);
     endpoints.delete('Param60');
     expect(
       greetingValues(

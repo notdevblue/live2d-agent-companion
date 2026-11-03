@@ -488,7 +488,7 @@ export class Avatar {
       eyeAccentDuration(preset, cue.emotion, 'cue'),
     );
     // Delivery tone does not override an explicit "no physical gesture" decision.
-    this.startGesture(motionName, now, lifetime);
+    this.startGesture(motionName, now, duration);
     if (window.__avatarStatus) {
       window.__avatarStatus.lastCue = `${cue.emotion}/${cue.gesture}`;
       window.__avatarStatus.lastSegmentId = cue.segmentId;
@@ -647,7 +647,7 @@ export class Avatar {
       'key6',
     ].some((id) => this.idleParameters.has(id));
   }
-  /** Independent idle owners share observed gaze edges, never message gestures. */
+  /** Rare idle accents alternate every eight gaze slots, with quiet slots between. */
   private updateIdleGesture(now: number, acting: ActingFrame, pose: PoseFrame): void {
     if (this.localIdleGesture && pose.phase === 'none') this.localIdleGesture = false;
     const slot = this.actor.gazeSlotId;
@@ -660,9 +660,9 @@ export class Avatar {
     if (this.idleFaceSlot !== undefined && (!faceEligible || this.idleFaceSlot !== slot))
       this.clearIdleAttention();
     if (!changed || slot <= 0 || !eligible) return;
-    if (slot % 8 === 2 && faceEligible) this.idleFaceSlot = slot;
+    if (slot % 16 === 8 && faceEligible) this.idleFaceSlot = slot;
     if (
-      slot % 4 !== 0 ||
+      slot % 16 !== 0 ||
       // Shared Param56/57 selectors alone remain compatible with default idle.
       ['Movement2', 'Param59', 'Param60', 'Param61', 'Param62'].some((id) =>
         this.idleParameters.has(id),
@@ -686,7 +686,7 @@ export class Avatar {
     const weight = this.idleAttentionWeight(now);
     if (window.__avatarStatus) window.__avatarStatus.localIdleAttention = weight > 0;
     if (!weight) return acting;
-    const left = Math.floor(this.idleFaceSlot! / 8) % 2 === 0;
+    const left = Math.floor(this.idleFaceSlot! / 16) % 2 === 0;
     // ActingFrame already includes blink. Multiply it instead of reopening a lid.
     // Head/body/gaze/mouth/breath and all pose/semantic clocks remain untouched.
     return {

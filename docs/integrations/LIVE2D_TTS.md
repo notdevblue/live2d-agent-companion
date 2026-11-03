@@ -24,7 +24,7 @@ DeepSeek-chan은 `.model3.json`에 표정/모션 참조가 없어 `Exp3/`, `Anim
 
 기본 매핑의 누락을 막기 위해 `thinking → @companion/thinking`, `surprised → @companion/surprised`를 제공한다. 이는 모델 파일 이름이 아닌 앱 로컬 연기 ID다. 생각은 기존 시선·고개 연기를 재사용하며, 놀람은 지원되는 눈·눈썹·입 파라미터의 실제 중립값/범위 안에서 합성하고 physics 출력·없는 채널은 생략한다. 저장된 사용자 자산 매핑과 명시적인 빈 값은 보존한다. 생각 미리보기·응답 대기 진입·답변의 gesture 판단은 같은 thinking 매핑을 참조한다.
 
-로컬 `ActingController`는 비주기 blink/시선과 눈→고개→몸 지연, thinking/working 및 짧은 감정·태도 반응을 생성한다. `Avatar`는 runtime 범위/중립값과 physics 출력 목록을 검사해 `Angle*`, `Position*`, `LeanInput` 같은 upstream을 구동한다. physics 출력에 해당하는 표준 채널밖에 없으면 그 채널을 생략한다. 표정은 기존/새 레이어를 240ms로 crossfade하고 만료/초기화 시 정리한다. DeepSeek의 알려진 손동작 쌍은 의미 반응에서 진입→여운 동안 유지→복귀이며 (로컬 미리보기의 유지는 기존 1.5초), 유지 시 selector만이 아니라 자산의 모든 손/손목 endpoint를 보존한다. SDK clip은 실제 pose phase 경과 시간으로 진행하고 physics step 제한과 분리한다. 자산 쌍이 없는 사용자 매핑은 기존 단발 motion으로 fallback한다.
+로컬 `ActingController`는 비주기 blink/시선과 눈→고개→몸 지연, thinking/working 및 짧은 감정·태도 반응을 생성한다. `Avatar`는 runtime 범위/중립값과 physics 출력 목록을 검사해 `Angle*`, `Position*`, `LeanInput` 같은 upstream을 구동한다. physics 출력에 해당하는 표준 채널밖에 없으면 그 채널을 생략한다. 표정은 기존/새 레이어를 240ms로 crossfade하고 만료/초기화 시 정리한다. DeepSeek의 알려진 손동작 쌍은 의미 반응에서 강조 예산 안에 진입→짧은 유지→복귀이며 (로컬 미리보기의 유지는 기존 1.5초), 유지 시 selector만이 아니라 자산의 모든 손/손목 endpoint를 보존한다. SDK clip은 실제 pose phase 경과 시간으로 진행하고 physics step 제한과 분리한다. 자산 쌍이 없는 사용자 매핑은 기존 단발 motion으로 fallback한다.
 
 추가 버튜버 연기는 기존 Choice를 재사용한다. 감정/태도 얼굴과 thinking/explain 시선·고개를 분리 합성하고, 반응별 준비·강조·여운·복귀 시간을 둔다. 윙크/반눈/눈웃음/눈썹/삐죽/볼은 좌우 눈과 실제 upstream 얼굴 범위로 제어한다. pipeline은 baseline→idle/one-shot→로컬 연기/얼굴→expression→physics→draw이며 자산이 구동하는 얼굴 채널과 physics 출력은 procedural 입력에서 제외한다. 놀람 눈은 Overwrite 대신 Multiply로 자동 blink를 보존하고 표정 hold도 actor의 2.2초와 맞춘다. 특수 눈 artwork가 켜지면 procedural wink/eyeSmile을 중첩하지 않는다. 기본 상하 offset은 유지한다.
 
@@ -44,15 +44,17 @@ DeepSeek-chan의 49개 clipping mask 그룹은 기본 버퍼 1개의 36그룹 �
 
 **애니메이션 우선순위:** security/approval UX > explicit user interaction > speaking > task state > idle. 전환 시 crossfade, 전환 가능 여부는 모델/SDK 지원 확인.
 
-## 감정 여운과 독립 표정 층 (2026-11-02)
+## 감정 여운과 독립 표정 층 (2026-11-03 조정)
 
-`ActingController.reactionDuration`은 기존 강조 길이이고 `reactionLifetime`은 의미 반응에만 최대 12초를 더한 전체 기한이다. 미소·눈웃음·눈썹은 강조의 복귀 구간에서 낮은 여운으로 이어지고 작은 `ParamMouthOpenY`(.12 × 강도)를 사용한다. 모음·턱은 구동하지 않는다. 마지막 1초 fade 뒤 정확한 기한에 얼굴을 정리한다. 대기 호흡·시선·blink와 기존 상하 offset은 유지하며 몸의 강조를 반복 재생하지 않는다. preview/delivery는 기존 짧은 길이를 유지하고 중립 semantic 승격은 끄덕임을 다시 시작하지 않는다.
+현재 대기는 첫 gaze 6초, 이후 expressive 7~11초·normal 10~15초·quiet 14~20초(움직임 줄이기는 이후 간격×1.5)다. 작은 glance 뒤 정면으로 쉬고 슬롯별 tilt/weight shift는 없다. 자동 얼굴은 `slot % 16 === 8`, 손은 `slot % 16 === 0`으로 번갈아 제공한다. 아래 Source별 이전 빈도/장기 여운 수치는 당시 기록이다.
+
+현재 사용자 실사용 피드백(2026-11-03)이 이 절의 이전 12초 여운/긴 손 유지 정책을 대체한다. `ActingController.reactionDuration`은 기존 1.8~4.2초의 강조 예산이다. `reactionLifetime`은 감정 얼굴에만 2초를 더하며 중립 `acknowledge`는 1.8초 그대로다. body/head/gaze/approach는 강조의 release로 복귀하고 작은 정적 얼굴만 최대 .4 가중치로 남긴다. 여운의 추가 glance·sway·지연 wink와 neutral sway는 제거했다. 마지막 1초 fade와 정확한 clear, 작은 입 열림의 비음성 의미는 유지한다. preview/delivery의 강조 길이는 그대로다.
 
 `ExpressionMixer.transitionMany`에 특수 눈(`key3~6`)과 표시(`key2/7/13`)를 분리해 전달한다. 눈 아트는 강조 동안 한 종류만 소유하고 홍조·땀·눈물은 독립적으로 여운을 유지한다. 감정 자산을 주표정으로 보존한 채 shy의 홍조나 tease의 눈을 보조로 올리므로 부끄러움+웃음, 걱정+장난이 함께 보인다. 보조 자산에서 옷·소품·미확인 키는 제외하고 직접 매핑한 사용자 자산은 전체를 보존한다. 각 층은 240ms crossfade하며 구성 파라미터가 바뀌는 같은 이름의 표정도 연속으로 전환한다. 강도/움직임 줄이기 변경은 현재 여운에도 적용한다.
 
-paired 손은 진입/복귀 클립 시간을 전체 의미 반응 기한에서 빼 유지 시간을 정한다. 수명 안에 복귀를 마치며 다음 메시지 첫 글자의 scoped `cue.clear`, 정정·승인·취소·오류·새 요청에서 이전 표정/여운/손을 정리한다. 같은 손의 반복 억제는 유지한다. `LeanInput` 계수는 .35에서 .7로 바꾸되 호흡·고개 추적 속도·상하 offset은 바꾸지 않는다. 실제 비교 근거와 적용·복원은 [구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다.
+paired 손은 진입/복귀 클립 시간을 강조 예산에서 빼 유지 시간을 정한다. 얼굴 여운 전에 복귀를 마치며 다음 메시지 첫 글자의 scoped `cue.clear`, 정정·승인·취소·오류·새 요청에서 이전 표정/여운/손을 정리한다. 같은 손의 반복 억제는 유지한다. `LeanInput` 계수는 .35에서 .7로 바꾸되 호흡·고개 추적 속도·상하 offset은 바꾸지 않는다. 실제 비교 근거와 적용·복원은 [구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다.
 
-유지 얼굴은 순수 기쁨의 밝은 열린 눈과 웃음 뒤 닫힌 입의 미소로 분리한다. 유지 입 목표0을 공통 최소값이 덮지 않으며 neutral acknowledge의 작은 입 목표는 별도로 보존한다. 대기에서는 같은 불규칙 gaze 슬롯의 눈 먼저 이동→반대 방향 복귀와 측면 고개/지연 상체 목표를 분리한다. 새 시계·발화 운동·breath/rootY 증폭은 없다. 실제 MOC 캘리브레이션과 적용 근거는 위 검토 문서를 따른다.
+유지 얼굴은 기쁨의 작은 열린 미소와 웃음 뒤 닫힌 입의 미소로 구분하고, 장난도 여운에는 눈을 다시 연다. 중립 acknowledge의 추가 입 여운은 없다. 대기는 작은 gaze가 눈→고개→상체를 따라갔다 정면으로 돌아오며, 별도 측면 유지·counter-look·몸 무게 이동을 붙이지 않는다. 호흡/rootY와 사용자 자산 우선순위는 유지한다.
 
 현재 모델의 `PositionZ`는 physics를 통해 흉곽·허리를 기울인다. bodyZ는 고개를 같은 시계에서 지연 추적하며 actor 강도별±.3으로 제한하고, 접근성 설정 변경 시 현재 값도 즉시 줄인다. physics 출력이나 IDLE이 소유한 roll은 덮지 않는다. 직접 접촉도 같은 가중치로 몸통을 보간한다. 실제 모델·authored IDLE 대조 근거와 모델별 한계는 검토 문서를 따른다.
 

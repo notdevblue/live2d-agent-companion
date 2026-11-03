@@ -62,17 +62,21 @@ const LOWERED_SHOULDER = -0.9;
  * while the elbow straightens, then lands on the endpoint. Finish unfolding
  * before the shoulder recovers: the measured near-zero shoulder/partly bent
  * elbow combination otherwise sweeps the hand beyond the canvas late in return.
- * Indexes absent from either map are omitted. */
+ * A greeting may lower its shoulder earlier in the return; other owners
+ * retain the original path. Indexes absent from either map are omitted. */
 export function chestArmReturn(
   progress: number,
   from: ReadonlyMap<number, number>,
   to: ReadonlyMap<number, number>,
   shoulderIndex: number,
+  shoulderDetourBy = 1,
 ): Map<number, number> {
-  if (!Number.isFinite(progress)) return new Map();
+  if (!Number.isFinite(progress) || !(shoulderDetourBy > 0 && shoulderDetourBy <= 1))
+    return new Map();
   const u = smooth(clamp(progress));
   const unfolded = smooth(clamp(progress / 0.75));
-  const hump = 16 * u * u * (1 - u) * (1 - u);
+  const detour = smooth(clamp(progress / shoulderDetourBy));
+  const hump = 16 * detour * detour * (1 - detour) * (1 - detour);
   const values = new Map<number, number>();
   for (const [index, start] of from) {
     const end = to.get(index);

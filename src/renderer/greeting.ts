@@ -128,6 +128,10 @@ export function greetingValues(
       indices(greetingHold(heldAge, definition.enterMs, scale)),
       authored,
       shoulder,
+      // A brief greeting returns while the torso is already recentering.
+      // Lower the shoulder earlier while keeping the original elbow clock;
+      // the partly opened palm must stay close before the selector switches.
+      0.8,
     );
   }
   for (const id of raised.keys()) {

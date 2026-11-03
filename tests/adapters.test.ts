@@ -316,8 +316,8 @@ describe('TypeSafe Jev expression choices', () => {
         confidence: 0.92,
       });
       expect(actor.sample(1000, 1)).toMatchObject({ preset: emotion, emotion, active: true });
-      expect(actor.sample(7000, 1)).toMatchObject({ phase: 'afterglow', active: true });
-      expect(actor.sample(16200, 1)).toMatchObject({ active: false, mouthOpen: 0 });
+      expect(actor.sample(4800, 1)).toMatchObject({ phase: 'afterglow', active: true });
+      expect(actor.sample(6200, 1)).toMatchObject({ active: false, mouthOpen: 0 });
       expect(fetcher).toHaveBeenCalledOnce();
       director.invalidate();
     },
