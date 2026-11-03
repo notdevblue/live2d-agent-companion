@@ -636,3 +636,82 @@ export function samplePresetPose(preset: ActingPreset, t: number, variant = 0): 
   p.approach = p.lean;
   return p;
 }
+
+/** Independent shoulder/waist and rig-depth intent, on the existing response
+ * clock. Canvas approach is deliberately not part of the physical phrase. */
+export function sampleTorsoIntent(
+  reaction: Reaction | undefined,
+  clock: ReactionClock | undefined,
+): { x: number; z: number; lean?: number } | undefined {
+  if (!reaction || !clock || reaction.gesture !== 'none') return undefined;
+  const direction = reaction.variant ? -1 : 1;
+  const t = clock.performanceSeconds;
+  if (reaction.preset === 'angry') {
+    // Keep the averted stance. The same reluctant eye check briefly loosens
+    // the shoulders, which settle back after the listener has been checked.
+    const check = beat(clock.attitudeSeconds, 1.95, 0.25, 0.25, 0.65);
+    return {
+      x: direction * (-0.44 + 0.3 * check),
+      z: direction * (0.22 - 0.14 * check),
+      lean: -0.12 + 0.24 * check,
+    };
+  }
+  if (reaction.preset === 'confused') {
+    // Recoil with the first look; follow the recovery into an interested
+    // forward posture instead of keeping a backward lean while asking back.
+    const recoil = beat(t, 0.05, 0.2, 0.5, 0.75);
+    const curious = smooth((t - 0.85) / 0.9);
+    return {
+      x: direction * (-0.3 * recoil + 0.18 * curious),
+      z: direction * (0.16 * recoil - 0.2 * curious),
+      lean: -0.24 * recoil + 0.42 * curious,
+    };
+  }
+  if (reaction.preset === 'tease' && reaction.emotion === 'concerned') {
+    // The brow/mouth worry and delayed wink already use this recovery clock.
+    // Release the guarded posture into a small invitation to the listener.
+    const relief = smooth((clock.emotionSeconds - 1.2) / 1.0);
+    return {
+      x: direction * (-0.18 + 0.42 * relief),
+      z: direction * (-0.12 + 0.24 * relief),
+      lean: -0.1 + 0.55 * relief,
+    };
+  }
+  if (
+    reaction.preset === 'tease' &&
+    (reaction.emotion === 'neutral' || reaction.emotion === 'happy')
+  ) {
+    const invitation = beat(t, 0.25, 0.25, 0.45, 0.5);
+    // Both existing tease variants roll the head to the same side. The body
+    // counterbalances that roll rather than mirroring an unrelated variant.
+    return {
+      x: 0.14 + 0.12 * invitation,
+      z: 0.12 + 0.1 * invitation,
+      lean: 0.22 + 0.3 * invitation,
+    };
+  }
+  if (reaction.preset === 'concerned') {
+    const glance =
+      beat(clock.seconds, 5.1, 0.4, 0.65, 0.6) - beat(clock.seconds, 9.6, 0.4, 0.65, 0.6);
+    return {
+      x: -0.12 + 0.12 * glance,
+      z: -0.16 + 0.08 * glance,
+      lean: 0.28 + 0.1 * Math.abs(glance),
+    };
+  }
+  if (
+    reaction.preset === 'shy' ||
+    (reaction.preset === 'laugh' && reaction.emotion === 'embarrassed')
+  )
+    return { x: direction * 0.24, z: -direction * 0.28 };
+  if (reaction.preset === 'happy' && reaction.emotion === 'happy')
+    return { x: direction * 0.1, z: direction * 0.04 };
+  if (clock.chuckle) {
+    const { first, second } = clock.chuckle;
+    return {
+      x: direction * (-0.26 + 0.14 * first - 0.1 * second),
+      z: direction * (0.28 - 0.18 * first + 0.02 * second),
+    };
+  }
+  return undefined;
+}

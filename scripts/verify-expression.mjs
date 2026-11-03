@@ -16,7 +16,7 @@ const generated = join(output, 'build');
 await mkdir(generated, { recursive: true });
 await writeFile(join(output, 'results.json'), JSON.stringify({ passed: false, status: 'running' }));
 const shared = { bundle: true, logLevel: 'warning', absWorkingDir: root };
-for (const mode of ['before', 'after']) {
+for (const mode of ['before', 'after', 'owned-lean']) {
   await build({
     ...shared,
     entryPoints: ['scripts/fixtures/expression-renderer.ts'],

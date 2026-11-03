@@ -535,7 +535,9 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     expect(settled.headX).toBeGreaterThan(0.1);
     expect(settled.gazeX).toBeGreaterThan(emphasis.gazeX + 0.3);
     expect(settled.headZ).toBeGreaterThan(0.25);
-    expect(Math.abs(settled.lean)).toBeLessThan(Math.abs(emphasis.lean) * 0.5);
+    expect(settled.lean).toBeGreaterThan(0.15);
+    expect(settled.bodyZ).toBeLessThan(0);
+    expect(settled.approach).toBeLessThanOrEqual(0);
     expect(settled.eyeL).toBeCloseTo(0.74, 3);
     expect(settled.eyeR).toBeGreaterThan(0.95);
   });
@@ -1455,8 +1457,20 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
                 expect(frame.offsetY).toBe(baseline.offsetY);
                 expect(frame.breath).toBe(baseline.breath);
                 if (at === 8000) {
-                  expect(frame.bodyX).toBeCloseTo(direction * profile.x * scale, 6);
-                  expect(frame.bodyZ).toBeCloseTo(direction * profile.z * scale, 6);
+                  if (profile.preset === 'angry') {
+                    // The finite shoulder check leaves a small damped tail.
+                    // Bound it by the maximum excursion and time since 3.1s.
+                    const checkTail = Math.exp(-2.1 * (8 - 3.1));
+                    expect(Math.abs(frame.bodyX - direction * profile.x * scale)).toBeLessThan(
+                      (0.3 * checkTail + Math.exp(-2.1 * 8)) * scale,
+                    );
+                    expect(Math.abs(frame.bodyZ - direction * profile.z * scale)).toBeLessThan(
+                      (0.14 * checkTail + Math.exp(-2.1 * 8)) * scale,
+                    );
+                  } else {
+                    expect(frame.bodyX).toBeCloseTo(direction * profile.x * scale, 6);
+                    expect(frame.bodyZ).toBeCloseTo(direction * profile.z * scale, 6);
+                  }
                   expect(frame).toMatchObject({
                     active: true,
                     preset: profile.preset,
@@ -1485,6 +1499,79 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
           }
   });
 
+  it('releases a guarded worried posture into the existing playful recovery', () => {
+    const actor = new ActingController();
+    actor.cue({ emotion: 'concerned', attitude: 'tease', gesture: 'none' }, 0);
+    const worried = advance(actor, 700);
+    const playful = advance(actor, 3000, 60, 700);
+    expect(worried.lean).toBeLessThan(0);
+    expect(worried.bodyX).toBeLessThan(0);
+    expect(playful.lean).toBeGreaterThan(0.15);
+    expect(playful.bodyX).toBeGreaterThan(0);
+    expect(playful.lean).toBeGreaterThan(playful.approach! + 0.1);
+    expect(playful).toMatchObject({ gesture: 'none', preset: 'tease' });
+  });
+
+  it('supports a playful wink with a physical approach and counterbalanced shoulders', () => {
+    const actor = new ActingController();
+    actor.cue({ emotion: 'neutral', attitude: 'tease', gesture: 'none' }, 0);
+    const inviting = advance(actor, 1200);
+    expect(inviting.headZ).toBeLessThan(0);
+    expect(inviting.bodyZ).toBeGreaterThan(0);
+    expect(inviting.lean).toBeGreaterThan(inviting.approach!);
+    expect(inviting.gesture).toBe('none');
+  });
+
+  it.each([
+    { emotion: 'confused', attitude: 'neutral' },
+    { emotion: 'concerned', attitude: 'neutral' },
+    { emotion: 'neutral', attitude: 'tease' },
+    { emotion: 'concerned', attitude: 'tease' },
+  ] as const)(
+    'keeps $emotion/$attitude body phrasing bounded and consistent across frame rates',
+    (profile) => {
+      for (const intensity of ['quiet', 'normal', 'expressive'] as const)
+        for (const reducedMotion of [false, true])
+          for (const variant of [0, 1]) {
+            const scale =
+              { quiet: 0.35, normal: 0.65, expressive: 1 }[intensity] * (reducedMotion ? 0.18 : 1);
+            const cue = {
+              ...profile,
+              requestId: 'phrase',
+              messageId: 'm',
+              segmentId: 1,
+              gesture: 'none',
+            } as const;
+            const paths = [30, 60, 120].map((fps) => {
+              const actor = new ActingController();
+              actor.configure({ intensity, reducedMotion });
+              if (variant) {
+                actor.cue(cue, 0);
+                actor.reset(0);
+              }
+              actor.cue(cue, 0);
+              let from = 0;
+              return [700, 1500, 2500, 3200, 4000, 8000, 16200, 18200].map((at) => {
+                const frame = advance(actor, at, fps, from);
+                from = at;
+                expect(Math.abs(frame.bodyX)).toBeLessThanOrEqual(0.5 * scale + 1e-9);
+                expect(Math.abs(frame.bodyZ)).toBeLessThanOrEqual(0.3 * scale + 1e-9);
+                expect(Math.abs(frame.lean)).toBeLessThanOrEqual(scale + 1e-9);
+                expect(frame.approach).toBeDefined();
+                if (at >= reactionLifetime(frame.preset)) expect(frame.active).toBe(false);
+                return frame;
+              });
+            });
+            for (const path of paths.slice(1))
+              for (let i = 0; i < path.length; i++) {
+                for (const key of [...motionKeys, 'offsetY', 'breath', 'mouthOpen'] as const)
+                  expect(path[i]![key]).toBeCloseTo(paths[0]![i]![key], 7);
+                expect(path[i]!.approach!).toBeCloseTo(paths[0]![i]!.approach!, 7);
+              }
+          }
+    },
+  );
+
   it('preserves delayed head-following for explicit gestures and other emotional attitudes', () => {
     const gestures = ['wave', 'explain', 'thinking'] as const;
     const cues = [
@@ -1497,11 +1584,10 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
         gesture,
       })),
       ...([
-        { emotion: 'concerned', attitude: 'tease', gesture: 'none' },
         { emotion: 'concerned', attitude: 'laugh', gesture: 'none' },
-        { emotion: 'confused', attitude: 'neutral', gesture: 'none' },
         { emotion: 'sad', attitude: 'neutral', gesture: 'none' },
-        { emotion: 'happy', attitude: 'tease', gesture: 'none' },
+        { emotion: 'embarrassed', attitude: 'tease', gesture: 'none' },
+        { emotion: 'confused', attitude: 'explain', gesture: 'none' },
         { emotion: 'angry', attitude: 'explain', gesture: 'none' },
       ] as const),
     ];
@@ -1574,7 +1660,7 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
   });
 
   it('immediately clears independent torso poses on exact clear, reset, approval and error', () => {
-    for (const emotion of ['happy', 'angry', 'embarrassed'] as const)
+    for (const emotion of ['happy', 'angry', 'embarrassed', 'confused', 'concerned'] as const)
       for (const boundary of ['clear', 'reset', 'blocked', 'error'] as const) {
         const actor = new ActingController();
         const cue = {
@@ -1625,8 +1711,16 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
       });
       const held = advance(actor, 8000, fps, 1000);
       expect(held).toMatchObject({ variant: 1, active: true });
-      expect(held.bodyX).toBeCloseTo(0.44 * 0.65, 5);
-      expect(held.bodyZ).toBeCloseTo(-0.22 * 0.65, 5);
+      // This promotion starts a new 7s-old reaction. Its one shoulder check
+      // and the inherited opposite stance must decay within the same filter.
+      const checkTail = Math.exp(-2.1 * (7 - 3.1));
+      const inheritedTail = Math.exp(-2.1 * 7);
+      expect(Math.abs(held.bodyX - 0.44 * 0.65)).toBeLessThan(
+        (0.3 * checkTail + inheritedTail) * 0.65,
+      );
+      expect(Math.abs(held.bodyZ + 0.22 * 0.65)).toBeLessThan(
+        (0.14 * checkTail + 0.6 * inheritedTail) * 0.65,
+      );
       expect(actor.cue({ ...semantic, segmentId: 3 }, 8000)).toBe(false);
       expect(actor.sample(8000, 0)).toEqual(held);
       expect(advance(actor, 1000 + reactionLifetime('angry'), fps, 8000).active).toBe(false);
@@ -1875,11 +1969,15 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
               expect(checking[eye]).toBeGreaterThan(returned[eye] + 0.2 * scale);
               expect(returned[eye]).toBeCloseTo(before[eye], 5);
             }
-            // The eyes counter-look toward the listener; neither the head nor
-            // the shoulders follow them out of the turned-away posture.
+            // Eyes lead the check; shoulders loosen after them but stay on the
+            // averted side, while the head and frown retain their intent.
             expect(checking.gazeX * direction).toBeGreaterThan(0.24 * scale);
             expect(checking.headX * direction).toBeLessThan(-0.2 * scale);
             expect(checking.bodyX * direction).toBeLessThan(-0.16 * scale);
+            expect(checking.bodyX * direction).toBeGreaterThan(before.bodyX * direction);
+            const resettled = advance(actor, 4500, fps, 3100);
+            expect(resettled.bodyX * direction).toBeLessThan(checking.bodyX * direction);
+            expect(checking.approach).toBeLessThanOrEqual(0);
             for (const frame of [before, checking, returned]) {
               expect(frame).toMatchObject({
                 active: true,
@@ -1896,7 +1994,7 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
             }
             // After the finite check, the calibrated held face retains its
             // original bounded lifetime.
-            const held = advance(actor, 8000, fps, 3100);
+            const held = advance(actor, 8000, fps, 4500);
             expect(held.eyeL).toBeCloseTo(
               1 + (0.5 + (0.35 - 0.5) * intensityScale - 1) * (reducedMotion ? 0.18 : 1),
               6,

@@ -29,6 +29,16 @@ const leanScenes = [
   { name: 'lean-tease', attitude: 'tease', times: [1000] },
   { name: 'lean-sad', emotion: 'sad', times: [1000] },
 ];
+const ownedLeanScenes = [
+  { name: 'owned-confused', emotion: 'confused', intensity: 'expressive', times: [1000, 3000] },
+  {
+    name: 'owned-confused-reduced',
+    emotion: 'confused',
+    intensity: 'expressive',
+    reducedMotion: true,
+    times: [1000, 3000],
+  },
+];
 const scenes = [
   ...leanScenes,
   { name: 'posture-neutral', idle: true, postureProbe: { lean: 0, approach: 0 }, times: [3000] },
@@ -208,7 +218,7 @@ const scenes = [
     emotion: 'angry',
     times: [300, 1000, 2000, 2200, 2600, 3000, 3150, 8000, 16100, 16150, 16200],
   },
-  { name: 'confused', emotion: 'confused', times: [1000, 1200, 1250, 1600, 8000, 16200] },
+  { name: 'confused', emotion: 'confused', times: [1000, 1200, 1250, 1600, 3000, 8000, 16200] },
   ...['sad', 'concerned', 'angry', 'confused', 'reassure', 'wave'].map((preview) => ({
     name: `preview-${preview}`,
     preview,
@@ -351,6 +361,7 @@ void app.whenReady().then(async () => {
     networkRequests: [],
     before: {},
     after: {},
+    'owned-lean': {},
     assertions: [],
   };
   try {
@@ -378,11 +389,11 @@ void app.whenReady().then(async () => {
               );
         return net.fetch(pathToFileURL(file).href);
       }
-      if (url.host === 'ui' && /^\/(before|after)\.(html|js)$/.test(url.pathname))
+      if (url.host === 'ui' && /^\/(before|after|owned-lean)\.(html|js)$/.test(url.pathname))
         return net.fetch(pathToFileURL(join(build, url.pathname)).href);
       return new Response('', { status: 404 });
     });
-    for (const mode of ['before', 'after']) {
+    for (const mode of ['before', 'after', 'owned-lean']) {
       process.send?.({ kind: 'expression-progress', stage: 'renderer-setup', mode });
       window = new BrowserWindow({
         width: 360,
@@ -400,8 +411,14 @@ void app.whenReady().then(async () => {
       });
       await window.loadURL(`app://ui/${mode}.html`);
       const js = (source: string): Promise<any> => window!.webContents.executeJavaScript(source);
-      result.mappings = await js(`expressionAcceptance.setup(${JSON.stringify(inventory)})`);
-      for (const scene of mode === 'before' ? leanScenes : scenes) {
+      const mappings = await js(
+        `expressionAcceptance.setup(${JSON.stringify(inventory)},${mode === 'owned-lean'})`,
+      );
+      if (mode === 'owned-lean') result.ownedLeanSetup = mappings;
+      else result.mappings = mappings;
+      const selectedScenes =
+        mode === 'before' ? leanScenes : mode === 'owned-lean' ? ownedLeanScenes : scenes;
+      for (const scene of selectedScenes) {
         assert.ok(
           scene.times.every(
             (time, index) =>
@@ -534,6 +551,36 @@ void app.whenReady().then(async () => {
         sample('angry', 2600).values.ParamMouthOpenY === 0 &&
         sample('angry', 2600).values.Movement2 === 0 &&
         sample('angry', 3150).frame.gesture === 'none',
+    );
+    check(
+      'angry shoulders briefly loosen with the existing eye check and stay averted',
+      sample('angry', 2600).beforePhysics.PositionX >
+        sample('angry', 1000).beforePhysics.PositionX + 0.5 &&
+        sample('angry', 2600).beforePhysics.PositionX < 0 &&
+        sample('angry', 2600).beforePhysics.LeanInput <
+          sample('angry', 1000).beforePhysics.LeanInput &&
+        sample('angry', 2600).frame.approach <= 0,
+    );
+    check(
+      'confused recoil becomes curious rig posture independently of canvas approach',
+      sample('confused', 1000).beforePhysics.LeanInput > 0 &&
+        sample('confused', 3000).beforePhysics.LeanInput < -3 &&
+        sample('confused', 3000).beforePhysics.PositionZ < 0 &&
+        sample('confused', 3000).frame.approach <= 0,
+    );
+    check(
+      'worried teasing releases the guarded shoulders into a physical invitation',
+      sample('concerned-tease', 1000).beforePhysics.PositionX < 0 &&
+        sample('concerned-tease', 3000).beforePhysics.PositionX > 0 &&
+        sample('concerned-tease', 1000).beforePhysics.LeanInput > 0 &&
+        sample('concerned-tease', 3000).beforePhysics.LeanInput < -3,
+    );
+    check(
+      'playful wink has counterbalanced shoulders and real forward rig depth',
+      sample('lean-tease', 1000).beforePhysics.PositionZ > 0 &&
+        sample('lean-tease', 1000).beforePhysics.AngleZ < 0 &&
+        sample('lean-tease', 1000).beforePhysics.LeanInput < -3 &&
+        sample('lean-tease', 1000).frame.lean > sample('lean-tease', 1000).frame.approach,
     );
     check(
       'joy and laughter make one real forward body phrase and settle without a hand pose',
@@ -1099,6 +1146,17 @@ void app.whenReady().then(async () => {
       JSON.stringify(approachOnly.renderMatrix) !== JSON.stringify(postureNeutral.renderMatrix) &&
         Math.abs(approachOnly.beforePhysics.LeanInput) < 1e-6 &&
         Math.abs(approachOnly.renderMatrix[0] / postureNeutral.renderMatrix[0] - 1.125) < 1e-6,
+    );
+    check(
+      'authored idle owns rig depth during full and reduced emotional posture',
+      result.ownedLeanSetup.injectedLeanCurves === 1 &&
+        result.ownedLeanSetup.idleOwnsLean &&
+        !result.ownedLeanSetup.leanChannelAvailable &&
+        ownedLeanScenes.every((scene) =>
+          result['owned-lean'][scene.name].every(
+            (frame: any) => Math.abs(frame.beforePhysics.LeanInput - 5) < 1e-5,
+          ),
+        ),
     );
     check('no external requests', result.networkRequests.length === 0);
     result.passed = true;

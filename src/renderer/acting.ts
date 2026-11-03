@@ -23,6 +23,7 @@ import {
   amplifyPoseIntent,
   sampleReactionPose,
   samplePresetPose,
+  sampleTorsoIntent,
 } from './acting-phrases.js';
 export { type ActingPreset, reactionDuration, reactionLifetime } from './acting-phrases.js';
 
@@ -509,25 +510,7 @@ export class ActingController {
     );
     // Emotion can hold a distinct shoulder/waist attitude on the existing cue
     // envelope, while idle and explicit gestures retain delayed head following.
-    let torso: { x: number; z: number } | undefined;
-    if (reaction?.gesture === 'none') {
-      const direction = reaction.variant ? -1 : 1;
-      if (reaction.preset === 'angry') torso = { x: -direction * 0.44, z: direction * 0.22 };
-      else if (
-        reaction.preset === 'shy' ||
-        (reaction.preset === 'laugh' && reaction.emotion === 'embarrassed')
-      )
-        torso = { x: direction * 0.24, z: -direction * 0.28 };
-      else if (reaction.preset === 'happy' && reaction.emotion === 'happy')
-        torso = { x: direction * 0.1, z: direction * 0.04 };
-      else if (clock?.chuckle) {
-        const { first, second } = clock.chuckle;
-        torso = {
-          x: direction * (-0.26 + 0.14 * first - 0.1 * second),
-          z: direction * (0.28 - 0.18 * first + 0.02 * second),
-        };
-      }
-    }
+    const torso = sampleTorsoIntent(reaction, clock);
     const torsoWeight = torso ? Math.min(1, weight + maintenance.weight) : 0;
     const bodyX = this.pose.headX * 0.65 + idleWeightShift * scale;
     const bodyZ = this.pose.headZ * 0.7;
@@ -542,9 +525,13 @@ export class ActingController {
       clamp(bodyZ + ((torso?.z ?? 0) * scale - bodyZ) * torsoWeight, -0.3 * scale, 0.3 * scale),
       2.1,
     );
+    const legacyLean =
+      (blend(base.lean, target.lean) + maintenance.pose.lean * maintenance.weight) * scale;
     follow(
       'lean',
-      (blend(base.lean, target.lean) + maintenance.pose.lean * maintenance.weight) * scale,
+      torso?.lean === undefined
+        ? legacyLean
+        : legacyLean + (torso.lean * scale - legacyLean) * torsoWeight,
       2.5,
     );
     follow(

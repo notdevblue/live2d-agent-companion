@@ -126,10 +126,27 @@ const read = (): any => {
   };
 };
 const api = {
-  async setup(input: any) {
+  async setup(input: any, ownedLean = false) {
     inventory = input;
     defaultWave = inventory.gestureMap.wave;
     avatar = new Avatar(document.querySelector('canvas')!, inventory);
+    let injectedLeanCurves = 0;
+    if (ownedLean) {
+      const buffer = avatar.buffer.bind(avatar);
+      avatar.buffer = async (file: string) => {
+        const source = await buffer(file);
+        if (!/(^|\/)IDLE\.motion3\.json$/i.test(file)) return source;
+        const data = JSON.parse(new TextDecoder().decode(source));
+        if (data.Curves.some((curve: any) => curve.Id === 'LeanInput'))
+          throw Error('Ownership fixture must not replace an existing curve');
+        data.Curves.push({ Target: 'Parameter', Id: 'LeanInput', Segments: [0, 5, 0, 5.983, 5] });
+        data.Meta.CurveCount++;
+        data.Meta.TotalSegmentCount++;
+        data.Meta.TotalPointCount += 2;
+        injectedLeanCurves++;
+        return new TextEncoder().encode(JSON.stringify(data)).buffer;
+      };
+    }
     await avatar.load();
     const renderer = avatar.runtime.getRenderer();
     const drawModel = renderer.drawModel.bind(renderer);
@@ -146,7 +163,13 @@ const api = {
       };
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
-    return { expressions: inventory.expressionMap, gestures: inventory.gestureMap };
+    return {
+      expressions: inventory.expressionMap,
+      gestures: inventory.gestureMap,
+      injectedLeanCurves,
+      idleOwnsLean: avatar.idleParameters.has('LeanInput'),
+      leanChannelAvailable: !!avatar.channels.lean,
+    };
   },
   async run(scene: any) {
     avatar.reset();

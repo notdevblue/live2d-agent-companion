@@ -299,11 +299,12 @@ export class Avatar {
           this.idle = motion;
           this.idleParameters = this.motionInfo.get(name)!.parameters;
           motion.setLoop(true);
-          // Independent torso intent must not replace a model's authored idle.
+          // Independent torso/depth intent must not replace authored idle inputs.
           if (['PositionX', 'ParamBodyAngleX'].some((id) => this.idleParameters.has(id)))
             delete this.channels.bodyX;
           if (['PositionZ', 'ParamBodyAngleZ'].some((id) => this.idleParameters.has(id)))
             delete this.channels.bodyZ;
+          if (this.idleParameters.has('LeanInput')) delete this.channels.lean;
         }
       }
     for (const [enter, exit, parameter] of [
