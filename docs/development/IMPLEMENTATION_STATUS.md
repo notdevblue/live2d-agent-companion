@@ -42,7 +42,7 @@
 
 실제 Sway production renderer의 **11:58:55 KST** 검사에서 UI20종·8개 gesture-none 흐름·접촉/해제/승인/clear·renderer reload·대기 얼굴/손의 시작→종료와 설정 보존을 확인했다. 앱 provider prompt/Jev 판단0이며 물리 마우스·OS 재부팅/재로그인은 수행하지 않았다. 같은 기본 런처의 일반 앱으로 재실행하고 원래 설정 digest와 기본 진입점을 확인했다.
 
-영상은 ignored `artifacts/grok-review/grok-implementation-comparison.mp4`(왼쪽 변경 전/오른쪽 검토 반영)이며 결과 JSON·23개 동결 소스/커밋 일치 증거와 검사는 `.tmp/grok-implementation/`에 있다. 합성 cue·로컬 미리보기·자기 canvas 접촉의 무음 영상으로 실제 provider/IPC 대화 영상과 구분한다.
+영상은 ignored `artifacts/grok-review/grok-implementation-comparison.mp4`(왼쪽 변경 전/오른쪽 검토 반영)이며 결과 JSON·23개 동결 소스/커밋 일치 증거와 검사는 `.tmp/grok-implementation/`에 있다. 합성 cue·로컬 미리보기·자기 canvas 접촉의 무음 영상으로 실제 provider/IPC 대화 영상과 구분한다. 전송용 전체 영상은 `grok-implementation-light.mp4`(69초·약3.5MB), 요약은 `grok-implementation-highlights.mp4`(21초·약1MB)이며 같은 폴더에 있다. 두 파생본은 H.264 Main/yuv420p·fast-start 형식으로 저장하고 전체 decode를 확인했다. 실제 사용자 클라이언트의 재생 완료는 별도로 확인해야 한다.
 
 회차별 공유·점수 추이·PID·재시도 일지는 현재 문서에서 제거했고 별도 보관 문서를 만들지 않았다. 이전 내용은 Git 이력으로 확인한다. 검증 후 별도 작업 사본과 중복 영상·재생성 가능한 프레임/캐시는 제거하고 최종 영상·동결 소스·실제 모델 근거를 보존했다. 원본 모델·SDK·공식 참고자료·개인 설정도 보존한다. 중복 정리의 출력 보존 근거는 ignored `.tmp/cleanup-review/`에 있다. 새 구현의 조사·검사 근거는 ignored `.tmp/grok-implementation/`에 모으며, 과거 공유 기록을 새 문서로 쌓지 않는다.
 
