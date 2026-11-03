@@ -2,7 +2,7 @@
 
 **확인일:** 2026-11-03 · **기준 구현:** `7e89a97` · **범위:** 무음 캐릭터 연기
 
-캐릭터의 준비·강조·유지·복귀를 얼굴·시선·고개·상체가 함께 표현하도록 정리한다. 기존 감정·사용자 매핑·쓰다듬기·중단 경계는 유지한다. 아래 조사와 코드 관측은 메인이 직접 확인했으며, 새 연출의 채택은 실제 모델 비교를 거친다. 현재 Grok 종합 평가는74/100으로85점 종료 조건에는 미달이다. 점수·과거 후보·적용과 복원은 [Grok 검토](GROK_VTUBER_REVIEW.md), 기존5개 인계 항목은 [구현 인계](EMOTION_EXPRESSION_HANDOFF.md)를 따른다.
+캐릭터의 준비·강조·유지·복귀를 얼굴·시선·고개·상체가 함께 표현하도록 정리한다. 기존 감정·사용자 매핑·쓰다듬기·중단 경계는 유지한다. 아래 조사와 코드 관측은 메인이 직접 확인했으며, 새 연출의 채택은 실제 모델 비교를 거친다. 현재 Grok 종합 평가는72/100(Product21)으로85점 종료 조건에는 미달이다. 점수·과거 후보·적용과 복원은 [Grok 검토](GROK_VTUBER_REVIEW.md), 기존5개 인계 항목은 [구현 인계](EMOTION_EXPRESSION_HANDOFF.md)를 따른다.
 
 ## 지금까지 통합한 범위
 
@@ -85,7 +85,7 @@ Source 20 expressive 순수 웃음의 actor 관측에서는0.7초 headZ가.496,1
 
 메인이 normal/expressive·두 변주의 실제 MOC 대조를 직접 확인했다. 네 흐름16쌍384PNG와 순수 걱정4쌍96PNG, 총14,600개20Hz 체크포인트의509개 범위 오류0·외부 요청0이었다. 표본 MVP 차이0·예상 밖 upstream 변경0·선택한 visible 손 mesh의 새 좌우 잘림0이고 손 selector/포즈는 그대로다. 이는 표본 기하 검사이며 모든 중간 프레임의 손 기하나 실시간 FPS 검증은 아니다.192조합·변주·강도/접근성의1,066,752 actor 프레임은 대상 bodyX/Z/lean만 바뀌고 대상 밖·canvas 접근·clear 경계 차이0이었다.
 
-기본 경로의620개 unit/contract·typecheck·format·build·Mock, 실제 SDK89항목/325PNG를 통과했다. SDK에는 고정 원본 IDLE 숙임 입력의 full/reduced 소유권 검사도 포함된다.09:20:24 KST native에서 여덟 gesture-none 합성 흐름·UI20종·접촉/승인/clear/reload·대기 복귀를 확인하고 기본 런처 PID153076·설정 digest를 보존했다. 근거는 ignored `.tmp/response-phrases21/`와 `.tmp/response-concern21/`의 `proof.json`·actor/SDK/native 결과다. 새 비교 영상과 Grok 재검토는 기존69초/profile14/입력/.5초 표본 조건을 유지한다.
+기본 경로의620개 unit/contract·typecheck·format·build·Mock, 실제 SDK89항목/325PNG를 통과했다. SDK에는 고정 원본 IDLE 숙임 입력의 full/reduced 소유권 검사도 포함된다.09:20:24 KST native에서 여덟 gesture-none 합성 흐름·UI20종·접촉/승인/clear/reload·대기 복귀를 확인하고 기본 런처 PID153076·설정 digest를 보존했다. 근거는 ignored `.tmp/response-phrases21/`와 `.tmp/response-concern21/`의 `proof.json`·actor/SDK/native 결과다. 새 비교 영상과 Grok 재검토는 기존69초/profile14/입력/.5초 표본 조건을 유지했다.47페이지를 읽은 Product21은72/100이었다. 주관적 가독성 평가는 실제 몸 입력의 유무와 구분하며 [검토 결과](GROK_VTUBER_REVIEW.md#source-21의-직접-조사-반영)에 보존한다.
 
 최초 unit 검사는 이전의 ‘당황 후 작은 후퇴’와 정적인 화남 상체의8초 정확값 가정 세 곳에서 실패했다. 새 되묻기 의도를 검사하고, 짧은 어깨 확인의 잔차는 최대 변위·2.1/s 감쇠·확인 종료 뒤 경과 시간으로 상한을 검사한다. 기존 source를 수치에 맞춰 바꾸지 않았으며 첫 실패 로그와 최종 통과를 보존한다. 이는 새 연출 의도의 수락 갱신이며 이전 실패를 없애지 않는다.
 

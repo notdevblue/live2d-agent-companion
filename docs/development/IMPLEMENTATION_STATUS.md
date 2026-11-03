@@ -40,11 +40,11 @@
 
 620개 unit/contract·typecheck·format·build·Mock desktop, SDK89항목/325PNG를 통과했다. 실제 MOC20쌍480PNG/14,600 체크포인트의 범위 오류0·외부 요청0, 표본 MVP/대상 밖 upstream 변화0·새 좌우 손 잘림0을 확인했다. 모든 중간 기하나 실시간 FPS 검사는 아니다. 실제 Sway production renderer의 **09:20:24 KST** 검사에서8개 gesture-none 합성 흐름·UI20종·접촉/해제/승인/clear·renderer reload·대기 얼굴/손 복귀와 설정 보존을 확인했다. 뒤이어 일반 기본 런처 **PID153076**·기본 진입점/원래 설정 digest를 확인했다. provider/Jev 호출0이며 물리 마우스·OS 재부팅/재로그인 검증은 아니다.
 
-새69초 비교 영상은 저장 profile14·기존59초 입력+10초 무입력·20fps를 유지하고 왼쪽 Source20과 오른쪽 Source21을 비교한다. 69초·1120×900·20fps·1380 paired frame export/ffprobe/최종 QA를 마쳤다. 양측1500회 범위 검사 오류0·외부 요청0이며, 새47페이지 Grok 재검토가 진행 중이다. 최근 완료 점수는 아래의 Product20=74/100이다. 새 점수를 받기 전 종료 조건85점 달성을 주장하지 않는다. source freeze는23개 앱 파일이며 ignored `.tmp/grok-story-video21/source-21.json`, 상세 결과는 `.tmp/response-phrases21/`와 `.tmp/response-concern21/`에 있다.
+새69초 비교 영상은 저장 profile14·기존59초 입력+10초 무입력·20fps를 유지하고 왼쪽 Source20과 오른쪽 Source21을 비교한다. 69초·1120×900·20fps·1380 paired frame export/ffprobe/최종 QA를 마쳤다. 양측1500회 범위 검사 오류0·외부 요청0이며, 47페이지 완료 읽기·exit0/end_turn을 검증한 Product21은72/100이었다. 변경 의도를 미리 설명하던 문구를 제거했고 시각 범위/표본/평가 기준은 유지했지만 완전히 같은 프롬프트 반복은 아니다. 종료 조건85점에는 미달이다. source freeze는23개 앱 파일이며 ignored `.tmp/grok-story-video21/source-21.json`, 상세 결과는 `.tmp/response-phrases21/`와 `.tmp/response-concern21/`에 있다.
 
 ## Grok의 VTuber 시각 검토와 개선 (2026-11-03)
 
-최근 평가 영상의 코드 기준은 `7e89a97`(Source 20)이며 Product20은 **74/100**, 최고 Product17은80/100으로 종료 조건85점에 미달이다. 조사 원문·공식 링크 전달·채택/기각·모든 점수와 구성 차이는 [Grok 검토·반영](../ux/GROK_VTUBER_REVIEW.md)에 보존한다. 현재 소스에는 아래의 동작 보존 정리가 추가됐으며, 같은 영상의 재채점이나 점수 개선은 하지 않았다.
+최근 평가 영상의 코드 기준은 `b33dfda`(Source 21)이며 Product21은 **72/100**, 최고 Product17은80/100으로 종료 조건85점에 미달이다. 이전 Source20의74/100을 포함한 모든 완료 점수는 보존한다. 조사 원문·공식 링크 전달·채택/기각·모든 점수와 구성 차이는 [Grok 검토·반영](../ux/GROK_VTUBER_REVIEW.md)에 보존한다. 동작 보존 정리 자체는 재채점하지 않았고, 새 몸 연기를 반영한 Source21의 새 영상으로 평가했다.
 
 `FR-L2D-004/006/008~010`를 실제 기본 renderer에 통합했다. 감정별 유지 얼굴과 두 변주, 부끄러움/걱정→지연 웃음/wink, 혼란의 회피/젖힘→호기심 기울임, 화남의 측면 자세·음수 닫힌 입·실제 normal 눈 열림 .4025를 제공한다. 특수 눈은 짧은 강조 뒤 단일 그림의 표시 소유권으로 돌아오고 홍조/땀과 독립된다. 시선→고개→지연된 상체를 실제 rig로 보정했고 기쁨/웃음은 한 번 다가왔다 안정한다. 기존 lean 경로의 국소 zoom/anchor는 의도적으로 변하지만 ambient offsetY/호흡·OS 창 위치/저장 배율은 유지한다. 활성 의미 cue의 `gesture=none`에서 감정만으로 팔을 자동으로 올리지 않는다. 기존 불규칙 대기 슬롯의 고개→지연 상체 이동과 손 없는 순수 기쁨/웃음의1.85~3.7초 청자 확인 시선·비스듬한 유지 자세를 추가했다.
 
