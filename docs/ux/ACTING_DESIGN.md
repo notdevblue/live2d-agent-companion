@@ -1,6 +1,6 @@
 # 시각 연기 설계와 구현 정리
 
-**확인일:** 2026-11-03 · **연출 기준 구현:** `9ef4f66` · **최근 평가 대상:** `b33dfda` (Source21) · **범위:** 무음 캐릭터 연기
+**확인일:** 2026-11-03 · **연출 기준 구현:** `e1687b4` · **최근 평가 대상:** `b33dfda` (Source21) · **범위:** 무음 캐릭터 연기
 
 <a id="구조-정리-검증-2026-11-03"></a>
 
@@ -93,7 +93,15 @@ Cubism에서는 overwrite·add·multiply의 적용 순서가 결과를 바꾼다
 
 원본 가슴 손 복귀는 어깨가 거의0인 채 팔꿈치를 펴서 손이 옆으로 나갔다. 메인이 실제 MOC의 어깨/팔꿈치 입력42조합을 정적 대조해, 어깨를 내린 상태에서 팔꿈치를 펴면 손이 몸 가까이 내려오는 것을 확인했다. 직접 접촉과 local idle의 검증된 가슴 손에만 그 경로를 적용한다. 마지막에 그린 enter/hold 입력을 출발점으로 삼고, 팔꿈치의 복귀를 먼저 끝낸 뒤 어깨를 원래 endpoint로 돌린다. 양 끝 기울기와 원래 pose 시계·해제 기한을 유지하며 selector/조명은 원본 clip이 소유한다.
 
-일반 wave/explain·custom/빈 매핑·reverse-entry·physics 소유 입력은 기존 authored 경로를 따른다. none/clear/승인과 다음 pose에서 낡은 손 캐시를 재사용하지 않는다. 실제 검증과 적용·복원은 [구현 상태](../development/IMPLEMENTATION_STATUS.md), 조건은 [수락 기준](../specs/ACCEPTANCE_CRITERIA.md#grok-시각-연기-검토-fr-l2d-009)을 따른다.
+가슴 손 보정은 일반 wave/explain·custom/빈 매핑·reverse-entry·physics 소유 입력에 적용하지 않는다. 인사의 별도 조정은 아래 절을 따른다. none/clear/승인과 다음 pose에서 낡은 손 캐시를 재사용하지 않는다. 실제 검증과 적용·복원은 [구현 상태](../development/IMPLEMENTATION_STATUS.md), 조건은 [수락 기준](../specs/ACCEPTANCE_CRITERIA.md#grok-시각-연기-검토-fr-l2d-009)을 따른다.
+
+## 인사 조정
+
+기준은 사용자가 선택한 **이전 비교 영상의 오른쪽**, 즉 Grok 구현에 메인의 검토·보정을 더한 버전이다. 그 바탕을 유지하고 메인이 인사만 구현했다. Grok은 제공한 공식 원문의 자료 검토만 담당했다. 공식 가이드의 관성·감속·부위별 움직임 대비와 parameter 연산 순서를 근거로 삼되, 손목 중심의 두 번 인사와 관절 좌표는 이 모델의 실제 렌더로 정한 설계다. [모션 힌트](https://docs.live2d.com/cubism-editor-tutorials/motion-hint/), [파라미터 연산](https://docs.live2d.com/en/cubism-sdk-manual/parameters/)
+
+기존 인사는 팔을 옆으로 벌린 .5초 샘플에서 흔들다가 원본 복귀 중간값으로 합류해, 손이 옆으로 뻗는 경로가 남았다. 현재는 검증한 팔 복귀 경로를 역으로 사용해 손을 몸 가까이 올리고, 접힌 팔꿈치로 손바닥을 얼굴 옆에 둔다. 손목의 유한한 두 왕복이 끝나면 조용히 유지한다. 복귀는 실제 hold 시각의 손 자세에서 출발해 원본 exit endpoint로 향하므로 짧은 hold가 흔들기 도중 끝나도 연결된다.
+
+`greetingValues`가 인사 전체를 소유하고 기존 attention은 한 번만 합성한다. custom/다른 pair의 legacy 경로와 설명은 보존한다. 얼굴·눈·입·몸·호흡·canvas 접근·쓰다듬기/대기 손·구도는 이전 오른쪽 버전과 같다. 현재 수락·실행·영상은 [구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다.
 
 ## 중복 정리와 후속 이슈
 
