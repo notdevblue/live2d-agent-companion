@@ -1,8 +1,10 @@
 # 시각 연기 설계와 구현 정리
 
-**확인일:** 2026-11-03 · **기준 구현:** `7e89a97` · **범위:** 무음 캐릭터 연기
+**확인일:** 2026-11-03 · **연출 기준 구현:** `b33dfda` (Source21) · **범위:** 무음 캐릭터 연기
 
-캐릭터의 준비·강조·유지·복귀를 얼굴·시선·고개·상체가 함께 표현하도록 정리한다. 기존 감정·사용자 매핑·쓰다듬기·중단 경계는 유지한다. 아래 조사와 코드 관측은 메인이 직접 확인했으며, 새 연출의 채택은 실제 모델 비교를 거친다. 현재 Grok 종합 평가는72/100(Product21)으로85점 종료 조건에는 미달이다. 점수·과거 후보·적용과 복원은 [Grok 검토](GROK_VTUBER_REVIEW.md), 기존5개 인계 항목은 [구현 인계](EMOTION_EXPRESSION_HANDOFF.md)를 따른다.
+<a id="구조-정리-검증-2026-11-03"></a>
+
+캐릭터의 준비·강조·유지·복귀를 얼굴·시선·고개·상체가 함께 표현하도록 정리한다. 기존 감정·사용자 매핑·쓰다듬기·중단 경계는 유지한다. 아래 조사와 코드 관측은 메인이 직접 확인했으며, 새 연출의 채택은 실제 모델 비교를 거친다. 현재 Grok 종합 평가는72/100(Product21)으로85점 종료 조건에는 미달이다. 최근 검토는 [Grok 검토](GROK_VTUBER_REVIEW.md), 적용·복원은 [구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따르며, 기존5개 인계 항목은 [구현 인계](EMOTION_EXPRESSION_HANDOFF.md)를 따른다.
 
 ## 지금까지 통합한 범위
 
@@ -47,8 +49,6 @@ Cubism에서는 overwrite·add·multiply의 적용 순서가 결과를 바꾼다
 
 강조·얼굴 여운·몸 유지·입 복귀는 하나의 `reactionClock`에서 기존의 서로 다른 시간 예산을 계산한다. `residueWeight`의 최대값은 .4지만 몸 유지 가중치는1까지 올라간다. 두 값은 역할이 다르므로 하나의 여운 강도로 합치지 않는다.
 
-Source 20 expressive 순수 웃음의 actor 관측에서는0.7초 headZ가.496,1.7초−.030,4초.732였다.4초는 이미 `afterglow`이며 유지 자세가 다시 커진다. 이는 현재 코드의 관측값으로, 실제 화면이 부자연스럽다는 결론까지 입증하지 않는다. 강조와 유지의 관계를 명시적으로 검토해야 하는 근거다. 재현 자료는 ignored `.tmp/direct-research21/actor-phase-audit.mjs`와 JSON에 있다.
-
 [avatar.ts](../../src/renderer/avatar.ts)는 authored motion, actor, 독립 idle 손/얼굴, 직접 접촉, 표정 자산과 physics를 합성한다. 기존 소유권 차단은 재사용하고 새 감정마다 별도 overlay를 늘리지 않는다. preview와 semantic cue의 눈 강조 우선순위·수명도 한 정책에서 관리하되, 두 모드의 기존 차이를 보존한다.
 
 ### 합성 책임
@@ -67,7 +67,7 @@ Source 20 expressive 순수 웃음의 actor 관측에서는0.7초 headZ가.496,1
 
 `e8cfeb1`에서 `lean`은 rig 자세로 유지하고, `approach`는 canvas 접근으로 명시했다. 기존 프리셋과 접촉은 이전 의도를 두 채널에 동일하게 공급하므로 화면상 동작은 보존한다. 이전 형식의 내부 frame은 `approach`가 없으면 기존 `lean`으로 표시한다. 두 채널 모두 원래 강도/보간·clear를 따르며 움직임 줄이기에서는 기존처럼 canvas 접근을 끈다. 저장 구도·창 위치·배율의 새 설정이나 이관은 없다.
 
-기존 actor 필드1,066,752프레임/미리보기126,360프레임 차이0, 새 접근 값과 이전 lean의 일치,315개 접촉 대조를 확인했다. 실제 SDK에서는 고정 행렬에서 `LeanInput=-10.5`와 물리 자세 변화를 확인했고, 반대로 canvas1.125배 접근은 rig lean0을 유지했다. 메인이 두 실제 모델 이미지를 직접 확인했다.614개 unit/contract·typecheck·format·build·Mock와 SDK84항목/320PNG,09:02:50 KST native 및 기본 런처 재실행/원래 설정 보존을 확인했다. 근거는 ignored `.tmp/approach-separation/`의 수치·소스 동결·SDK·native·`normal-application.json`이다. 구조 분리만으로 같은 영상을 다시 채점하지 않는다.
+자세와 canvas 접근을 분리한 실제 모델 대조 근거는 ignored `.tmp/approach-separation/`에 있다. 최신 통합 검증은 [구현 상태](../development/IMPLEMENTATION_STATUS.md#감정별-물리-몸-연기-source-21--2026-11-03)를 따른다.
 
 ## 감정별 몸의 흐름 (Source 21)
 
@@ -83,27 +83,10 @@ Source 20 expressive 순수 웃음의 actor 관측에서는0.7초 headZ가.496,1
 
 몸의 X/Z 범위·추종 속도와 반응 수명/clear는 유지한다. 얼굴·고개·시선·입·호흡/rootY·canvas 접근은 같은 입력 대조에서 같다. 순수 기쁨·웃음·부끄러움과 명시적 제스처의 목표 계산은 보존하며, 연속 전환의 몸 보간은 이전 감정에서 출발한다. 원본 IDLE이 `LeanInput`을 소유하면 local 숙임을 생략한다.
 
-메인이 normal/expressive·두 변주의 실제 MOC 대조를 직접 확인했다. 네 흐름16쌍384PNG와 순수 걱정4쌍96PNG, 총14,600개20Hz 체크포인트의509개 범위 오류0·외부 요청0이었다. 표본 MVP 차이0·예상 밖 upstream 변경0·선택한 visible 손 mesh의 새 좌우 잘림0이고 손 selector/포즈는 그대로다. 이는 표본 기하 검사이며 모든 중간 프레임의 손 기하나 실시간 FPS 검증은 아니다.192조합·변주·강도/접근성의1,066,752 actor 프레임은 대상 bodyX/Z/lean만 바뀌고 대상 밖·canvas 접근·clear 경계 차이0이었다.
+현재 몸 흐름의 실제 모델·범위·소유권 검증은 [구현 상태](../development/IMPLEMENTATION_STATUS.md#감정별-물리-몸-연기-source-21--2026-11-03)에 모았다. 근거는 ignored `.tmp/response-phrases21/`와 `.tmp/response-concern21/`다. 표본 기하 검사는 모든 중간 프레임의 손 기하나 실시간 FPS 검증을 뜻하지 않는다.
 
-기본 경로의620개 unit/contract·typecheck·format·build·Mock, 실제 SDK89항목/325PNG를 통과했다. SDK에는 고정 원본 IDLE 숙임 입력의 full/reduced 소유권 검사도 포함된다.09:20:24 KST native에서 여덟 gesture-none 합성 흐름·UI20종·접촉/승인/clear/reload·대기 복귀를 확인하고 기본 런처 PID153076·설정 digest를 보존했다. 근거는 ignored `.tmp/response-phrases21/`와 `.tmp/response-concern21/`의 `proof.json`·actor/SDK/native 결과다. 새 비교 영상과 Grok 재검토는 기존69초/profile14/입력/.5초 표본 조건을 유지했다.47페이지를 읽은 Product21은72/100이었다. 주관적 가독성 평가는 실제 몸 입력의 유무와 구분하며 [검토 결과](GROK_VTUBER_REVIEW.md#source-21의-직접-조사-반영)에 보존한다.
+## 중복 정리와 후속 이슈
 
-최초 unit 검사는 이전의 ‘당황 후 작은 후퇴’와 정적인 화남 상체의8초 정확값 가정 세 곳에서 실패했다. 새 되묻기 의도를 검사하고, 짧은 어깨 확인의 잔차는 최대 변위·2.1/s 감쇠·확인 종료 뒤 경과 시간으로 상한을 검사한다. 기존 source를 수치에 맞춰 바꾸지 않았으며 첫 실패 로그와 최종 통과를 보존한다. 이는 새 연출 의도의 수락 갱신이며 이전 실패를 없애지 않는다.
+`461079a`에서 기존 `emotionFor`, preview/cue의 눈 강조 정책, 화남의 눈/어깨 확인과 유지 glance 계산을 공통화했다. 검증 없는 테스트 꼬리와 과거 계수 비교용 소스 변조 경로도 제거했다. 모드별 수명·우선순위·실제 출력은 보존했다. 현재 검증·캐시 정리·기본 앱 적용 결과는 [구현 상태](../development/IMPLEMENTATION_STATUS.md#현재-검증과-정리-범위)를 따른다. 회차별 공유/점수/PID 일지는 삭제하고 현재 설계와 근거만 유지한다.
 
-## 정리와 변경 순서
-
-1. 기존 동작을 바꾸지 않고 반응 시간과 중복 정책부터 정리한다.192조합·변주·강도·접근성·30/60/120fps·수명/clear를 기존 구현과 비교한다. 이 단계만으로 매력 개선을 주장하거나 같은 영상을 재채점하지 않는다.
-2. 정리한 시간 모델 위에서 감정별 준비·정점·안정·복귀를 정의한다. 큰 값 하나를 더하기 전에 시선의 대상, 몸의 의도, 감정이 바뀌는 시점을 설명할 수 있어야 한다.
-3. 실제 MOC에서 구도·매핑·입력을 고정해 전체 동작을 비교한다. 단일 정지 화면의 정점 차이만으로 채택하지 않는다. 보간과 physics가 남기는 복귀 잔차도 확인한다.
-4. 기본 실행 경로에 통합하고 unit·SDK·native 재실행·설정 보존과 결과 영상을 검증한 뒤 Grok의 독립 검토를 받는다.
-
-TTS·가짜 음소·전역 커서·새 자산·자동 authored 팔은 이 정리에 추가하지 않는다. ambient 호흡/rootY·창 위치·저장 배율과 기존12초 여운 상한도 유지한다.
-
-## 기존 산출물 관리
-
-생산 코드와 재현 가능한 검증 스크립트를 기준 경로로 삼는다. 회차별 렌더·소스 해시·완료 점수·실패 근거는 ignored 증거로 보존하고, 채택하지 않은 실험은 기본 코드에 합치지 않는다.20차 이후의 윙크/화남 보조 후보는 독립 조사·구조 정리를 마칠 때까지 보류한다. 재현용 원본·파생 프레임·재생성 가능한 캐시를 구분해 보관하며, 공개 저장소에는 모델·SDK·원시 세션을 넣지 않는다.
-
-## 구조 정리 검증 (2026-11-03)
-
-첫 단계는 `reactionClock`으로 시간 계산을 통합한 `81785dc`다. 두 번째 단계 `89493e8`은 상태 없는 계산을 `acting-phrases.ts`로 이동했다. 두 단계 모두 Source 20과 비교해192조합×두 변주×세 강도×움직임 줄이기 켜기/끄기의2304경로에서 semantic18초·delivery5초·clear/승인 경계의 **1,066,752개20Hz 프레임·30,794,880필드 차이0**이었다.20개 미리보기·강도/접근성·30/60/120fps의360경로,126,360프레임도 같았다.
-
-재현 근거는 ignored `.tmp/direct-research21/`의 `clock-equivalence.json`·`preview-equivalence.json`, 분리 후 `phrases-clock-equivalence.json`·`phrases-preview-equivalence.json`이다. 새 모듈을 포함한 입력 해시를 보존한다.613개 단위/계약 검사·typecheck·format·build·Mock desktop도 통과했다. 실제 SDK·기본 앱 재실행과 적용/복원은 [구현 상태](../development/IMPLEMENTATION_STATUS.md)에 기록한다. 이 검증은 동작 보존 근거이며 매력 개선이나 새 Grok 평가를 뜻하지 않는다.
+추가 연출과85점 달성을 위한 반복 개선·채점은 **PAUSED**다. 실제 값·정점 변화만으로 가독성 향상을 주장하지 않으며, 새 연출을 자동으로 재개하지 않는다.
