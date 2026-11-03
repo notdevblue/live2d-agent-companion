@@ -32,7 +32,7 @@
 
 후속 `e8cfeb1`은 모델 자세 `lean`과 canvas 접근 `approach`를 분리했다. 기존 필드/미리보기 궤적과 새 접근의 이전 lean 일치·315개 접촉 대조를 통과했다. 실제 SDK의 고정 MVP/rig 자세 및 독립 접근3장면을 추가해 **614개 unit/contract·SDK84항목/320PNG**가 통과했다. native도 **09:02:50 KST**에 같은 범위를 통과하고 기본 런처 **PID147945**·원래 설정 digest를 확인했다. 새 frame 필드가 있지만 기존 표시 동작은 보존하며 새 영상/채점은 하지 않았다. `.tmp/approach-separation/{clock,preview,contact}-equivalence.json`, `sdk-results.json`, `source.json`, `native-*.json`, `normal-application.json`이 근거다.
 
-적용은 `npm run build` 후 기본 런처 재실행이며 완료했다. 구조만 복원하려면 `e8cfeb1`→`89493e8`→`81785dc`를 순서대로 revert하고 같은 절차로 실행한다. 검사 도구의 진행 제한 변경은 `d7ecf54`로, 연출 복원과 구분한다. 개인 설정/서비스 변경은 없다.
+적용은 `npm run build` 후 기본 런처 재실행이며 완료했다. 현재 Source21에서의 정확한 복원 순서는 아래 [적용·복원](#적용복원)을 단일 기준으로 따른다. 검사 도구의 진행 제한 변경은 `d7ecf54`로, 연출 복원과 구분한다. 개인 설정/서비스 변경은 없다.
 
 ## 감정별 물리 몸 연기 (Source 21 · 2026-11-03)
 
