@@ -18,6 +18,7 @@ export interface Pose extends FaceFrame {
   bodyY: number;
   bodyZ: number;
   lean: number;
+  approach: number;
   gazeX: number;
   gazeY: number;
   blink: number;
@@ -72,6 +73,7 @@ export const neutral = (): Pose => ({
   bodyY: 0,
   bodyZ: 0,
   lean: 0,
+  approach: 0,
   gazeX: 0,
   gazeY: 0,
   blink: 1,
@@ -400,6 +402,7 @@ export function sampleMaintenancePose(
     pose.gazeY -= 0.16 * returning;
     pose.headZ += direction * 0.08 * glance;
   }
+  pose.approach = pose.lean;
   return { pose: amplifyPoseIntent(pose), weight };
 }
 
@@ -487,6 +490,7 @@ export function sampleReactionPose(reaction: Reaction, clock: ReactionClock, sca
     ] as const)
       target[key] += (shy[key] - target[key]) * aversion;
   }
+  target.approach = target.lean;
   return reaction.preset === 'acknowledge' ? target : amplifyPoseIntent(target);
 }
 
@@ -629,5 +633,6 @@ export function samplePresetPose(preset: ActingPreset, t: number, variant = 0): 
     p.headZ = Math.sin(t * 0.79) * 0.025;
     p.lean = Math.sin(t * 1.21) * 0.018;
   }
+  p.approach = p.lean;
   return p;
 }

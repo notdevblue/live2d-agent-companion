@@ -31,6 +31,9 @@ const leanScenes = [
 ];
 const scenes = [
   ...leanScenes,
+  { name: 'posture-neutral', idle: true, postureProbe: { lean: 0, approach: 0 }, times: [3000] },
+  { name: 'posture-forward', idle: true, postureProbe: { lean: 0.5, approach: 0 }, times: [3000] },
+  { name: 'approach-only', idle: true, postureProbe: { lean: 0, approach: 0.5 }, times: [3000] },
   { name: 'idle-life', idle: true, times: [2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000] },
   {
     name: 'idle-life-reduced',
@@ -1081,6 +1084,22 @@ void app.whenReady().then(async () => {
         images: [before.image, after.image],
       };
     });
+    const postureNeutral = sample('posture-neutral', 3000);
+    const postureForward = sample('posture-forward', 3000);
+    const approachOnly = sample('approach-only', 3000);
+    check(
+      'rig forward posture preserves canvas framing and reaches authored physics',
+      JSON.stringify(postureForward.renderMatrix) === JSON.stringify(postureNeutral.renderMatrix) &&
+        Math.abs(postureNeutral.beforePhysics.LeanInput) < 1e-6 &&
+        Math.abs(postureForward.beforePhysics.LeanInput + 10.5) < 1e-4 &&
+        postureForward.values.Param50 > postureNeutral.values.Param50 + 0.1,
+    );
+    check(
+      'canvas approach changes framing independently of rig posture',
+      JSON.stringify(approachOnly.renderMatrix) !== JSON.stringify(postureNeutral.renderMatrix) &&
+        Math.abs(approachOnly.beforePhysics.LeanInput) < 1e-6 &&
+        Math.abs(approachOnly.renderMatrix[0] / postureNeutral.renderMatrix[0] - 1.125) < 1e-6,
+    );
     check('no external requests', result.networkRequests.length === 0);
     result.passed = true;
     console.log(

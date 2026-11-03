@@ -1187,7 +1187,9 @@ export class Avatar {
       const blend = 1 - Math.exp(-6 * dt);
       this.framing.scale += (desired.scale - this.framing.scale) * blend;
       this.framing.y += (desired.y - this.framing.y) * blend;
-      const approach = this.presentation.reducedMotion ? 0 : Math.max(0, acting.lean) * 0.25;
+      const approach = this.presentation.reducedMotion
+        ? 0
+        : Math.max(0, acting.approach ?? acting.lean) * 0.25;
       const scale = this.framing.scale * (1 + approach);
       matrix.scale((this.canvas.height / this.canvas.width) * scale, scale);
       matrix.translateY(this.framing.y + acting.offsetY - (scale - this.framing.scale) * 0.7);

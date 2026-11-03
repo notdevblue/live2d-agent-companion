@@ -36,6 +36,7 @@ export function applyPetting(
   // Direct contact owns its intent while active; attenuate the independent
   // idle/cue direction instead of adding a competing displacement to it.
   const toward = (base: number, target: number): number => bounded(base + (target - base) * amount);
+  const approach = frame.approach ?? frame.lean;
   return {
     ...frame,
     smile: toward(frame.smile, Math.max(frame.smile, 0.85)),
@@ -47,9 +48,10 @@ export function applyPetting(
     headY: toward(frame.headY, y * 0.22),
     bodyX: toward(frame.bodyX, x * 0.3),
     bodyZ: toward(frame.bodyZ, 0.3),
-    // A finite affectionate approach uses the existing rig lean path and
-    // releases with this contact envelope, without changing the ambient breath.
+    // Contact blends rig posture and canvas approach independently, on the
+    // same finite envelope; authored posture cannot inflate canvas framing.
     lean: toward(frame.lean, Math.max(frame.lean, 0.18)),
+    approach: toward(approach, Math.max(approach, 0.18)),
     gazeX: toward(frame.gazeX, x * 0.95),
     gazeY: toward(frame.gazeY, y * 0.45 - 0.25),
   };

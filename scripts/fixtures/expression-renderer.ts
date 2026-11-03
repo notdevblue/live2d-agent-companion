@@ -165,6 +165,16 @@ const api = {
       pettingEnabled: !!(scene.petting || scene.pettingAvailable),
       reducedMotion: !!scene.reducedMotion,
     });
+    if (scene.postureProbe) {
+      const still = new ActingController().sample(0, 0);
+      avatar.actor.sample = () => ({
+        ...still,
+        lean: scene.postureProbe.lean,
+        approach: scene.postureProbe.approach,
+        offsetY: 0,
+        breath: 0.5,
+      });
+    }
     const cue = {
       requestId: scene.name,
       messageId: 'message',

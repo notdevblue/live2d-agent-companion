@@ -50,6 +50,19 @@ describe('explicit local petting — FR-L2D-008', () => {
     }
   });
 
+  it('blends direct contact posture without coupling independent canvas approach', () => {
+    const frame = { ...new ActingController().sample(0, 0), lean: 0.6, approach: 0.02 };
+    const partial = applyPetting(frame, 0.5);
+    expect(partial.lean).toBe(0.6);
+    expect(partial.approach).toBeCloseTo(0.1);
+    const approaching = { ...frame, lean: -0.4, approach: 0.5 };
+    const touched = applyPetting(approaching, 1);
+    expect(touched.lean).toBeCloseTo(0.18);
+    expect(touched.approach).toBe(0.5);
+    const legacy = { ...frame, approach: undefined };
+    expect(applyPetting(legacy, 1).approach).toBe(frame.lean);
+  });
+
   it('requires a stroke rather than a stationary click and rejects pointer jumps', () => {
     const pet = new PettingController();
     pet.stroke(50, 0);

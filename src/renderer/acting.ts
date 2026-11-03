@@ -42,6 +42,8 @@ export interface ActingFrame extends FaceFrame {
   bodyY: number;
   bodyZ: number;
   lean: number;
+  /** Canvas framing approach, separate from rig posture; legacy frames may omit it. */
+  approach?: number;
   gazeX: number;
   gazeY: number;
   blink: number;
@@ -113,6 +115,7 @@ export class ActingController {
       'bodyY',
       'bodyZ',
       'lean',
+      'approach',
       'gazeX',
       'gazeY',
     ] as const) {
@@ -542,6 +545,12 @@ export class ActingController {
     follow(
       'lean',
       (blend(base.lean, target.lean) + maintenance.pose.lean * maintenance.weight) * scale,
+      2.5,
+    );
+    follow(
+      'approach',
+      (blend(base.approach, target.approach) + maintenance.pose.approach * maintenance.weight) *
+        scale,
       2.5,
     );
     // Accent and held emotion are separate targets. The existing release clock
