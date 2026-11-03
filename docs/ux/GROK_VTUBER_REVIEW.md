@@ -228,7 +228,7 @@ Source 17/18 별도 영상 실행의 “눈인사 외 모든 JPEG 픽셀이 동�
 
 Source 17의 초기 SDK 실행은 기존 `ParamAngleY<-12`와 재접촉 변화+5°의 깊은 숙임 수락 조건에서 실패했다(exit1). 당시 실제1000ms−7.34466°→3000ms−3.58427°는 의도한 얕은 숙임/재접촉이었으며, production 값은 바꾸지 않고 기준을−12°<초기<−4°·재접촉+2°로 갱신했다. 닫힌 입/손 없음과 새 걱정→장난 얼굴 검사도 유지했다. 실패 JSON `.tmp/grok-vtuber-review/round-17-sdk-old-deep-bow-assertion.json`·`round-17-sdk.log`와 최종71개 통과의 `round-17-sdk-verified.log`를 모두 보존한다. 실패/재검사에서 실제 값도 같아 수락 의도 변경과 production 수정을 혼동하지 않는다.
 
-적용은 현재 checkout에서 `npm run build` 후 앱 종료·기본 `~/.local/bin/live2d-companion` 재실행이다. 별도 시험용 런처나 서비스는 만들지 않았다. Source 20의 두 박자 웃음만 복원하려면 `7e89a97`을 revert한 뒤 build·같은 런처로 재실행한다. Source 19의 독립 상체 자세와 X 소유권 보호까지 복원하려면 이어서 `5f31a2f`를 revert한다. Source 18의 독립 눈인사까지 복원하려면 이어서 `bda756d`를 revert한다. Source 17의 기쁨/걱정 조정까지 복원하려면 이어서 `3953383`을 revert한다. Source 16의 눈/얼굴 연결까지 복원하려면 이어서 `6be797e`를 revert한다. Source 15의 독립 idle까지 복원하려면 이어서 `5f33da8`을 revert한다. 이전 몸통/손 복귀 보강까지 복원할 때는 이어서 `4771977`→`22a2f2d`를 순서대로 revert한다. 전체 Grok 개선을 복원할 때는 코드 커밋 `7e89a97`→`5f31a2f`→`bda756d`→`3953383`→`6be797e`→`5f33da8`→`4771977`→`22a2f2d`→`15c37eb`→`b2f1401`→`7e7e0b2`→`3a0fef4`→`9754202`→`28a9420`→`bdce55e`→`116e1b9`를 이 순서로 revert하며(최신→과거) 복원 버전의 문서도 맞춘다. 개인 연결/매핑·위치/배율의 설정 이관은 없다. 초기 감정 추가 이전으로 더 되돌리는 절차는 [구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다. SDK·모델·영상/프레임·개인 설정·Grok 원문 세션은 공개 Git에 넣지 않는다.
+적용은 현재 checkout에서 `npm run build` 후 앱 종료·기본 `~/.local/bin/live2d-companion` 재실행이다. 별도 시험용 런처나 서비스는 없다. 구조 정리와 스타일 커밋의 복원 순서·설정 호환성은 [구현 상태의 적용·복원](../development/IMPLEMENTATION_STATUS.md#적용복원)을 단일 기준으로 따른다. 파일 이동 전의 스타일 커밋을 revert할 때는 문서에 적힌 구조 정리 복원부터 수행한다. SDK·모델·영상/프레임·개인 설정·Grok 원문 세션은 공개 Git에 넣지 않는다.
 
 ## 근거 자료와 한계
 
