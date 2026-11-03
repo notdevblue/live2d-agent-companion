@@ -1105,15 +1105,24 @@ export class Avatar {
       this.updateIdleGesture(now, acting, pose);
       acting = this.idleGestureFrame(acting, pose);
       acting = this.idleAttentionFrame(acting, now);
-      if (!this.petPose && acting.gesture === 'wave' && !this.presentation.reducedMotion)
-        for (const [index, value] of greetingValues(
+      let greetingOwned = false;
+      if (
+        !this.petPose &&
+        acting.gesture === 'wave' &&
+        !this.presentation.reducedMotion &&
+        this.chestPoseDefinition()
+      ) {
+        const greeting = greetingValues(
           pose,
           this.ranges,
           this.physicsOutputs,
           (index) => this.model.getParameterValueByIndex(index),
           { quiet: 0.35, normal: 0.65, expressive: 1 }[this.presentation.intensity],
-        ))
-          this.write(index, value);
+          pose.definition ? this.motionInfo.get(pose.definition.exit)?.held : undefined,
+        );
+        greetingOwned = greeting.size > 0;
+        for (const [index, value] of greeting) this.write(index, value);
+      }
       if (
         !this.petPose &&
         (acting.gesture === 'wave' || acting.gesture === 'explain') &&
@@ -1125,6 +1134,7 @@ export class Avatar {
           this.physicsOutputs,
           (index) => this.model.getParameterValueByIndex(index),
           { quiet: 0.35, normal: 0.65, expressive: 1 }[this.presentation.intensity],
+          greetingOwned,
         ))
           this.write(index, value);
       this.applyChestReturn(pose);

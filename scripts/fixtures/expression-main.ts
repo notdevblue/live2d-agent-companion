@@ -189,7 +189,7 @@ const scenes = [
   {
     name: 'wave',
     gesture: 'wave',
-    times: [500, 700, 1050, 1400, 2000, 5500, 8000, 10000, 15000, 16200],
+    times: [500, 700, 1050, 1283, 1583, 1883, 2183, 2500, 5500, 8000, 10000, 15000, 16200],
   },
   {
     name: 'saved-happy',
@@ -915,15 +915,18 @@ void app.whenReady().then(async () => {
       if (scene === 'wave') {
         check(
           'greeting holds an open palm instead of the authored chest endpoint',
-          held.values.Param60 > 0.4 &&
-            held.values.Param60 < 0.65 &&
+          held.values.Param60 > 0.65 &&
+            held.values.Param60 < 0.8 &&
             held.values.Param61 > 0.08 &&
-            held.values.Param62 < -0.05,
+            held.values.Param62 < -0.4,
         );
         check(
-          'greeting sweeps actual upstream joints before resting',
-          Math.abs(sample('wave', 700).values.Param61 - sample('wave', 1050).values.Param61) >
-            0.05 && Math.abs(sample('wave', 1400).values.Param61 - held.values.Param61) > 0.03,
+          'greeting has two finite wrist sweeps with a folded elbow before resting',
+          sample('wave', 1283).values.Param61 > held.values.Param61 + 0.04 &&
+            sample('wave', 1583).values.Param61 < held.values.Param61 - 0.04 &&
+            sample('wave', 1883).values.Param61 > held.values.Param61 + 0.03 &&
+            sample('wave', 2183).values.Param61 < held.values.Param61 - 0.015 &&
+            Math.abs(sample('wave', 2500).values.Param61 - held.values.Param61) < 0.001,
         );
       } else
         check(
