@@ -607,6 +607,67 @@ describe('owned direct-petting chest pose — FR-L2D-008', () => {
     };
     return { avatar, runtime, stroke, render, definition };
   }
+  it('returns from the last painted chest hand and discards it before another pose cycle', () => {
+    const { avatar, runtime, definition } = touchSetup();
+    const paint = avatar as unknown as {
+      petPose: boolean;
+      chestHold?: Map<number, number>;
+      rememberChestHand: (pose: PoseFrame) => void;
+      applyChestReturn: (pose: PoseFrame) => void;
+    };
+    const values = new Map(endpoints.map((row, index) => [index, row[1] as number]));
+    const write = vi.fn((index: number, value: number) => values.set(index, value));
+    Object.assign(runtime.model, {
+      getParameterValueByIndex: (index: number) => values.get(index) ?? 0,
+      setParameterValueByIndex: write,
+    });
+    paint.petPose = true;
+    paint.rememberChestHand({ phase: 'hold', definition, timeMs: 200 });
+    // The exit clip's first inputs differ from the frame that was visible.
+    for (const [id, value] of [
+      ['Param62', 0.03],
+      ['Param59', 0.48],
+      ['Param61', 0],
+    ] as const)
+      values.set(runtime.indexes.get(id)!, value);
+    paint.applyChestReturn({ phase: 'exit', definition, timeMs: 0 });
+    for (const [id, held] of endpoints.slice(3))
+      expect(values.get(runtime.indexes.get(id)!)).toBeCloseTo(held, 8);
+    paint.applyChestReturn({ phase: 'exit', definition, timeMs: definition.exitMs / 2 });
+    expect(values.get(runtime.indexes.get('Param62')!)).toBeCloseTo(-0.9, 8);
+    expect(values.get(runtime.indexes.get('Param60')!)!).toBeGreaterThan(0);
+    expect(values.get(runtime.indexes.get('Param60')!)!).toBeLessThan(0.3);
+    paint.applyChestReturn({ phase: 'none' });
+    expect(paint.chestHold).toBeUndefined();
+    write.mockClear();
+    // A skipped entry/hold must not replay the previous cycle's chest hand.
+    paint.applyChestReturn({ phase: 'exit', definition, timeMs: 100 });
+    expect(write).not.toHaveBeenCalled();
+  });
+  it('leaves ordinary gestures, reversed entries and physics-owned chest inputs authored', () => {
+    for (const boundary of ['ordinary-gesture', 'reverse-entry', 'physics-output'] as const) {
+      const { avatar, runtime, definition } = touchSetup();
+      const paint = avatar as unknown as {
+        petPose: boolean;
+        rememberChestHand: (pose: PoseFrame) => void;
+        applyChestReturn: (pose: PoseFrame) => void;
+      };
+      Object.assign(runtime.model, {
+        getParameterValueByIndex: (index: number) => endpoints[index]?.[1] ?? 0,
+      });
+      paint.petPose = true;
+      paint.rememberChestHand({ phase: 'hold', definition, timeMs: 200 });
+      if (boundary === 'ordinary-gesture') paint.petPose = false;
+      if (boundary === 'physics-output') runtime.physicsOutputs.add('Param62');
+      paint.applyChestReturn({
+        phase: 'exit',
+        definition,
+        timeMs: 500,
+        ...(boundary === 'reverse-entry' ? { reverseEntry: true } : {}),
+      });
+      expect(runtime.model.setParameterValueByIndex).not.toHaveBeenCalled();
+    }
+  });
   it('starts only after real local travel and samples authored entry, hold and paired exit without consuming semantic cooldown', () => {
     const { avatar, runtime, stroke, render, definition } = touchSetup();
     avatar.cue({ ...cue, gesture: 'none' });

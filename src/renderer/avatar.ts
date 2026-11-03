@@ -37,6 +37,7 @@ import {
   angryExpression,
   facialValues,
   motionEndpoints,
+  chestArmReturn,
   PoseSequence,
   type ActingChannel,
   type ExpressionParameter,
@@ -141,6 +142,10 @@ export class Avatar {
   private petPoseRendered?: PoseFrame;
   private petPoseReturnDeadline?: number;
   private petMotionEntry?: unknown;
+  /** Last enter/hold paint of a pet or idle chest hand, before the exit clip. */
+  private chestHold?: Map<number, number>;
+  private chestReturnFrom?: Map<number, number>;
+  private chestReturnMark = -1;
   private localIdleGesture = false;
   private idleFaceSlot?: number;
   private idleGazeSlot = 0;
@@ -594,6 +599,9 @@ export class Avatar {
     this.petPoseRendered = undefined;
     this.petPoseReturnDeadline = undefined;
     this.petMotionEntry = undefined;
+    this.chestHold = undefined;
+    this.chestReturnFrom = undefined;
+    this.chestReturnMark = -1;
     this.stateGesture = false;
     this.poses.clear();
     this.gestureManager.stopAllMotions();
@@ -879,6 +887,77 @@ export class Avatar {
     }
     return definition;
   }
+  /** Pet and idle chest returns only. Wave, explain, reverse entry, and custom
+   * mappings keep the authored clip. Movement2 and the lights stay on that clip. */
+  private applyChestReturn(pose: PoseFrame): void {
+    const definition = pose.definition;
+    const owned = this.petPose || this.localIdleGesture;
+    const canonical = owned ? this.chestPoseDefinition() : undefined;
+    const forward =
+      owned &&
+      pose.phase === 'exit' &&
+      !pose.reverseEntry &&
+      !!definition &&
+      canonical?.enter === definition.enter &&
+      Number.isFinite(pose.timeMs) &&
+      definition.exitMs > 0;
+    if (!forward || !definition) {
+      this.chestHold = undefined;
+      this.chestReturnFrom = undefined;
+      this.chestReturnMark = -1;
+      return;
+    }
+    const timeMs = pose.timeMs ?? 0;
+    if (this.chestReturnFrom && timeMs < this.chestReturnMark) {
+      this.chestReturnFrom = undefined;
+      this.chestReturnMark = -1;
+    }
+    if (!this.chestReturnFrom) {
+      if (!this.chestHold?.size) return;
+      this.chestReturnFrom = new Map(this.chestHold);
+    }
+    this.chestReturnMark = timeMs;
+    const held = this.motionInfo.get(definition.exit)?.held;
+    if (!held) return;
+    const to = new Map<number, number>();
+    let shoulder = -1;
+    for (const id of ['Param62', 'Param59', 'Param60', 'Param61'] as const) {
+      if (this.physicsOutputs.has(id)) continue;
+      const index = this.indexes.get(id);
+      const value = held.get(id);
+      if (index === undefined || value === undefined || !Number.isFinite(value)) continue;
+      to.set(index, value);
+      if (id === 'Param62') shoulder = index;
+    }
+    if (shoulder < 0) return;
+    for (const [index, value] of chestArmReturn(
+      timeMs / definition.exitMs,
+      this.chestReturnFrom,
+      to,
+      shoulder,
+    ))
+      this.write(index, value);
+  }
+  /** Store the hand actually painted during enter/hold, before an exit clip replaces it. */
+  private rememberChestHand(pose: PoseFrame): void {
+    if (!(this.petPose || this.localIdleGesture)) return;
+    const definition = pose.definition;
+    if (
+      !definition ||
+      (pose.phase !== 'enter' && pose.phase !== 'hold') ||
+      this.chestPoseDefinition()?.enter !== definition.enter
+    )
+      return;
+    const painted = new Map<number, number>();
+    for (const id of ['Param62', 'Param59', 'Param60', 'Param61'] as const) {
+      if (this.physicsOutputs.has(id)) continue;
+      const index = this.indexes.get(id);
+      if (index === undefined) continue;
+      const value = this.model.getParameterValueByIndex(index);
+      if (Number.isFinite(value)) painted.set(index, value);
+    }
+    if (painted.size) this.chestHold = painted;
+  }
   private startPettingPose(now: number): void {
     const timing = this.petting.timing();
     if (
@@ -1048,6 +1127,8 @@ export class Avatar {
           { quiet: 0.35, normal: 0.65, expressive: 1 }[this.presentation.intensity],
         ))
           this.write(index, value);
+      this.applyChestReturn(pose);
+      this.rememberChestHand(pose);
       const petWeight =
         this.petting.sample(now) *
         { quiet: 0.35, normal: 0.65, expressive: 1 }[this.presentation.intensity] *

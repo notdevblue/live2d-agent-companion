@@ -489,7 +489,9 @@ void app.whenReady().then(async () => {
     check(
       'happy laugh closes eyes without key5',
       sample('happy-laugh', 1000).values.key5 === 0 &&
-        sample('happy-laugh', 1000).values.ParamEyeLOpen < 0.5,
+        sample('happy-laugh', 1000).values.ParamEyeLOpen < 0.5 &&
+        sample('happy-laugh', 1000).values.ParamMouthOpenY >
+          sample('happy', 1000).values.ParamMouthOpenY + 0.1,
     );
     check(
       'blush and procedural laugh overlap',
@@ -518,7 +520,9 @@ void app.whenReady().then(async () => {
     check(
       'saved key5 mapping wins',
       sample('saved-happy', 700).values.key5 > 0.5 &&
-        sample('saved-happy', 700).values.EyeSmile === 0,
+        sample('saved-happy', 700).values.EyeSmile === 0 &&
+        sample('saved-happy', 700).values.ParamMouthOpenY >
+          sample('saved-joy', 700).values.ParamMouthOpenY * 2,
     );
     check(
       'saved laugh eye artwork releases without changing the saved mapping',
@@ -608,7 +612,12 @@ void app.whenReady().then(async () => {
       'worried teasing keeps an initial concern face before a delayed unilateral wink',
       sample('concerned-tease', 700).values.ParamEyeLOpen > 0.4 &&
         sample('concerned-tease', 700).values.ParamEyeROpen > 0.4 &&
-        sample('concerned-tease', 1000).values.ParamMouthForm < -0.6 &&
+        sample('concerned-tease', 1000).values.ParamMouthForm < -0.9 &&
+        sample('concerned-tease', 1000).values.ParamBrowLY < 0 &&
+        sample('concerned-tease', 1000).frame.browY < -0.2 &&
+        sample('concerned-tease', 3000).values.ParamBrowLY >
+          sample('concerned-tease', 1000).values.ParamBrowLY + 0.2 &&
+        sample('concerned-tease', 1000).values.ParamEyeLOpen > 0.4 &&
         sample('concerned-tease', 2000).values.ParamEyeLOpen < 0.2 &&
         sample('concerned-tease', 2000).values.ParamEyeROpen > 0.5,
     );
@@ -1018,8 +1027,28 @@ void app.whenReady().then(async () => {
       'stationary petting returns the hand by the original nine-hundred-millisecond deadline',
       sample('petting-stationary-hand', 1500).petting.poseOwned &&
         sample('petting-stationary-hand', 1650).pose.phase === 'exit' &&
+        sample('petting-stationary-hand', 1900).pose.phase === 'exit' &&
         handRest('petting-stationary-hand', 2400) &&
-        sample('petting-stationary-hand', 2400).petting.weight === 0,
+        sample('petting-stationary-hand', 2400).petting.weight === 0 &&
+        ['Param62', 'Param59', 'Param60', 'Param61'].every(
+          (id) =>
+            Math.abs(
+              sample('petting-stationary-hand', 1650).values[id] -
+                sample('petting-stationary-hand', 1500).values[id],
+            ) < 0.001 &&
+            sample('petting-stationary-hand', 1900).values[id] >= -1 &&
+            sample('petting-stationary-hand', 1900).values[id] <= 1,
+        ) &&
+        sample('petting-stationary-hand', 1900).values.Param62 < -0.35 &&
+        sample('petting-stationary-hand', 1900).values.Param60 > 0.4 &&
+        sample('petting-stationary-hand', 1900).values.Param60 <
+          sample('petting-stationary-hand', 1650).values.Param60 &&
+        Math.abs(
+          sample('petting-stationary-hand', 1900).values.Param61 -
+            sample('petting-stationary-hand', 1650).values.Param61,
+        ) < 0.05 &&
+        sample('petting-stationary-hand', 1650).values.Movement2 > 0.9 &&
+        sample('petting-stationary-hand', 1500).values.Movement2 > 0.9,
     );
     check(
       'continuous petting completes the authored return inside the original twelve-second cap',

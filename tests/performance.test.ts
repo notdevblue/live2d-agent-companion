@@ -9,6 +9,7 @@ import {
   type FaceFrame,
   surprisedExpression,
   motionEndpoints,
+  chestArmReturn,
   PoseSequence,
 } from '../src/renderer/performance.js';
 
@@ -580,5 +581,54 @@ describe('direct-input authored return budget', () => {
     poses.start({ ...definition, enter: 'other' }, 1500);
     expect(poses.sample(1500)).toMatchObject({ phase: 'enter', timeMs: 0 });
     expect(poses.sample(1500).reverseEntry).toBeUndefined();
+  });
+  it('lowers the shoulder while the elbow straightens, then hits the authored endpoints', () => {
+    const from = new Map([
+      [62, 0.034],
+      [59, 0.476],
+      [60, 0.86],
+      [61, 0.002],
+      [2, 1],
+    ]);
+    const to = new Map([
+      [62, -0.001],
+      [59, -0.001],
+      [60, 0],
+      [61, 0.001],
+      [56, 1],
+    ]);
+    const at = (progress: number) => chestArmReturn(progress, from, to, 62);
+    const start = at(0);
+    const early = at(0.02);
+    const quarter = at(0.25);
+    const mid = at(0.5);
+    const end = at(1);
+    expect(start.get(62)).toBeCloseTo(0.034, 6);
+    expect(start.get(60)).toBeCloseTo(0.86, 6);
+    expect(start.get(61)).toBeCloseTo(0.002, 6);
+    expect(end.get(62)).toBeCloseTo(-0.001, 6);
+    expect(end.get(60)).toBeCloseTo(0, 6);
+    expect(end.get(59)).toBeCloseTo(-0.001, 6);
+    expect(Math.abs((early.get(60) ?? 0) - 0.86)).toBeLessThan(0.86 * 0.02 * 0.25);
+    expect(quarter.get(60)!).toBeGreaterThan(0.6);
+    expect(quarter.get(60)!).toBeLessThan(0.86);
+    expect(quarter.get(62)!).toBeLessThan(-0.15);
+    expect(mid.get(60)!).toBeGreaterThan(0);
+    expect(mid.get(60)!).toBeLessThan(0.3);
+    expect(mid.get(62)).toBeCloseTo(-0.9, 6);
+    expect(mid.get(62)!).toBeLessThan(Math.min(0.034, -0.001) - 0.5);
+    expect(mid.get(59)!).toBeGreaterThan(-0.001);
+    expect(mid.get(59)!).toBeLessThan(0.476);
+    // The elbow has finished before the shoulder rises from its lowered path.
+    expect(at(0.75).get(60)).toBeCloseTo(0, 8);
+    expect(at(0.75).get(62)!).toBeLessThan(-0.2);
+    expect(Math.abs((mid.get(61) ?? 0) - 0.002)).toBeLessThan(0.02);
+    expect(at(-1).get(60)).toBeCloseTo(0.86, 6);
+    expect(at(2).get(62)).toBeCloseTo(-0.001, 6);
+    expect(start.has(2)).toBe(false);
+    expect(end.has(56)).toBe(false);
+    expect(at(0.5).has(61)).toBe(true);
+    expect(chestArmReturn(0.5, new Map([[60, Number.NaN]]), to, 62).size).toBe(0);
+    expect(chestArmReturn(Number.NaN, from, to, 62).size).toBe(0);
   });
 });

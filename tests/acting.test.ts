@@ -425,24 +425,37 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
     actor.preview('laugh', 0);
     reduced.configure({ intensity: 'normal', reducedMotion: true });
     reduced.preview('laugh', 0);
+    const joy = new ActingController();
+    joy.preview('happy', 0);
     let highIntervals = 0,
       wasOpen = false,
-      peak = 0;
+      peak = 0,
+      firstBeat = 0,
+      gap = 0,
+      secondBeat = 0;
     for (let frame = 1; frame <= 144; frame++) {
       const time = (frame * 1000) / 60;
       const sample = actor.sample(time, 1 / 60);
       const quiet = reduced.sample(time, 1 / 60);
+      const joySample = joy.sample(time, 1 / 60);
       const open = sample.mouthOpen > 0.1;
       if (open && !wasOpen) highIntervals++;
       wasOpen = open;
       peak = Math.max(peak, sample.mouthOpen);
       expect(quiet.mouthOpen).toBeCloseTo(sample.mouthOpen * 0.18, 7);
+      if (frame === 30) firstBeat = sample.mouthOpen;
+      if (frame === 69) gap = sample.mouthOpen;
+      if (frame === 93) secondBeat = sample.mouthOpen;
+      if (frame === 30) expect(sample.mouthOpen).toBeGreaterThan(joySample.mouthOpen + 0.2);
       if (frame === 60) {
         expect(sample.headZ).toBeGreaterThan(0.16);
         expect(sample.eyeL).toBeLessThan(0.11);
       }
     }
     expect(highIntervals).toBe(1);
+    expect(firstBeat).toBeGreaterThan(gap);
+    expect(secondBeat).toBeGreaterThan(gap);
+    expect(gap).toBeGreaterThan(0.1);
     expect(peak).toBeGreaterThan(0.35 * 0.65 * 0.95);
     const settled = actor.sample(2400, 0);
     expect(settled.mouthOpen).toBeLessThan(0.001);
@@ -785,7 +798,8 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
       const worry = advance(actor, 800, fps);
       expect(worry.eyeL).toBeGreaterThan(0.6);
       expect(worry.eyeR).toBeGreaterThan(0.75);
-      expect(worry.smile).toBeLessThan(-0.7);
+      expect(worry.smile).toBeLessThan(-0.9);
+      expect(worry.browY).toBeLessThan(-0.3);
       expect(worry.browInner).toBeGreaterThan(0.4);
       expect(worry.gazeX).toBeLessThan(-0.1);
       expect(worry.gazeX).toBeGreaterThan(-0.2);
@@ -1267,7 +1281,8 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
             actor.cue(cue, 0);
             const worry = advance(actor, 1000, fps),
               baseline = advance(idle, 1000, fps);
-            expect(worry.smile).toBeLessThan(-0.7 * faceScale);
+            expect(worry.smile).toBeLessThan(-0.95 * faceScale);
+            expect(worry.browY).toBeLessThan(-0.4 * scale);
             expect(worry.browInner).toBeGreaterThan(0.65 * scale);
             expect(worry.eyeL).toBeGreaterThan(1 - 0.13 * reducedScale);
             expect(worry.eyeR).toBeGreaterThan(1 - 0.05 * reducedScale);
@@ -1289,6 +1304,7 @@ describe('local acting scheduler — FR-L2D-002/003/004, FR-DIR-002', () => {
             expect(closed).toBeLessThan(1 - 0.85 * reducedScale);
             const relief = advance(actor, 3000, fps, winkAt);
             expect(relief.smile).toBeGreaterThan(0.35 * faceScale);
+            expect(relief.browY).toBeGreaterThan(worry.browY + 0.3 * scale);
             expect(relief.eyeL).toBeGreaterThan(1 - 0.13 * reducedScale);
             expect(relief.eyeR).toBeGreaterThan(1 - 0.05 * reducedScale);
             const held = advance(actor, 8000, fps, 3000);

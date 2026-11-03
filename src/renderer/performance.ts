@@ -53,6 +53,39 @@ const smooth = (value: number): number => {
   return t * t * (3 - 2 * t);
 };
 
+/** Verified on this rig: Param62 near 0 while Param60 is still extended reads as
+ * the arm stuck out sideways. -0.9 lowers that same elbow toward the waist. */
+const LOWERED_SHOULDER = -0.9;
+
+/** Ease chest-arm joints from the last drawn pose to the authored exit.
+ * Zero slope at both ends. The shoulder detours through the lowered waypoint
+ * while the elbow straightens, then lands on the endpoint. Finish unfolding
+ * before the shoulder recovers: the measured near-zero shoulder/partly bent
+ * elbow combination otherwise sweeps the hand beyond the canvas late in return.
+ * Indexes absent from either map are omitted. */
+export function chestArmReturn(
+  progress: number,
+  from: ReadonlyMap<number, number>,
+  to: ReadonlyMap<number, number>,
+  shoulderIndex: number,
+): Map<number, number> {
+  if (!Number.isFinite(progress)) return new Map();
+  const u = smooth(clamp(progress));
+  const unfolded = smooth(clamp(progress / 0.75));
+  const hump = 16 * u * u * (1 - u) * (1 - u);
+  const values = new Map<number, number>();
+  for (const [index, start] of from) {
+    const end = to.get(index);
+    if (!Number.isFinite(start) || end === undefined || !Number.isFinite(end)) continue;
+    const blend = start + (end - start) * (index === shoulderIndex ? u : unfolded);
+    values.set(
+      index,
+      index === shoulderIndex ? blend * (1 - hump) + LOWERED_SHOULDER * hump : blend,
+    );
+  }
+  return values;
+}
+
 export class ExpressionMixer {
   private from: ExpressionLayer[] = [];
   private targets: ExpressionTarget[] = [];

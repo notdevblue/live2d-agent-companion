@@ -109,14 +109,14 @@ const accentTime = (preset: ActingPreset, t: number, variant: number): number =>
 // Shared signed attention phrase; facial consumers choose its absolute value.
 const attentionGlance = (t: number): number =>
   beat(t, 5.1, 0.4, 0.65, 0.6) - beat(t, 9.6, 0.4, 0.65, 0.6);
-// Two unequal local chuckles, on the existing finite variant clock.
-const chuckleBeats = (t: number, variant: number): { first: number; second: number } => {
-  const local = accentTime('laugh', t, variant);
-  return {
-    first: beat(local, 0.15, 0.25, 0.15, 0.5),
-    second: beat(local, 1.25, 0.18, 0.12, 0.5),
-  };
-};
+// Two unequal local chuckles. Callers pass either wall time (chuckleBeats applies
+// accentTime once) or samplePresetPose's t, which is already accent-adjusted.
+const chuckleShape = (local: number): { first: number; second: number } => ({
+  first: beat(local, 0.15, 0.25, 0.15, 0.5),
+  second: beat(local, 1.25, 0.18, 0.12, 0.5),
+});
+const chuckleBeats = (t: number, variant: number): { first: number; second: number } =>
+  chuckleShape(accentTime('laugh', t, variant));
 // Compound emotions get their own first beat before the attitude takes over.
 // Target eyelids and blink suppression must consume this same delayed clock.
 const attitudeTime = (reaction: Reaction, t: number): number =>
@@ -445,11 +445,11 @@ export function sampleReactionPose(reaction: Reaction, clock: ReactionClock, sca
     const local = clock.emotionSeconds;
     const worry = 1 - smooth((local - 1.05) / 0.6);
     target.browInner = 0.5 + 0.22 * worry;
-    target.browY = 0.12;
-    // A downturned mouth leads into closed-mouth relief at the playful beat.
-    // The legacy smile accent is unscaled, so gate this stronger local face
-    // explicitly when quiet/reduced motion is selected.
-    target.smile = (0.4 - 1.22 * worry) * Math.min(1, scale / 0.65);
+    // Separate the initial worry from relief with a deeper frown and lowered
+    // outer brows, using the verified upstream controls. Relief
+    // returns to the same closed-mouth +.4 and brow +.12 before the wink.
+    target.browY = 0.12 - 0.72 * worry;
+    target.smile = (0.4 - 1.4 * worry) * Math.min(1, scale / 0.65);
     target.eyeSmile = 0.05;
     // Preserve the source eye closures while changing each lid's neutral shape.
     target.eyeL = (0.88 * target.eyeL) / (reaction.variant ? 0.9 : 0.72);
@@ -589,8 +589,11 @@ export function samplePresetPose(preset: ActingPreset, t: number, variant = 0): 
   if (preset === 'laugh') {
     const laugh = beat(t, 0.25, 0.2, 0.9, 0.35);
     p.eyeL = p.eyeR = 1 - 0.9 * laugh;
-    // One expressive mouth shape, never a repeated speech/phoneme clock.
-    p.mouthOpen = 0.35 * beat(t, 0.65, 0.12, 0.4, 0.2);
+    // Same chuckle shape as the body. `t` was already passed through accentTime,
+    // so this must not call chuckleBeats (that would shift variant 1 twice).
+    const { first, second } = chuckleShape(t);
+    const span = Math.max(laugh, first, second);
+    p.mouthOpen = span * (0.48 + 0.42 * Math.max(first, second));
     const chuckle = beat(t, 0.12, 0.25, 0.8, 0.75);
     const direction = variant ? -1 : 1;
     p.headX = direction * 0.18 * chuckle;
