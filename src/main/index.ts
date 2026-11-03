@@ -79,6 +79,11 @@ if (
   app.commandLine.appendSwitch('ozone-platform', 'x11');
 const x11InputRequested =
   process.platform === 'linux' && app.commandLine.getSwitchValue('ozone-platform') === 'x11';
+// Xwayland's EGL swap can block the GPU queue on vblank for seconds, delaying
+// animation frames and canvas readback. Keep Chromium's frame scheduler;
+// only remove the extra GPU presentation wait for this overlay backend.
+if (x11InputRequested && process.env.WAYLAND_DISPLAY)
+  app.commandLine.appendSwitch('disable-gpu-vsync');
 let overlayInput: Bootstrap['overlayInput'] =
   process.platform === 'linux' ? 'unsupported' : 'forward';
 let overlayInputError: string | undefined =
