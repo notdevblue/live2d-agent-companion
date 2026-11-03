@@ -75,3 +75,5 @@ E-012~018은 [ADR-0003](../planning/adrs/0003-request-recovery-and-approvals.md)
 `npm run test:expression -- --model <로컬 model3.json>`은 실제 SDK와 모델로 고정 시각을 렌더한다. 수백 PNG를 생성하는 전체 작업과 한 장면의 정체를 구분한다. renderer 준비·장면 시작·이미지 저장의 IPC 진행을 받을 때90초 정체 제한만 갱신하며, 전체300초 상한은 갱신하지 않는다. timeout은 마지막 mode/scene·경과 시간과 실패 결과를 남긴다. 진행 없는 지연·전체 한도·늦은 성공 종료가 실패를 성공으로 바꾸지 않는 경계도 확인한다. 이 제한은 검사 프로세스의 장애 감지용이며 실시간 FPS·제품 성능 수락 기준이 아니다.
 
 구조 정리는 cue 소유권과 상태를 `acting.ts`에, 상태 없는 시간/자세/얼굴 계산을 `acting-phrases.ts`에 둔다. 외부 API와 기존 의미/미리보기·강도/접근성·수명/clear 출력 보존을 확인한 근거는 [연기 설계](../ux/ACTING_DESIGN.md#구조-정리-검증-2026-11-03)와 [구현 상태](../development/IMPLEMENTATION_STATUS.md)에 연결한다.
+
+실시간 Xwayland 정지 검사는 별도의 실제 production renderer에서 수행한다. 설정 UI preview 이벤트 전달만으로 통과시키지 않고, 캡처 없이 실제 RAF의 enter/hold/exit/none과 프레임 간격·callback 시간을 관찰한다. renderer reload·앱 재시작·설정/위치 보존과 입력/승인/clear를 함께 확인한다. GPU trace는 EGL swap과 readback command-buffer 대기를 구분하며, readback 생략·창 위치 이동·VSync 단일 옵션 대조를 최종 구현과 구별한다. 모션 시계/기한 변경이나 고정 시각 SDK 렌더로 프레임 공백을 감추지 않는다. 원인과 현재 근거는 [Live2D 통합](../integrations/LIVE2D_TTS.md#xwayland-프레임-정지의-원인과-적용)에 연결한다.

@@ -228,3 +228,13 @@ interface SpeechSynthesizer {
 `attitudeTime`은 부끄러움+웃음·걱정+장난에서 기존 cue 시간의 .9초를 준비 감정에 쓰고, 같은 지연 시간을 눈 모양과 wink의 blink 억제에 적용한다. 별도 타이머나 전체 cue 수명 연장은 없다. 걱정의 음수 입·미간을 먼저 보여 준 뒤 장난으로 재접촉하고, 혼란은 한 번의 회피/젖힘 뒤 반대쪽을 살핀다.
 
 화남은 특수 눈 자산 없이 normal 실제 눈 열림 약 .4를 사용한다. 알려진 key6도 MOC에서 원형 입을 그려 닫힌 화남과 맞지 않아 추가하지 않았다. 화남의 기존 eye target 우회 경로가 기한까지 .5를 남기는 원인을 고쳐, 계산된 눈 모양에 기존 강조+유지 가중치를 적용하고 마지막에 중립으로 복귀한다. 유지값 .4025는 보존하며 preview/delivery도 기존 release를 따른다. quiet/expressive·움직임 줄이기·정확한 clear와 종료 직전 실제 출력은 현재 [검증 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다.
+
+## Xwayland 프레임 정지의 원인과 적용
+
+2026-11-03 실제 Sway/Xwayland·Electron45.2.1에서 잠깐 정상 렌더한 뒤 수 초씩 멈추는 경로를 조사했다. 창을 한 화면 안으로 옮겨도 재현됐고, `readPixels`를 진단용으로 생략하면 draw 시간만 짧아지고 약1fps의 프레임 정지는 남았다. GPU trace에서는 `CrGpuMain`의 `NativeViewGLSurfaceEGL:RealSwapBuffers`가 최대4001.614ms 대기했다. renderer의 `GLES2::ReadPixels`는 그 뒤 GPU command buffer 완료를 최대1012.448ms 기다렸다. 기록된 BeginFrame decision은 정상 전송이어서 background/Viz throttling을 원인으로 간주하지 않는다.
+
+`src/main/index.ts`는 Linux·X11 backend·`WAYLAND_DISPLAY`가 있는 Xwayland 실행에서 시작 전에 `disable-gpu-vsync`를 적용한다. GPU의 EGL presentation/vblank 대기만 제거하며 Chromium frame scheduler·애니메이션 시계·원래 의미/손 수명은 유지한다. 이 옵션은 앱 프로세스의 창 전체에 적용되고 OS/compositor 설정이나 전역 GPU 설정을 바꾸지 않는다. native Xorg·native Wayland·Windows에는 새로 강제하지 않는다. 검증된 차이는 GPU 대기 병목이며 내부 driver/compositor 결함의 세부 원인이나 특정 GPU 제조사 결함까지 단정하지 않는다.
+
+동일 코드·설정에서 이 옵션 하나만 바꾼 실제 trace의 EGL swap 최대는4001.614→0.146ms, readPixels 최대는1012.448→8.177ms였다. 진단용 readback 생략과 위치 이동은 최종 구현에 포함하지 않는다. 현재 기본 경로의 설정 UI·인사 전 단계·reload·입력·설정 보존 검증은 [구현 상태](../development/IMPLEMENTATION_STATUS.md)를 따른다. 고정 시각의 영상과 실시간 native 검사를 구분하며, 다른 compositor/장치·화면 tearing·Windows의 성능 수락은 이 측정으로 대체하지 않는다.
+
+근거는 설치 버전과 대응하는 Chromium156.0.8078.75의 [EGL swap](https://github.com/chromium/chromium/blob/156.0.8078.75/ui/gl/gl_surface_egl.cc), [GPU VSync 옵션](https://github.com/chromium/chromium/blob/156.0.8078.75/ui/gl/gl_switches.cc), [동기 readback](https://github.com/chromium/chromium/blob/156.0.8078.75/gpu/command_buffer/client/gles2_implementation.cc)이다. ignored `.tmp/current-version/native/trace-summary.json`에 실제 양측 trace 해시·SQL·시간 대조와 한계를 기록한다. 적용은 build 후 기본 런처 재실행이며, 복원은 해당 수정 커밋을 revert하고 같은 절차로 실행한다. 앱 재실행 검증과 OS 재부팅/재로그인 검증은 구분한다.

@@ -39,13 +39,13 @@
 
 ## 현재 검증과 정리 범위
 
-`e1687b4`의2026-11-03 검증: Vitest625개/26파일·strict unused typecheck·format·build·Mock desktop·실제 SDK89개 수락 검사/325캡처를 통과했다. 기준은 이전 영상의 오른쪽(`9ef4f66` 코드)이며23개 기준 소스 해시의 일치를 확인했다. 같은 저장 profile14·69초 입력·20fps의1380 paired frame에서 네 팔 입력 외 모든 파라미터·canvas 행렬 차이0, 인사 밖 손 변화0이다. 인사 구간의 선택된 가시 손 측면 경계 초과는12프레임에서0, 인사 밖의18프레임은 그대로이며 새 경계 초과0이다. 일반/custom pair의 legacy attention은12,000개 입력에서 출력이 일치했다.
+현재 시작 경로는 `8e8febb`이며 연기 렌더러는 `e1687b4`와 같다.2026-11-03 검증: Vitest625개/26파일·strict unused typecheck·format·build·Mock desktop·실제 SDK89개 수락 검사/325캡처를 통과했다. 기준은 이전 영상의 오른쪽(`9ef4f66` 코드)이며23개 기준 소스 해시의 일치를 확인했다. 같은 저장 profile14·69초 입력·20fps의1380 paired frame에서 네 팔 입력 외 모든 파라미터·canvas 행렬 차이0, 인사 밖 손 변화0이다. 인사 구간의 선택된 가시 손 측면 경계 초과는12프레임에서0, 인사 밖의18프레임은 그대로이며 새 경계 초과0이다. 일반/custom pair의 legacy attention은12,000개 입력에서 출력이 일치했다.
 
-실제 Sway production renderer의 **14:15:31 KST** 검사에서 UI20종·8개 gesture-none 흐름·접촉/해제/승인/clear·renderer reload·대기 복귀와 설정 보존을 확인했다. 설정 창의 인사 preview 이벤트 전달도 확인했다. 다만 약4초의 RAF 공백이 이전 기준 버전과 수정 버전 모두에서 재현되어, 실앱 인사 전 구간의 연속 재생은 확인하지 못했다. 원인은 미확정인 기존 실행 경로 이슈로 남긴다. SDK의 고정 시각 렌더를 실앱의 매끄러운 재생이나 FPS 수락으로 간주하지 않는다. 앱 provider prompt/Jev 판단0이며 물리 마우스·OS 재부팅/재로그인은 수행하지 않았다. 검사 후 일반 기본 런처로 재실행하고 원래 설정 digest·기본 진입점·실행 생존을 확인했다.
+실제 Sway production renderer의 **14:34:45 KST** 검사에서 UI20종·8개 gesture-none 흐름·접촉/해제/승인/clear·대기 눈/손의 시작과 종료·renderer reload·설정/위치 보존을 통과했다. 설정 UI의 실제 인사 enter→hold→exit→none을 캡처 없이682프레임 관찰했고 최대 RAF 간격14ms·draw19.4ms였다. 별도 앱 재시작과 renderer reload에서도 각894프레임의 인사 전 단계를 확인했으며 최대 RAF 간격은14ms·20.9ms였다. 원래 수 초 정지의 원인은 GPU trace의 EGL swap 대기였고, 기본 Xwayland 시작에서 GPU VSync 대기만 해제했다. [근본 원인·단일 옵션 비교와 적용 범위](../integrations/LIVE2D_TTS.md#xwayland-프레임-정지의-원인과-적용)를 따른다. 앱 provider prompt/Jev 판단0이며 물리 마우스·OS 재부팅/재로그인은 수행하지 않았다. 검사 후 일반 기본 런처로 재실행해 원래 설정 digest·기본 진입점·생존과 실제 GPU 자식의 VSync 해제/기존 frame-rate limit 보존을 확인했다.
 
-현재 인사 비교는 ignored `artifacts/grok-review/greeting-only-comparison.mp4`(9초·약0.5MB·896×720·20fps)다. 왼쪽은 이전 영상의 오른쪽 기준, 오른쪽은 메인의 인사 조정이다. `greeting-context-comparison.mp4`는69초 전체 대조이며, 결과 `greeting-results.json`·동결 소스/커밋 일치와 검사는 `.tmp/greeting-review/`에 있다. 합성 cue·로컬 미리보기·자기 canvas 접촉의 무음 실제 모델 렌더이며 실제 provider/IPC 대화 영상과 구분한다. H.264 Main/yuv420p·fast-start와 전체 decode를 확인했다. 이전69초 영상과 저용량/21초 파생본도 보존한다.
+현재 전체 시연은 ignored `artifacts/grok-review/current-version-overview.mp4`(69초·약2.1MB·448×720·20fps)다. 인사→기쁨·걱정 섞인 장난·당황→웃음·수줍음→설명→장난·토라짐→직접 쓰다듬기/해제→마지막 인사·기본 대기를 자막과 함께 보여준다. 이전69초 비교의 현재 버전 쪽만 추출해 제목을 갱신했으며, 동결한23개 연기 소스가 현재 코드와 일치한다. 합성 cue·로컬 미리보기·자기 canvas 접촉의 무음 실제 모델 고정 시각 렌더다. 실제 provider/IPC 대화 영상이나 native FPS 측정을 대신하지 않는다. H.264 Main/yuv420p·fast-start와 전체 decode·주요12장면을 확인했다. 인사 비교9초/전체69초와 이전 파생본도 보존한다. 영상의 소스/원본 해시·범위는 `.tmp/current-version/overview-manifest.json`, 실앱/단위 검사·GPU trace는 `.tmp/current-version/`, 인사 관절 대조는 `.tmp/greeting-review/`에 있다.
 
-회차별 공유·점수 추이·PID·재시도 일지는 현재 문서에서 제거했고 별도 보관 문서를 만들지 않았다. 이전 내용은 Git 이력으로 확인한다. 검증 후 별도 작업 사본과 중복 영상·재생성 가능한 프레임/캐시는 제거하고 최종 영상·동결 소스·실제 모델 근거를 보존했다. 원본 모델·SDK·공식 참고자료·개인 설정도 보존한다. 중복 정리의 출력 보존 근거는 ignored `.tmp/cleanup-review/`에 있다. 기존 표현의 근거는 ignored `.tmp/grok-implementation/`, 현재 인사의 근거는 `.tmp/greeting-review/`에 모으며, 과거 공유 기록을 새 문서로 쌓지 않는다.
+회차별 공유·점수 추이·PID·재시도 일지는 현재 문서에서 제거했고 별도 보관 문서를 만들지 않았다. 이전 내용은 Git 이력으로 확인한다. 검증 후 별도 작업 사본과 중복 영상·재생성 가능한 프레임/캐시는 제거하고 최종 영상·동결 소스·실제 모델 근거를 보존했다. 원본 모델·SDK·공식 참고자료·개인 설정도 보존한다. 중복 정리의 출력 보존 근거는 ignored `.tmp/cleanup-review/`에 있다. 기존 표현의 근거는 ignored `.tmp/grok-implementation/`, 인사의 근거는 `.tmp/greeting-review/`, 현재 실행 안정성과 영상 근거는 `.tmp/current-version/`에 모으며, 과거 공유 기록을 새 문서로 쌓지 않는다.
 
 새 구현의 주관적 종합 점수는 미평가다. [Grok 검토](../ux/GROK_VTUBER_REVIEW.md)는 평가 방법과 한계만 기록한다.85점 반복 개선·재채점 목표는 일시정지 상태다.
 
@@ -64,7 +64,7 @@
 
 ## 적용·복원
 
-적용은 현재 checkout에서 `npm run build` 후 앱 종료·기본 `~/.local/bin/live2d-companion` 재실행이다. 별도 시험용 런처나 서비스는 없다. 이번 인사 조정만 되돌릴 때는 `e1687b4`를 revert해 이전 오른쪽 버전을 유지하고 같은 절차로 실행한다. 설정 schema를 바꾸지 않으므로 개인 연결/세션/매핑·위치/배율 이관은 필요 없다.
+적용은 현재 checkout에서 `npm run build` 후 앱 종료·기본 `~/.local/bin/live2d-companion` 재실행이다. 별도 시험용 런처나 서비스는 없다. Xwayland 프레임 정지 수정만 되돌릴 때는 `8e8febb`를 revert하고 같은 절차로 실행한다. 이 복원은 해당 호스트의 EGL 대기 문제를 다시 드러낼 수 있다. 인사 조정만 되돌릴 때는 `e1687b4`를 revert해 이전 오른쪽 버전을 유지하고 같은 절차로 실행한다. 설정 schema를 바꾸지 않으므로 개인 연결/세션/매핑·위치/배율 이관은 필요 없다.
 
 더 이전 버전으로 복원할 때는 Git에서 해당 버전의 구현 상태·설정 schema를 함께 확인한다. 새 감정/쓰다듬기 필드를 모르는 구버전은 앱을 종료하고 사용자 설정 디렉터리에 권한600의 백업을 만든 뒤 호환되는 필드로 복원해야 한다. 개인 연결 값·키·대화·모델/SDK를 저장소에 넣지 않는다. 구버전 rollback은 이번 검증에서 실행하지 않았다.
 
