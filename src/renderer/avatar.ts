@@ -24,6 +24,7 @@ import {
   SURPRISED_EXPRESSION,
   THINKING_MOTION,
 } from '../shared/model-mappings.js';
+import { emotionFor, eyeAccentDuration } from './acting-phrases.js';
 import { PettingController, applyPetting, pettingBounds, type PettingBounds } from './petting.js';
 import { greetingValues, handAttentionValues } from './greeting.js';
 import {
@@ -399,16 +400,7 @@ export class Avatar {
     this.reset();
     this.actor.preview(preset, now);
     if (preset !== 'reset') {
-      const emotion =
-        preset === 'shy'
-          ? 'embarrassed'
-          : preset === 'happy'
-            ? 'happy'
-            : preset === 'surprised'
-              ? 'surprised'
-              : ['sad', 'concerned', 'angry', 'confused'].includes(preset)
-                ? (preset as 'sad' | 'concerned' | 'angry' | 'confused')
-                : 'neutral';
+      const emotion = emotionFor(preset);
       const name =
         preset === 'heart' && this.expressions.has('爱心眼')
           ? '爱心眼'
@@ -419,13 +411,7 @@ export class Avatar {
         reactionDuration(preset),
         0,
         [],
-        preset === 'confused'
-          ? 1400
-          : preset === 'laugh'
-            ? 1200
-            : preset === 'tease'
-              ? 1100
-              : undefined,
+        eyeAccentDuration(preset, emotion, 'preview'),
       );
       const motion =
         preset === 'grass'
@@ -494,15 +480,7 @@ export class Avatar {
       duration,
       lifetime - duration,
       extras,
-      cue.emotion === 'confused'
-        ? 1400
-        : cue.attitude === 'laugh'
-          ? 1200
-          : cue.attitude === 'tease'
-            ? 1100
-            : cue.emotion === 'happy'
-              ? 2300
-              : undefined,
+      eyeAccentDuration(preset, cue.emotion, 'cue'),
     );
     // Delivery tone does not override an explicit "no physical gesture" decision.
     this.startGesture(motionName, now, lifetime);

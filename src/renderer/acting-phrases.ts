@@ -47,6 +47,7 @@ export interface ReactionClock {
   residueWeight: number;
   maintenanceWeight: number;
   mouthWeight: number;
+  angryCheck: number;
   phase: 'idle' | 'anticipation' | 'accent' | 'settle' | 'release' | 'afterglow';
   chuckle?: { first: number; second: number };
 }
@@ -105,6 +106,9 @@ const accentTime = (preset: ActingPreset, t: number, variant: number): number =>
   variant && ['happy', 'laugh', 'shy', 'tease', 'angry', 'confused'].includes(preset)
     ? Math.max(0, (t - 0.18) / 1.12)
     : t;
+// Shared signed attention phrase; facial consumers choose its absolute value.
+const attentionGlance = (t: number): number =>
+  beat(t, 5.1, 0.4, 0.65, 0.6) - beat(t, 9.6, 0.4, 0.65, 0.6);
 // Two unequal local chuckles, on the existing finite variant clock.
 const chuckleBeats = (t: number, variant: number): { first: number; second: number } => {
   const local = accentTime('laugh', t, variant);
@@ -157,6 +161,10 @@ export const reactionClock = (
       reaction.afterglow && age >= duration - release ? 0.4 * (1 - accentWeight) * fade : 0,
     maintenanceWeight,
     mouthWeight: reaction.afterglow ? smooth((age - (duration - release)) / release) * fade : 0,
+    angryCheck:
+      reaction.preset === 'angry' && reaction.gesture === 'none'
+        ? beat(attitudeSeconds, 1.95, 0.25, 0.25, 0.65)
+        : 0,
     phase:
       age >= duration
         ? 'afterglow'
@@ -180,6 +188,18 @@ export const emotionFor = (preset: ActingPreset): Emotion =>
     : ['happy', 'sad', 'concerned', 'surprised', 'angry', 'confused'].includes(preset)
       ? (preset as Emotion)
       : 'neutral';
+
+/** Eye artwork precedence is shared; previews intentionally keep happy's full duration. */
+export function eyeAccentDuration(
+  preset: ActingPreset,
+  emotion: Emotion,
+  source: 'preview' | 'cue',
+): number | undefined {
+  if (emotion === 'confused') return 1400;
+  if (preset === 'laugh') return 1200;
+  if (preset === 'tease') return 1100;
+  return source === 'cue' && emotion === 'happy' ? 2300 : undefined;
+}
 
 const PROFILES: Record<ActingPreset, Partial<Pose>> = {
   neutral: {},
@@ -231,7 +251,7 @@ export function sampleHeldFace(reaction: Reaction | undefined, t: number): Pose 
     face.mouthOpen = 0.12;
     return face;
   }
-  const glance = Math.abs(beat(t, 5.1, 0.4, 0.65, 0.6) - beat(t, 9.6, 0.4, 0.65, 0.6));
+  const glance = Math.abs(attentionGlance(t));
   if (reaction.preset === 'happy' || reaction.preset === 'laugh' || reaction.gesture === 'wave') {
     face.smile = 0.58;
     face.eyeSmile = 0.78 + 0.06 * glance;
@@ -325,7 +345,7 @@ export function sampleMaintenancePose(
   const weight = clock.maintenanceWeight;
   // A finite attention phrase: look toward the listener, glance, reconnect.
   // No randomized reactions and no new mouth/speech clock during the hold.
-  const glance = beat(t, 5.1, 0.4, 0.65, 0.6) - beat(t, 9.6, 0.4, 0.65, 0.6);
+  const glance = attentionGlance(t);
   const sway = Math.sin(((t - duration / 1000) * Math.PI) / 2.8);
   const direction = reaction.variant ? -1 : 1;
   pose.headZ = direction * (0.12 + 0.08 * sway);
@@ -649,7 +669,7 @@ export function sampleTorsoIntent(
   if (reaction.preset === 'angry') {
     // Keep the averted stance. The same reluctant eye check briefly loosens
     // the shoulders, which settle back after the listener has been checked.
-    const check = beat(clock.attitudeSeconds, 1.95, 0.25, 0.25, 0.65);
+    const check = clock.angryCheck;
     return {
       x: direction * (-0.44 + 0.3 * check),
       z: direction * (0.22 - 0.14 * check),
@@ -691,8 +711,7 @@ export function sampleTorsoIntent(
     };
   }
   if (reaction.preset === 'concerned') {
-    const glance =
-      beat(clock.seconds, 5.1, 0.4, 0.65, 0.6) - beat(clock.seconds, 9.6, 0.4, 0.65, 0.6);
+    const glance = attentionGlance(clock.seconds);
     return {
       x: -0.12 + 0.12 * glance,
       z: -0.16 + 0.08 * glance,

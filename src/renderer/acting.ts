@@ -339,10 +339,7 @@ export class ActingController {
     // A reluctant eye-only check inside the short angry reaction. Project it
     // after pose integration so gaze→head→torso following cannot unwind the
     // averted posture. The existing cue clock returns both eyes by 3.1s.
-    const angryCheck =
-      reaction?.preset === 'angry' && reaction.gesture === 'none'
-        ? beat(clock!.attitudeSeconds, 1.95, 0.25, 0.25, 0.65) * this.scale()
-        : 0;
+    const angryCheck = (clock?.angryCheck ?? 0) * this.scale();
     return {
       ...this.pose,
       gazeX: clamp(this.pose.gazeX + (reaction?.variant ? -1 : 1) * 0.45 * angryCheck),

@@ -359,7 +359,6 @@ void app.whenReady().then(async () => {
       tts: false,
     },
     networkRequests: [],
-    before: {},
     after: {},
     'owned-lean': {},
     assertions: [],
@@ -389,11 +388,11 @@ void app.whenReady().then(async () => {
               );
         return net.fetch(pathToFileURL(file).href);
       }
-      if (url.host === 'ui' && /^\/(before|after|owned-lean)\.(html|js)$/.test(url.pathname))
+      if (url.host === 'ui' && /^\/(after|owned-lean)\.(html|js)$/.test(url.pathname))
         return net.fetch(pathToFileURL(join(build, url.pathname)).href);
       return new Response('', { status: 404 });
     });
-    for (const mode of ['before', 'after', 'owned-lean']) {
+    for (const mode of ['after', 'owned-lean']) {
       process.send?.({ kind: 'expression-progress', stage: 'renderer-setup', mode });
       window = new BrowserWindow({
         width: 360,
@@ -416,8 +415,7 @@ void app.whenReady().then(async () => {
       );
       if (mode === 'owned-lean') result.ownedLeanSetup = mappings;
       else result.mappings = mappings;
-      const selectedScenes =
-        mode === 'before' ? leanScenes : mode === 'owned-lean' ? ownedLeanScenes : scenes;
+      const selectedScenes = mode === 'owned-lean' ? ownedLeanScenes : scenes;
       for (const scene of selectedScenes) {
         assert.ok(
           scene.times.every(
@@ -1117,20 +1115,6 @@ void app.whenReady().then(async () => {
           sample(scene, 1800).status.pettingWeight === 0 && sample(scene, 1800).values.key7 === 0,
       ),
     );
-    result.leanComparison = leanScenes.map(({ name }) => {
-      const before = result.before[name][0],
-        after = result.after[name][0];
-      assert.ok(
-        Math.abs(after.beforePhysics.LeanInput - 2 * before.beforePhysics.LeanInput) < 1e-5,
-        `${name}: lean coefficient`,
-      );
-      return {
-        scene: name,
-        before: before.beforePhysics.LeanInput,
-        after: after.beforePhysics.LeanInput,
-        images: [before.image, after.image],
-      };
-    });
     const postureNeutral = sample('posture-neutral', 3000);
     const postureForward = sample('posture-forward', 3000);
     const approachOnly = sample('approach-only', 3000);

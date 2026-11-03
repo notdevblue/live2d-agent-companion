@@ -339,8 +339,6 @@ describe('semantic expression afterglow — FR-L2D-004/006/007', () => {
     expect((avatar as unknown as { inventory: ModelInventory }).inventory.expressionMap.happy).toBe(
       '＞＜',
     );
-    vi.setSystemTime(2000);
-    avatar.cue({ ...cue, messageId: 'second', segmentId: 2, emotion: 'confused', gesture: 'none' });
   });
   it('holds the selected happy eye through the welcome, then exposes the open-eyed face while preserving custom layers', () => {
     for (const happy of [undefined, '＞＜', 'custom-happy']) {

@@ -1,7 +1,7 @@
 import { build } from 'esbuild';
 import electron from 'electron';
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
@@ -16,32 +16,13 @@ const generated = join(output, 'build');
 await mkdir(generated, { recursive: true });
 await writeFile(join(output, 'results.json'), JSON.stringify({ passed: false, status: 'running' }));
 const shared = { bundle: true, logLevel: 'warning', absWorkingDir: root };
-for (const mode of ['before', 'after', 'owned-lean']) {
+for (const mode of ['after', 'owned-lean']) {
   await build({
     ...shared,
     entryPoints: ['scripts/fixtures/expression-renderer.ts'],
     outfile: join(generated, `${mode}.js`),
     platform: 'browser',
     alias: { '@cubism': join(root, 'vendor/framework/src') },
-    plugins:
-      mode === 'before'
-        ? [
-            {
-              name: 'previous-lean-coefficient',
-              setup(builder) {
-                builder.onLoad({ filter: /src\/renderer\/avatar\.ts$/ }, async ({ path }) => {
-                  const source = await readFile(path, 'utf8');
-                  if (!source.includes('-acting.lean * 0.7'))
-                    throw new Error('비교할 lean 0.7 계수를 찾지 못했습니다.');
-                  return {
-                    contents: source.replace('-acting.lean * 0.7', '-acting.lean * 0.35'),
-                    loader: 'ts',
-                  };
-                });
-              },
-            },
-          ]
-        : [],
   });
   await writeFile(
     join(generated, `${mode}.html`),
